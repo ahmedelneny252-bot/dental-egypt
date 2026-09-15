@@ -8,6 +8,7 @@ const DoctorRegister = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [clinicName, setClinicName] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -100,15 +101,25 @@ const DoctorRegister = () => {
             className="w-full border rounded-lg px-4 py-3"
           />
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-            className="w-full border rounded-lg px-4 py-3"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              className="w-full border rounded-lg px-4 py-3 pr-12"
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-teal-600"
+            >
+              {showPassword ? "🙈" : "👁️"}
+            </button>
+          </div>
 
           <input
             type="text"
