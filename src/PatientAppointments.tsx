@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "./supabase";
 
@@ -18,14 +19,30 @@ type Patient = {
   name: string;
 };
 
+type FilterType =
+  | "all"
+  | "pending"
+  | "confirmed"
+  | "completed"
+  | "cancelled";
+
 const PatientAppointments = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState<FilterType>("all");
 
-  const loadPatientAppointments = async () => {
-    setLoading(true);
+  const loadPatientAppointments = async (
+    showRefreshLoader = false
+  ) => {
+    if (showRefreshLoader) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError("");
 
     const {
@@ -48,6 +65,7 @@ const PatientAppointments = () => {
       console.error(patientError);
       setError(patientError.message);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -56,36 +74,40 @@ const PatientAppointments = () => {
         "Your patient account is not connected to a patient record."
       );
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
     setPatient(patientData);
 
-    const { data: appointmentData, error: appointmentError } =
-      await supabase
-        .from("appointments")
-        .select(`
-          id,
-          appointment_date,
-          appointment_time,
-          status,
-          notes,
-          clinics (
-            name
-          )
-        `)
-        .eq("patient_id", patientData.id)
-        .order("appointment_date", {
-          ascending: false,
-        })
-        .order("appointment_time", {
-          ascending: false,
-        });
+    const {
+      data: appointmentData,
+      error: appointmentError,
+    } = await supabase
+      .from("appointments")
+      .select(`
+        id,
+        appointment_date,
+        appointment_time,
+        status,
+        notes,
+        clinics (
+          name
+        )
+      `)
+      .eq("patient_id", patientData.id)
+      .order("appointment_date", {
+        ascending: false,
+      })
+      .order("appointment_time", {
+        ascending: false,
+      });
 
     if (appointmentError) {
       console.error(appointmentError);
       setError(appointmentError.message);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -103,6 +125,7 @@ const PatientAppointments = () => {
 
     setAppointments(formattedAppointments);
     setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -152,9 +175,79 @@ const PatientAppointments = () => {
     }
   };
 
+  const formatDate = (date: string) => {
+    if (!date) {
+      return "-";
+    }
+
+    const parsedDate = new Date(`${date}T00:00:00`);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return date;
+    }
+
+    return parsedDate.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const formatTime = (time: string) => {
+    if (!time) {
+      return "-";
+    }
+
+    const [hours, minutes] = time.split(":");
+
+    if (!hours || !minutes) {
+      return time;
+    }
+
+    const date = new Date();
+    date.setHours(Number(hours), Number(minutes), 0, 0);
+
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const filteredAppointments = useMemo(() => {
+    if (filter === "all") {
+      return appointments;
+    }
+
+    return appointments.filter(
+      (appointment) => appointment.status === filter
+    );
+  }, [appointments, filter]);
+
+  const counts = useMemo(() => {
+    return {
+      all: appointments.length,
+      pending: appointments.filter(
+        (appointment) =>
+          appointment.status === "pending"
+      ).length,
+      confirmed: appointments.filter(
+        (appointment) =>
+          appointment.status === "confirmed"
+      ).length,
+      completed: appointments.filter(
+        (appointment) =>
+          appointment.status === "completed"
+      ).length,
+      cancelled: appointments.filter(
+        (appointment) =>
+          appointment.status === "cancelled"
+      ).length,
+    };
+  }, [appointments]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 pt-24 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 pt-24">
         <p className="text-slate-600">
           Loading your appointments...
         </p>
@@ -164,12 +257,10 @@ const PatientAppointments = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 pb-12 pt-28 sm:px-6">
-
       <div className="mx-auto max-w-6xl">
 
         {/* Page Header */}
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
 
             {/* Patient Information */}
@@ -203,6 +294,18 @@ const PatientAppointments = () => {
               </Link>
 
               <button
+                onClick={() =>
+                  loadPatientAppointments(true)
+                }
+                disabled={refreshing}
+                className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {refreshing
+                  ? "Refreshing..."
+                  : "↻ Refresh"}
+              </button>
+
+              <button
                 onClick={handleLogout}
                 className="inline-flex items-center justify-center rounded-xl bg-red-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-red-700"
               >
@@ -210,9 +313,7 @@ const PatientAppointments = () => {
               </button>
 
             </div>
-
           </div>
-
         </div>
 
         {/* Error */}
@@ -222,22 +323,122 @@ const PatientAppointments = () => {
           </div>
         )}
 
+        {/* Status Filters */}
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+
+          <button
+            onClick={() => setFilter("all")}
+            className={`rounded-2xl p-4 text-left shadow-sm transition ${
+              filter === "all"
+                ? "bg-teal-600 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm font-medium">
+              All
+            </p>
+
+            <p className="mt-1 text-2xl font-bold">
+              {counts.all}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setFilter("pending")}
+            className={`rounded-2xl p-4 text-left shadow-sm transition ${
+              filter === "pending"
+                ? "bg-yellow-500 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm font-medium">
+              Pending
+            </p>
+
+            <p className="mt-1 text-2xl font-bold">
+              {counts.pending}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setFilter("confirmed")}
+            className={`rounded-2xl p-4 text-left shadow-sm transition ${
+              filter === "confirmed"
+                ? "bg-green-600 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm font-medium">
+              Confirmed
+            </p>
+
+            <p className="mt-1 text-2xl font-bold">
+              {counts.confirmed}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setFilter("completed")}
+            className={`rounded-2xl p-4 text-left shadow-sm transition ${
+              filter === "completed"
+                ? "bg-blue-600 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm font-medium">
+              Completed
+            </p>
+
+            <p className="mt-1 text-2xl font-bold">
+              {counts.completed}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setFilter("cancelled")}
+            className={`rounded-2xl p-4 text-left shadow-sm transition ${
+              filter === "cancelled"
+                ? "bg-red-600 text-white"
+                : "bg-white text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm font-medium">
+              Cancelled
+            </p>
+
+            <p className="mt-1 text-2xl font-bold">
+              {counts.cancelled}
+            </p>
+          </button>
+
+        </div>
+
         {/* Appointments Card */}
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
 
-          <div className="border-b border-slate-200 p-6">
+          <div className="flex flex-col gap-2 border-b border-slate-200 p-6 sm:flex-row sm:items-center sm:justify-between">
 
-            <h2 className="text-xl font-semibold text-slate-900">
-              Your Appointments
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Your Appointments
+              </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              View the status and details of your appointments.
-            </p>
+              <p className="mt-1 text-sm text-slate-500">
+                View the status and details of your appointments.
+              </p>
+            </div>
+
+            <div className="text-sm font-medium text-slate-500">
+              Showing {filteredAppointments.length}{" "}
+              appointment
+              {filteredAppointments.length !== 1
+                ? "s"
+                : ""}
+            </div>
 
           </div>
 
-          {appointments.length === 0 ? (
+          {filteredAppointments.length === 0 ? (
             <div className="p-12 text-center">
 
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
@@ -247,19 +448,25 @@ const PatientAppointments = () => {
               </div>
 
               <h3 className="font-semibold text-slate-800">
-                No appointments yet
+                {appointments.length === 0
+                  ? "No appointments yet"
+                  : "No appointments found"}
               </h3>
 
               <p className="mt-2 text-sm text-slate-500">
-                You don't have any appointments yet.
+                {appointments.length === 0
+                  ? "You don't have any appointments yet."
+                  : "There are no appointments with this status."}
               </p>
 
-              <Link
-                to="/clinics"
-                className="mt-5 inline-block rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
-              >
-                Find a Clinic
-              </Link>
+              {appointments.length === 0 && (
+                <Link
+                  to="/clinics"
+                  className="mt-5 inline-block rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
+                >
+                  Find a Clinic
+                </Link>
+              )}
 
             </div>
           ) : (
@@ -268,7 +475,6 @@ const PatientAppointments = () => {
               <table className="w-full">
 
                 <thead className="bg-slate-50">
-
                   <tr>
 
                     <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
@@ -292,51 +498,55 @@ const PatientAppointments = () => {
                     </th>
 
                   </tr>
-
                 </thead>
 
                 <tbody>
 
-                  {appointments.map((appointment) => (
+                  {filteredAppointments.map(
+                    (appointment) => (
+                      <tr
+                        key={appointment.id}
+                        className="border-t border-slate-100 transition hover:bg-slate-50"
+                      >
 
-                    <tr
-                      key={appointment.id}
-                      className="border-t border-slate-100"
-                    >
+                        <td className="px-6 py-5 font-semibold text-slate-900">
+                          {appointment.clinics?.name ||
+                            "Clinic"}
+                        </td>
 
-                      <td className="px-6 py-5 font-semibold text-slate-900">
-                        {appointment.clinics?.name || "Clinic"}
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-600">
-                        {appointment.appointment_date}
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-600">
-                        {appointment.appointment_time}
-                      </td>
-
-                      <td className="px-6 py-5">
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusStyle(
-                            appointment.status
-                          )}`}
-                        >
-                          {formatStatus(
-                            appointment.status
+                        <td className="px-6 py-5 text-slate-600">
+                          {formatDate(
+                            appointment.appointment_date
                           )}
-                        </span>
+                        </td>
 
-                      </td>
+                        <td className="px-6 py-5 text-slate-600">
+                          {formatTime(
+                            appointment.appointment_time
+                          )}
+                        </td>
 
-                      <td className="px-6 py-5 text-slate-600">
-                        {appointment.notes || "-"}
-                      </td>
+                        <td className="px-6 py-5">
 
-                    </tr>
+                          <span
+                            className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusStyle(
+                              appointment.status
+                            )}`}
+                          >
+                            {formatStatus(
+                              appointment.status
+                            )}
+                          </span>
 
-                  ))}
+                        </td>
+
+                        <td className="max-w-xs px-6 py-5 text-slate-600">
+                          {appointment.notes || "-"}
+                        </td>
+
+                      </tr>
+                    )
+                  )}
 
                 </tbody>
 
@@ -348,12 +558,12 @@ const PatientAppointments = () => {
         </div>
 
       </div>
-
     </div>
   );
 };
 
 export default PatientAppointments;
+
 
 
 

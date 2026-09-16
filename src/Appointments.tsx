@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 
 type Appointment = {
@@ -14,15 +15,31 @@ type Appointment = {
   } | null;
 };
 
+type FilterType =
+  | "all"
+  | "pending"
+  | "confirmed"
+  | "completed"
+  | "cancelled";
+
 const Appointments = () => {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>(
+    []
+  );
+
   const [loading, setLoading] = useState(true);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(
+    null
+  );
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // Get doctor's clinic ID
+  const [filter, setFilter] = useState<FilterType>("all");
+
+  // =========================
+  // Get Doctor Clinic ID
+  // =========================
   const getClinicId = async () => {
     const {
       data: { user },
@@ -53,7 +70,9 @@ const Appointments = () => {
     return profile.clinic_id;
   };
 
-  // Load appointments
+  // =========================
+  // Load Appointments
+  // =========================
   const loadAppointments = async () => {
     setLoading(true);
     setError("");
@@ -80,26 +99,36 @@ const Appointments = () => {
         )
       `)
       .eq("clinic_id", clinicId)
-      .order("appointment_date", { ascending: true })
-      .order("appointment_time", { ascending: true });
+      .order("appointment_date", {
+        ascending: true,
+      })
+      .order("appointment_time", {
+        ascending: true,
+      });
 
     if (error) {
       console.error("Appointments error:", error);
       setError(error.message);
     } else {
-      setAppointments(
-        (data || []).map((appointment: any) => ({
-          id: appointment.id,
-          patient_id: appointment.patient_id,
-          appointment_date: appointment.appointment_date,
-          appointment_time: appointment.appointment_time,
-          status: appointment.status,
-          notes: appointment.notes,
-          patients: Array.isArray(appointment.patients)
-            ? appointment.patients[0] || null
-            : appointment.patients || null,
-        }))
-      );
+      const formattedAppointments: Appointment[] = (
+        data || []
+      ).map((appointment: any) => ({
+        id: appointment.id,
+        patient_id: appointment.patient_id,
+        appointment_date:
+          appointment.appointment_date,
+        appointment_time:
+          appointment.appointment_time,
+        status: appointment.status,
+        notes: appointment.notes,
+        patients: Array.isArray(
+          appointment.patients
+        )
+          ? appointment.patients[0] || null
+          : appointment.patients || null,
+      }));
+
+      setAppointments(formattedAppointments);
     }
 
     setLoading(false);
@@ -109,7 +138,9 @@ const Appointments = () => {
     loadAppointments();
   }, []);
 
-  // Confirm / Cancel appointment
+  // =========================
+  // Update Appointment Status
+  // =========================
   const updateStatus = async (
     appointmentId: string,
     newStatus: string
@@ -118,7 +149,19 @@ const Appointments = () => {
     setError("");
     setSuccess("");
 
-    // Update appointment status
+    const appointment = appointments.find(
+      (item) => item.id === appointmentId
+    );
+
+    if (!appointment) {
+      setError("Appointment not found.");
+      setUpdatingId(null);
+      return;
+    }
+
+    // =========================
+    // Update Appointment
+    // =========================
     const { error: updateError } = await supabase
       .from("appointments")
       .update({
@@ -127,28 +170,65 @@ const Appointments = () => {
       .eq("id", appointmentId);
 
     if (updateError) {
-      console.error("Update status error:", updateError);
+      console.error(
+        "Update status error:",
+        updateError
+      );
+
       setError(updateError.message);
       setUpdatingId(null);
       return;
     }
 
-    // Find appointment
-    const appointment = appointments.find(
-      (item) => item.id === appointmentId
-    );
+    // =========================
+    // Create Patient Notification
+    // =========================
+    let notificationTitle = "";
+    let notificationMessage = "";
 
-    // Create notification when doctor confirms
-    if (newStatus === "confirmed" && appointment) {
-      const { error: notificationError } = await supabase
-        .from("notifications")
-        .insert({
-          patient_id: appointment.patient_id,
-          appointment_id: appointment.id,
-          title: "Appointment Confirmed",
-          message: `Your appointment on ${appointment.appointment_date} at ${appointment.appointment_time} has been confirmed by the doctor.`,
-          is_read: false,
-        });
+    if (newStatus === "confirmed") {
+      notificationTitle = "Appointment Confirmed";
+
+      notificationMessage =
+        `Your appointment on ${appointment.appointment_date} ` +
+        `at ${appointment.appointment_time} ` +
+        `has been confirmed by the doctor.`;
+    }
+
+    if (newStatus === "cancelled") {
+      notificationTitle = "Appointment Cancelled";
+
+      notificationMessage =
+        `Your appointment on ${appointment.appointment_date} ` +
+        `at ${appointment.appointment_time} ` +
+        `has been cancelled by the doctor.`;
+    }
+
+    if (newStatus === "completed") {
+      notificationTitle = "Appointment Completed";
+
+      notificationMessage =
+        `Your appointment on ${appointment.appointment_date} ` +
+        `at ${appointment.appointment_time} ` +
+        `has been marked as completed.`;
+    }
+
+    if (
+      notificationTitle &&
+      notificationMessage
+    ) {
+      const { error: notificationError } =
+        await supabase
+          .from("notifications")
+          .insert({
+            patient_id:
+              appointment.patient_id,
+            appointment_id:
+              appointment.id,
+            title: notificationTitle,
+            message: notificationMessage,
+            is_read: false,
+          });
 
       if (notificationError) {
         console.error(
@@ -157,7 +237,20 @@ const Appointments = () => {
         );
 
         setError(
-          "Appointment confirmed, but notification could not be created."
+          "Appointment status updated, but the patient notification could not be created."
+        );
+
+        setAppointments(
+          (currentAppointments) =>
+            currentAppointments.map(
+              (item) =>
+                item.id === appointmentId
+                  ? {
+                      ...item,
+                      status: newStatus,
+                    }
+                  : item
+            )
         );
 
         setUpdatingId(null);
@@ -165,33 +258,82 @@ const Appointments = () => {
       }
     }
 
-    // Success message
+    // =========================
+    // Success Message
+    // =========================
     if (newStatus === "confirmed") {
       setSuccess(
-        "Appointment confirmed and patient notification created successfully."
+        "Appointment confirmed and patient notified successfully."
       );
     } else if (newStatus === "cancelled") {
       setSuccess(
-        "Appointment cancelled successfully."
+        "Appointment cancelled and patient notified successfully."
+      );
+    } else if (newStatus === "completed") {
+      setSuccess(
+        "Appointment marked as completed successfully."
       );
     }
 
-    // Update appointment on screen
-    setAppointments((currentAppointments) =>
-      currentAppointments.map((appointment) =>
-        appointment.id === appointmentId
-          ? {
-              ...appointment,
-              status: newStatus,
-            }
-          : appointment
-      )
+    // =========================
+    // Update Screen
+    // =========================
+    setAppointments(
+      (currentAppointments) =>
+        currentAppointments.map(
+          (item) =>
+            item.id === appointmentId
+              ? {
+                  ...item,
+                  status: newStatus,
+                }
+              : item
+        )
     );
 
     setUpdatingId(null);
   };
 
-  // Status colors
+  // =========================
+  // Filter Appointments
+  // =========================
+  const filteredAppointments = useMemo(() => {
+    if (filter === "all") {
+      return appointments;
+    }
+
+    return appointments.filter(
+      (appointment) =>
+        appointment.status === filter
+    );
+  }, [appointments, filter]);
+
+  // =========================
+  // Statistics
+  // =========================
+  const pendingCount = appointments.filter(
+    (appointment) =>
+      appointment.status === "pending"
+  ).length;
+
+  const confirmedCount = appointments.filter(
+    (appointment) =>
+      appointment.status === "confirmed"
+  ).length;
+
+  const completedCount = appointments.filter(
+    (appointment) =>
+      appointment.status === "completed"
+  ).length;
+
+  const cancelledCount = appointments.filter(
+    (appointment) =>
+      appointment.status === "cancelled"
+  ).length;
+
+  // =========================
+  // Status Style
+  // =========================
   const getStatusStyle = (status: string) => {
     switch (status) {
       case "pending":
@@ -211,7 +353,9 @@ const Appointments = () => {
     }
   };
 
-  // Status text
+  // =========================
+  // Status Text
+  // =========================
   const formatStatus = (status: string) => {
     switch (status) {
       case "pending":
@@ -231,7 +375,9 @@ const Appointments = () => {
     }
   };
 
+  // =========================
   // Loading
+  // =========================
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-28">
@@ -246,7 +392,9 @@ const Appointments = () => {
     <div className="min-h-screen bg-slate-50 pt-28 pb-12 px-6">
       <div className="mx-auto max-w-7xl">
 
-        {/* Header */}
+        {/* =========================
+            Header
+        ========================== */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
           <div>
@@ -261,7 +409,8 @@ const Appointments = () => {
 
           <button
             onClick={() => {
-              window.location.href = "/doctor/dashboard";
+              window.location.href =
+                "/doctor/dashboard";
             }}
             className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
           >
@@ -270,38 +419,151 @@ const Appointments = () => {
 
         </div>
 
-        {/* Error */}
+        {/* =========================
+            Messages
+        ========================== */}
         {error && (
           <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-700">
             {error}
           </div>
         )}
 
-        {/* Success */}
         {success && (
           <div className="mb-5 rounded-xl bg-green-50 p-4 text-green-700">
             {success}
           </div>
         )}
 
-        {/* Appointments */}
+        {/* =========================
+            Statistics
+        ========================== */}
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+
+          {/* All */}
+          <button
+            onClick={() => setFilter("all")}
+            className={`rounded-2xl p-5 text-left shadow-sm transition ${
+              filter === "all"
+                ? "bg-teal-600 text-white"
+                : "bg-white text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm opacity-80">
+              All
+            </p>
+
+            <p className="mt-2 text-3xl font-bold">
+              {appointments.length}
+            </p>
+          </button>
+
+          {/* Pending */}
+          <button
+            onClick={() => setFilter("pending")}
+            className={`rounded-2xl p-5 text-left shadow-sm transition ${
+              filter === "pending"
+                ? "bg-yellow-500 text-white"
+                : "bg-white text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm opacity-80">
+              Pending
+            </p>
+
+            <p className="mt-2 text-3xl font-bold">
+              {pendingCount}
+            </p>
+          </button>
+
+          {/* Confirmed */}
+          <button
+            onClick={() => setFilter("confirmed")}
+            className={`rounded-2xl p-5 text-left shadow-sm transition ${
+              filter === "confirmed"
+                ? "bg-green-600 text-white"
+                : "bg-white text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm opacity-80">
+              Confirmed
+            </p>
+
+            <p className="mt-2 text-3xl font-bold">
+              {confirmedCount}
+            </p>
+          </button>
+
+          {/* Completed */}
+          <button
+            onClick={() => setFilter("completed")}
+            className={`rounded-2xl p-5 text-left shadow-sm transition ${
+              filter === "completed"
+                ? "bg-blue-600 text-white"
+                : "bg-white text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm opacity-80">
+              Completed
+            </p>
+
+            <p className="mt-2 text-3xl font-bold">
+              {completedCount}
+            </p>
+          </button>
+
+          {/* Cancelled */}
+          <button
+            onClick={() => setFilter("cancelled")}
+            className={`rounded-2xl p-5 text-left shadow-sm transition ${
+              filter === "cancelled"
+                ? "bg-red-600 text-white"
+                : "bg-white text-slate-900 hover:bg-slate-50"
+            }`}
+          >
+            <p className="text-sm opacity-80">
+              Cancelled
+            </p>
+
+            <p className="mt-2 text-3xl font-bold">
+              {cancelledCount}
+            </p>
+          </button>
+
+        </div>
+
+        {/* =========================
+            Appointments
+        ========================== */}
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
 
           {/* Section Header */}
           <div className="border-b border-slate-200 p-6">
 
-            <h2 className="text-xl font-semibold text-slate-900">
-              Patient Appointments
-            </h2>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 
-            <p className="mt-1 text-sm text-slate-500">
-              Review and manage appointment requests.
-            </p>
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Patient Appointments
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Review and manage appointment requests.
+                </p>
+              </div>
+
+              <button
+                onClick={loadAppointments}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Refresh
+              </button>
+
+            </div>
 
           </div>
 
           {/* No appointments */}
-          {appointments.length === 0 ? (
+          {filteredAppointments.length === 0 ? (
 
             <div className="p-10 text-center">
 
@@ -312,11 +574,11 @@ const Appointments = () => {
               </div>
 
               <p className="font-semibold text-slate-700">
-                No appointments yet
+                No appointments found
               </p>
 
               <p className="mt-2 text-sm text-slate-500">
-                Patient booking requests will appear here.
+                There are no appointments matching this filter.
               </p>
 
             </div>
@@ -362,133 +624,166 @@ const Appointments = () => {
 
                 <tbody>
 
-                  {appointments.map((appointment) => (
+                  {filteredAppointments.map(
+                    (appointment) => (
 
-                    <tr
-                      key={appointment.id}
-                      className="border-t border-slate-100"
-                    >
+                      <tr
+                        key={appointment.id}
+                        className="border-t border-slate-100"
+                      >
 
-                      {/* Patient */}
-                      <td className="px-6 py-5">
+                        {/* Patient */}
+                        <td className="px-6 py-5">
 
-                        <p className="font-semibold text-slate-900">
-                          {appointment.patients?.name ||
-                            "Unknown Patient"}
-                        </p>
-
-                        {appointment.notes && (
-                          <p className="mt-1 max-w-xs text-sm text-slate-500">
-                            {appointment.notes}
+                          <p className="font-semibold text-slate-900">
+                            {appointment.patients?.name ||
+                              "Unknown Patient"}
                           </p>
-                        )}
 
-                      </td>
-
-                      {/* Phone */}
-                      <td className="px-6 py-5 text-slate-600">
-                        {appointment.patients?.phone || "-"}
-                      </td>
-
-                      {/* Date */}
-                      <td className="px-6 py-5 text-slate-600">
-                        {appointment.appointment_date}
-                      </td>
-
-                      {/* Time */}
-                      <td className="px-6 py-5 text-slate-600">
-                        {appointment.appointment_time}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-6 py-5">
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusStyle(
-                            appointment.status
-                          )}`}
-                        >
-                          {formatStatus(
-                            appointment.status
+                          {appointment.notes && (
+                            <p className="mt-1 max-w-xs text-sm text-slate-500">
+                              {appointment.notes}
+                            </p>
                           )}
-                        </span>
 
-                      </td>
+                        </td>
 
-                      {/* Actions */}
-                      <td className="px-6 py-5">
+                        {/* Phone */}
+                        <td className="px-6 py-5 text-slate-600">
+                          {appointment.patients?.phone ||
+                            "-"}
+                        </td>
 
-                        {appointment.status === "pending" ? (
+                        {/* Date */}
+                        <td className="px-6 py-5 text-slate-600">
+                          {appointment.appointment_date}
+                        </td>
 
-                          <div className="flex flex-wrap gap-2">
+                        {/* Time */}
+                        <td className="px-6 py-5 text-slate-600">
+                          {appointment.appointment_time}
+                        </td>
 
-                            {/* Confirm */}
-                            <button
-                              onClick={() =>
-                                updateStatus(
-                                  appointment.id,
-                                  "confirmed"
-                                )
-                              }
-                              disabled={
-                                updatingId === appointment.id
-                              }
-                              className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {updatingId === appointment.id
-                                ? "Updating..."
-                                : "Confirm"}
-                            </button>
+                        {/* Status */}
+                        <td className="px-6 py-5">
 
-                            {/* Cancel */}
-                            <button
-                              onClick={() =>
-                                updateStatus(
-                                  appointment.id,
-                                  "cancelled"
-                                )
-                              }
-                              disabled={
-                                updatingId === appointment.id
-                              }
-                              className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Cancel
-                            </button>
-
-                          </div>
-
-                        ) : appointment.status === "confirmed" ? (
-
-                          /* Cancel confirmed appointment */
-                          <button
-                            onClick={() =>
-                              updateStatus(
-                                appointment.id,
-                                "cancelled"
-                              )
-                            }
-                            disabled={
-                              updatingId === appointment.id
-                            }
-                            className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          <span
+                            className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusStyle(
+                              appointment.status
+                            )}`}
                           >
-                            Cancel
-                          </button>
-
-                        ) : (
-
-                          <span className="text-sm text-slate-400">
-                            No actions
+                            {formatStatus(
+                              appointment.status
+                            )}
                           </span>
 
-                        )}
+                        </td>
 
-                      </td>
+                        {/* Actions */}
+                        <td className="px-6 py-5">
 
-                    </tr>
+                          {appointment.status ===
+                          "pending" ? (
 
-                  ))}
+                            <div className="flex flex-wrap gap-2">
+
+                              {/* Confirm */}
+                              <button
+                                onClick={() =>
+                                  updateStatus(
+                                    appointment.id,
+                                    "confirmed"
+                                  )
+                                }
+                                disabled={
+                                  updatingId ===
+                                  appointment.id
+                                }
+                                className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {updatingId ===
+                                appointment.id
+                                  ? "Updating..."
+                                  : "Confirm"}
+                              </button>
+
+                              {/* Cancel */}
+                              <button
+                                onClick={() =>
+                                  updateStatus(
+                                    appointment.id,
+                                    "cancelled"
+                                  )
+                                }
+                                disabled={
+                                  updatingId ===
+                                  appointment.id
+                                }
+                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Cancel
+                              </button>
+
+                            </div>
+
+                          ) : appointment.status ===
+                            "confirmed" ? (
+
+                            <div className="flex flex-wrap gap-2">
+
+                              {/* Complete */}
+                              <button
+                                onClick={() =>
+                                  updateStatus(
+                                    appointment.id,
+                                    "completed"
+                                  )
+                                }
+                                disabled={
+                                  updatingId ===
+                                  appointment.id
+                                }
+                                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {updatingId ===
+                                appointment.id
+                                  ? "Updating..."
+                                  : "Complete"}
+                              </button>
+
+                              {/* Cancel */}
+                              <button
+                                onClick={() =>
+                                  updateStatus(
+                                    appointment.id,
+                                    "cancelled"
+                                  )
+                                }
+                                disabled={
+                                  updatingId ===
+                                  appointment.id
+                                }
+                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Cancel
+                              </button>
+
+                            </div>
+
+                          ) : (
+
+                            <span className="text-sm text-slate-400">
+                              No actions
+                            </span>
+
+                          )}
+
+                        </td>
+
+                      </tr>
+
+                    )
+                  )}
 
                 </tbody>
 
@@ -506,7 +801,6 @@ const Appointments = () => {
 };
 
 export default Appointments;
-
 
 
 

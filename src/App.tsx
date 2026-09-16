@@ -1,3 +1,4 @@
+
 import {
   BrowserRouter as Router,
   Routes,
@@ -30,6 +31,7 @@ import DoctorServices from "./Services";
 import ClinicProfile from "./ClinicProfile";
 import Reviews from "./Reviews";
 import DoctorNotifications from "./DoctorNotifications";
+import Payments from "./Payments";
 
 // Patient Pages
 import PatientRegister from "./PatientRegister";
@@ -113,7 +115,7 @@ function App() {
               element={<PatientDetails />}
             />
 
-            {/* IMPORTANT: Prescription Print Route */}
+            {/* Prescription Print Route */}
 
             <Route
               path="/doctor/prescriptions/:id/print"
@@ -143,6 +145,13 @@ function App() {
             <Route
               path="/doctor/notifications"
               element={<DoctorNotifications />}
+            />
+
+            {/* Payments */}
+
+            <Route
+              path="/doctor/payments"
+              element={<Payments />}
             />
 
             {/* Patient Routes */}
@@ -187,7 +196,6 @@ function App() {
 }
 
 export default App;
-
 
 
 

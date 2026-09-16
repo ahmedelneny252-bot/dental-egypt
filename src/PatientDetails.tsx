@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "./supabase";
@@ -43,13 +44,56 @@ type Prescription = {
   doctor_notes: string | null;
 };
 
+type DentalChartItem = {
+  id: string;
+  tooth_number: string;
+  tooth_status: string;
+  notes: string | null;
+};
+
+type Payment = {
+  id: string;
+  medical_record_id: string | null;
+  amount: number;
+  payment_method: string;
+  payment_date: string;
+  description: string | null;
+  notes: string | null;
+};
+
+const toothNumbers = [
+  "18", "17", "16", "15", "14", "13", "12", "11",
+  "21", "22", "23", "24", "25", "26", "27", "28",
+  "48", "47", "46", "45", "44", "43", "42", "41",
+  "31", "32", "33", "34", "35", "36", "37", "38",
+];
+
+const toothStatuses = [
+  "Healthy",
+  "Cavity",
+  "Filled",
+  "Missing",
+  "Root Canal",
+  "Crown",
+  "Extraction Needed",
+];
+
 const PatientDetails = () => {
   const { id } = useParams();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(
+    []
+  );
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+
+  const [dentalChart, setDentalChart] = useState<DentalChartItem[]>([]);
+  const [selectedTooth, setSelectedTooth] = useState("");
+  const [toothStatus, setToothStatus] = useState("Healthy");
+  const [toothNotes, setToothNotes] = useState("");
+  const [savingTooth, setSavingTooth] = useState(false);
 
   const [clinicId, setClinicId] = useState("");
 
@@ -68,6 +112,19 @@ const PatientDetails = () => {
   const [treatmentDetails, setTreatmentDetails] = useState("");
   const [cost, setCost] = useState("");
   const [doctorNotes, setDoctorNotes] = useState("");
+
+  // Payment form
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [selectedPaymentRecordId, setSelectedPaymentRecordId] =
+    useState<string | null>(null);
+
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("Cash");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [paymentDescription, setPaymentDescription] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
+
+  const [savingPayment, setSavingPayment] = useState(false);
 
   // Prescription form
   const [showPrescriptionForm, setShowPrescriptionForm] =
@@ -128,7 +185,6 @@ const PatientDetails = () => {
 
       setClinicId(profile.clinic_id);
 
-      // Patient
       const { data: patientData, error: patientError } =
         await supabase
           .from("patients")
@@ -143,7 +199,6 @@ const PatientDetails = () => {
 
       setPatient(patientData);
 
-      // Appointments
       const {
         data: appointmentsData,
         error: appointmentsError,
@@ -162,7 +217,6 @@ const PatientDetails = () => {
 
       setAppointments(appointmentsData || []);
 
-      // Medical Records
       const { data: recordsData, error: recordsError } =
         await supabase
           .from("medical_records")
@@ -177,9 +231,43 @@ const PatientDetails = () => {
         throw new Error(recordsError.message);
       }
 
-      setMedicalRecords(recordsData || []);
+      const formattedRecords: MedicalRecord[] = (
+        recordsData || []
+      ).map((record) => ({
+        ...record,
+        cost: Number(record.cost || 0),
+      }));
 
-      // Prescriptions
+      setMedicalRecords(formattedRecords);
+
+      const { data: paymentsData, error: paymentsError } =
+        await supabase
+          .from("payments")
+          .select(
+            "id, medical_record_id, amount, payment_method, payment_date, description, notes"
+          )
+          .eq("patient_id", id)
+          .eq("clinic_id", profile.clinic_id)
+          .order("payment_date", { ascending: false });
+
+      if (paymentsError) {
+        throw new Error(paymentsError.message);
+      }
+
+      const formattedPayments: Payment[] = (
+        paymentsData || []
+      ).map((payment) => ({
+        id: payment.id,
+        medical_record_id: payment.medical_record_id,
+        amount: Number(payment.amount || 0),
+        payment_method: payment.payment_method || "Cash",
+        payment_date: payment.payment_date,
+        description: payment.description || null,
+        notes: payment.notes || null,
+      }));
+
+      setPayments(formattedPayments);
+
       const {
         data: prescriptionsData,
         error: prescriptionsError,
@@ -197,6 +285,24 @@ const PatientDetails = () => {
       }
 
       setPrescriptions(prescriptionsData || []);
+
+      const {
+        data: dentalChartData,
+        error: dentalChartError,
+      } = await supabase
+        .from("dental_chart")
+        .select(
+          "id, tooth_number, tooth_status, notes"
+        )
+        .eq("patient_id", id)
+        .eq("clinic_id", profile.clinic_id)
+        .order("tooth_number", { ascending: true });
+
+      if (dentalChartError) {
+        throw new Error(dentalChartError.message);
+      }
+
+      setDentalChart(dentalChartData || []);
     } catch (err) {
       console.error(err);
 
@@ -208,6 +314,276 @@ const PatientDetails = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // =========================
+  // PAYMENT HELPERS
+  // =========================
+
+  const getRecordPayments = (recordId: string) => {
+    return payments.filter(
+      (payment) => payment.medical_record_id === recordId
+    );
+  };
+
+  const getRecordPaidAmount = (recordId: string) => {
+    return getRecordPayments(recordId).reduce(
+      (total, payment) => total + Number(payment.amount || 0),
+      0
+    );
+  };
+
+  const getRecordRemainingAmount = (
+    record: MedicalRecord
+  ) => {
+    const costValue = Number(record.cost || 0);
+    const paidValue = getRecordPaidAmount(record.id);
+
+    return Math.max(costValue - paidValue, 0);
+  };
+
+  const openPaymentForm = (record: MedicalRecord) => {
+    const remaining = getRecordRemainingAmount(record);
+
+    if (remaining <= 0) {
+      setError("This treatment has already been fully paid.");
+      return;
+    }
+
+    setSelectedPaymentRecordId(record.id);
+    setPaymentAmount("");
+    setPaymentMethod("Cash");
+    setPaymentDate(
+      new Date().toISOString().split("T")[0]
+    );
+    setPaymentDescription("");
+    setPaymentNotes("");
+    setShowPaymentForm(true);
+    setError("");
+  };
+
+  const closePaymentForm = () => {
+    setShowPaymentForm(false);
+    setSelectedPaymentRecordId(null);
+    setPaymentAmount("");
+    setPaymentMethod("Cash");
+    setPaymentDate("");
+    setPaymentDescription("");
+    setPaymentNotes("");
+  };
+
+  const handleSavePayment = async (
+    e: React.FormEvent
+  ) => {
+    e.preventDefault();
+
+    if (!clinicId || !id) {
+      setError("Clinic or patient information is missing.");
+      return;
+    }
+
+    if (!selectedPaymentRecordId) {
+      setError("Please select a treatment.");
+      return;
+    }
+
+    const record = medicalRecords.find(
+      (item) => item.id === selectedPaymentRecordId
+    );
+
+    if (!record) {
+      setError("Treatment record not found.");
+      return;
+    }
+
+    const amountValue = Number(paymentAmount);
+    const remainingValue =
+      getRecordRemainingAmount(record);
+
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setError("Please enter a valid payment amount.");
+      return;
+    }
+
+    if (amountValue > remainingValue) {
+      setError(
+        `Payment cannot be greater than the remaining amount (${remainingValue.toFixed(
+          2
+        )}).`
+      );
+      return;
+    }
+
+    try {
+      setSavingPayment(true);
+      setError("");
+
+      const { error: paymentError } =
+        await supabase
+          .from("payments")
+          .insert({
+            clinic_id: clinicId,
+            patient_id: id,
+            medical_record_id: selectedPaymentRecordId,
+            payment_date:
+              paymentDate ||
+              new Date().toISOString().split("T")[0],
+            description:
+              paymentDescription.trim() || null,
+            amount: amountValue,
+            payment_method: paymentMethod,
+            notes: paymentNotes.trim() || null,
+          });
+
+      if (paymentError) {
+        throw new Error(paymentError.message);
+      }
+
+      closePaymentForm();
+
+      await loadPatientDetails();
+    } catch (err) {
+      console.error(err);
+
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Could not save payment.");
+      }
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  // =========================
+  // DENTAL CHART
+  // =========================
+
+  const getToothData = (toothNumberValue: string) => {
+    return dentalChart.find(
+      (item) => item.tooth_number === toothNumberValue
+    );
+  };
+
+  const getToothStatusClass = (toothNumberValue: string) => {
+    const tooth = getToothData(toothNumberValue);
+
+    if (!tooth) {
+      return "border-slate-300 bg-white text-slate-700 hover:border-teal-500 hover:bg-teal-50";
+    }
+
+    switch (tooth.tooth_status) {
+      case "Cavity":
+        return "border-red-300 bg-red-50 text-red-700";
+      case "Filled":
+        return "border-blue-300 bg-blue-50 text-blue-700";
+      case "Missing":
+        return "border-slate-400 bg-slate-200 text-slate-500";
+      case "Root Canal":
+        return "border-purple-300 bg-purple-50 text-purple-700";
+      case "Crown":
+        return "border-yellow-300 bg-yellow-50 text-yellow-700";
+      case "Extraction Needed":
+        return "border-orange-300 bg-orange-50 text-orange-700";
+      default:
+        return "border-green-300 bg-green-50 text-green-700";
+    }
+  };
+
+  const handleSelectTooth = (toothNumberValue: string) => {
+    setSelectedTooth(toothNumberValue);
+
+    const existingTooth = getToothData(toothNumberValue);
+
+    if (existingTooth) {
+      setToothStatus(existingTooth.tooth_status);
+      setToothNotes(existingTooth.notes || "");
+    } else {
+      setToothStatus("Healthy");
+      setToothNotes("");
+    }
+
+    setError("");
+  };
+
+  const handleSaveTooth = async () => {
+    if (!clinicId || !id) {
+      setError("Clinic or patient information is missing.");
+      return;
+    }
+
+    if (!selectedTooth) {
+      setError("Please select a tooth first.");
+      return;
+    }
+
+    try {
+      setSavingTooth(true);
+      setError("");
+
+      const { error: saveError } = await supabase
+        .from("dental_chart")
+        .upsert(
+          {
+            clinic_id: clinicId,
+            patient_id: id,
+            tooth_number: selectedTooth,
+            tooth_status: toothStatus,
+            notes: toothNotes || null,
+          },
+          {
+            onConflict: "patient_id,tooth_number",
+          }
+        );
+
+      if (saveError) {
+        throw new Error(saveError.message);
+      }
+
+      await loadPatientDetails();
+    } catch (err) {
+      console.error(err);
+
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Could not save tooth information.");
+      }
+    } finally {
+      setSavingTooth(false);
+    }
+  };
+
+  const handleDeleteTooth = async () => {
+    if (!selectedTooth || !id || !clinicId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove the dental chart information for tooth ${selectedTooth}?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const { error: deleteError } = await supabase
+      .from("dental_chart")
+      .delete()
+      .eq("patient_id", id)
+      .eq("clinic_id", clinicId)
+      .eq("tooth_number", selectedTooth);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setSelectedTooth("");
+    setToothStatus("Healthy");
+    setToothNotes("");
+
+    await loadPatientDetails();
   };
 
   // =========================
@@ -234,6 +610,13 @@ const PatientDetails = () => {
       return;
     }
 
+    const costValue = Number(cost || 0);
+
+    if (!Number.isFinite(costValue) || costValue < 0) {
+      setError("Please enter a valid treatment cost.");
+      return;
+    }
+
     setError("");
 
     const recordData = {
@@ -244,11 +627,23 @@ const PatientDetails = () => {
       diagnosis: diagnosis || null,
       treatment_type: treatmentType || null,
       treatment_details: treatmentDetails || null,
-      cost: cost ? Number(cost) : 0,
+      cost: costValue,
       doctor_notes: doctorNotes || null,
     };
 
     if (editingRecordId) {
+      const paidAmount =
+        getRecordPaidAmount(editingRecordId);
+
+      if (costValue < paidAmount) {
+        setError(
+          `Treatment cost cannot be less than the amount already paid (${paidAmount.toFixed(
+            2
+          )}).`
+        );
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from("medical_records")
         .update(recordData)
@@ -288,6 +683,16 @@ const PatientDetails = () => {
   };
 
   const handleDeleteRecord = async (recordId: string) => {
+    const recordPayments =
+      getRecordPayments(recordId);
+
+    if (recordPayments.length > 0) {
+      setError(
+        "This treatment cannot be deleted because it has payments. Delete the payments first."
+      );
+      return;
+    }
+
     const confirmed = window.confirm(
       "Are you sure you want to delete this medical record?"
     );
@@ -385,7 +790,9 @@ const PatientDetails = () => {
     prescription: Prescription
   ) => {
     setEditingPrescriptionId(prescription.id);
-    setPrescriptionDate(prescription.prescription_date || "");
+    setPrescriptionDate(
+      prescription.prescription_date || ""
+    );
     setMedicineName(prescription.medicine_name);
     setDosage(prescription.dosage || "");
     setFrequency(prescription.frequency || "");
@@ -452,6 +859,10 @@ const PatientDetails = () => {
     );
   }
 
+  const selectedPaymentRecord = medicalRecords.find(
+    (record) => record.id === selectedPaymentRecordId
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 pt-32 pb-12 px-6">
       <div className="mx-auto max-w-7xl">
@@ -491,45 +902,35 @@ const PatientDetails = () => {
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
 
             <div>
-              <p className="text-sm text-slate-500">
-                Full Name
-              </p>
+              <p className="text-sm text-slate-500">Full Name</p>
               <p className="mt-1 font-semibold text-slate-900">
                 {patient.name}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">
-                Phone
-              </p>
+              <p className="text-sm text-slate-500">Phone</p>
               <p className="mt-1 font-semibold text-slate-900">
                 {patient.phone || "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">
-                Age
-              </p>
+              <p className="text-sm text-slate-500">Age</p>
               <p className="mt-1 font-semibold text-slate-900">
                 {patient.age ?? "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">
-                Gender
-              </p>
+              <p className="text-sm text-slate-500">Gender</p>
               <p className="mt-1 font-semibold text-slate-900">
                 {patient.gender || "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">
-                Address
-              </p>
+              <p className="text-sm text-slate-500">Address</p>
               <p className="mt-1 font-semibold text-slate-900">
                 {patient.address || "-"}
               </p>
@@ -560,17 +961,222 @@ const PatientDetails = () => {
           </div>
         </div>
 
+        {/* Dental Chart */}
+        <div className="mb-8 rounded-2xl bg-white shadow-sm">
+
+          <div className="border-b border-slate-200 p-6">
+            <h2 className="text-xl font-semibold text-slate-900">
+              Dental Chart
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Select a tooth to view or update its condition.
+            </p>
+          </div>
+
+          <div className="p-6">
+
+            <div className="mb-8">
+              <div className="mb-3 text-center text-sm font-semibold text-slate-500">
+                Upper Teeth
+              </div>
+
+              <div className="grid grid-cols-8 gap-2 md:gap-3">
+                {toothNumbers.slice(0, 16).map((tooth) => (
+                  <button
+                    key={tooth}
+                    type="button"
+                    onClick={() => handleSelectTooth(tooth)}
+                    className={`rounded-xl border-2 p-3 text-center transition ${getToothStatusClass(
+                      tooth
+                    )} ${
+                      selectedTooth === tooth
+                        ? "ring-2 ring-teal-500 ring-offset-2"
+                        : ""
+                    }`}
+                  >
+                    <div className="text-lg">🦷</div>
+
+                    <div className="mt-1 text-sm font-bold">
+                      {tooth}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-3 text-center text-sm font-semibold text-slate-500">
+                Lower Teeth
+              </div>
+
+              <div className="grid grid-cols-8 gap-2 md:gap-3">
+                {toothNumbers.slice(16, 32).map((tooth) => (
+                  <button
+                    key={tooth}
+                    type="button"
+                    onClick={() => handleSelectTooth(tooth)}
+                    className={`rounded-xl border-2 p-3 text-center transition ${getToothStatusClass(
+                      tooth
+                    )} ${
+                      selectedTooth === tooth
+                        ? "ring-2 ring-teal-500 ring-offset-2"
+                        : ""
+                    }`}
+                  >
+                    <div className="text-lg">🦷</div>
+
+                    <div className="mt-1 text-sm font-bold">
+                      {tooth}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedTooth && (
+              <div className="mt-8 rounded-2xl border border-teal-100 bg-teal-50 p-6">
+
+                <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Tooth {selectedTooth}
+                    </h3>
+
+                    <p className="text-sm text-slate-500">
+                      Update the condition and notes.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700">
+                    {getToothData(selectedTooth)
+                      ? "Saved"
+                      : "Not saved"}
+                  </span>
+
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      Tooth Status
+                    </label>
+
+                    <select
+                      value={toothStatus}
+                      onChange={(e) =>
+                        setToothStatus(e.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                    >
+                      {toothStatuses.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      Notes
+                    </label>
+
+                    <input
+                      type="text"
+                      value={toothNotes}
+                      onChange={(e) =>
+                        setToothNotes(e.target.value)
+                      }
+                      placeholder="Example: Needs filling"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-3 md:col-span-2 md:flex-row">
+
+                    <button
+                      type="button"
+                      onClick={handleSaveTooth}
+                      disabled={savingTooth}
+                      className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingTooth
+                        ? "Saving..."
+                        : "Save Tooth"}
+                    </button>
+
+                    {getToothData(selectedTooth) && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteTooth}
+                        className="rounded-xl bg-red-50 px-5 py-3 font-semibold text-red-600 hover:bg-red-100"
+                      >
+                        Remove Tooth Data
+                      </button>
+                    )}
+
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-8 border-t border-slate-100 pt-6">
+
+              <p className="mb-3 text-sm font-semibold text-slate-600">
+                Status Legend
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+
+                <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                  Healthy
+                </span>
+
+                <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
+                  Cavity
+                </span>
+
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  Filled
+                </span>
+
+                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                  Missing
+                </span>
+
+                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+                  Root Canal
+                </span>
+
+                <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
+                  Crown
+                </span>
+
+                <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
+                  Extraction Needed
+                </span>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         {/* Medical Records */}
         <div className="mb-8 rounded-2xl bg-white shadow-sm">
 
           <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between">
+
             <div>
               <h2 className="text-xl font-semibold text-slate-900">
                 Medical Records
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Treatment history and clinical records
+                Treatment history, clinical records and payments
               </p>
             </div>
 
@@ -592,10 +1198,12 @@ const PatientDetails = () => {
                 ? "Cancel"
                 : "+ Add Record"}
             </button>
+
           </div>
 
           {showRecordForm && (
             <div className="border-b border-slate-200 bg-slate-50 p-6">
+
               <h3 className="mb-5 text-lg font-semibold text-slate-900">
                 {editingRecordId
                   ? "Edit Medical Record"
@@ -606,6 +1214,7 @@ const PatientDetails = () => {
                 onSubmit={handleSaveRecord}
                 className="grid gap-4 md:grid-cols-2"
               >
+
                 <input
                   type="date"
                   value={treatmentDate}
@@ -656,7 +1265,9 @@ const PatientDetails = () => {
 
                 <input
                   type="number"
-                  placeholder="Cost"
+                  min="0"
+                  step="0.01"
+                  placeholder="Treatment Cost"
                   value={cost}
                   onChange={(e) =>
                     setCost(e.target.value)
@@ -681,6 +1292,7 @@ const PatientDetails = () => {
                     ? "Update Record"
                     : "Save Record"}
                 </button>
+
               </form>
             </div>
           )}
@@ -693,9 +1305,12 @@ const PatientDetails = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px]">
+
+              <table className="w-full min-w-[1400px]">
+
                 <thead className="bg-slate-50">
                   <tr>
+
                     <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
                       Date
                     </th>
@@ -716,71 +1331,383 @@ const PatientDetails = () => {
                       Cost
                     </th>
 
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                      Paid
+                    </th>
+
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                      Remaining
+                    </th>
+
                     <th className="px-5 py-4 text-right text-sm font-semibold text-slate-600">
                       Actions
                     </th>
+
                   </tr>
                 </thead>
 
                 <tbody>
-                  {medicalRecords.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="border-t border-slate-100 hover:bg-slate-50"
-                    >
-                      <td className="px-5 py-4 text-sm text-slate-700">
-                        {record.treatment_date || "-"}
-                      </td>
 
-                      <td className="px-5 py-4 text-sm font-medium text-slate-900">
-                        {record.tooth_number || "-"}
-                      </td>
+                  {medicalRecords.map((record) => {
+                    const paidAmount =
+                      getRecordPaidAmount(record.id);
 
-                      <td className="px-5 py-4 text-sm text-slate-700">
-                        {record.diagnosis || "-"}
-                      </td>
+                    const remainingAmount =
+                      getRecordRemainingAmount(record);
 
-                      <td className="px-5 py-4 text-sm text-slate-700">
-                        {record.treatment_type || "-"}
-                      </td>
+                    return (
+                      <tr
+                        key={record.id}
+                        className="border-t border-slate-100 hover:bg-slate-50"
+                      >
 
-                      <td className="px-5 py-4 text-sm font-semibold text-slate-900">
-                        {record.cost ?? 0}
-                      </td>
+                        <td className="px-5 py-4 text-sm text-slate-700">
+                          {record.treatment_date || "-"}
+                        </td>
 
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() =>
-                              handleEditRecord(record)
-                            }
-                            className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                        <td className="px-5 py-4 text-sm font-medium text-slate-900">
+                          {record.tooth_number || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-slate-700">
+                          {record.diagnosis || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-slate-700">
+                          {record.treatment_type || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                          {Number(record.cost || 0).toFixed(2)}
+                        </td>
+
+                        <td className="px-5 py-4 text-sm font-semibold text-green-600">
+                          {paidAmount.toFixed(2)}
+                        </td>
+
+                        <td className="px-5 py-4">
+
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              remainingAmount === 0
+                                ? "bg-green-100 text-green-700"
+                                : "bg-orange-100 text-orange-700"
+                            }`}
                           >
-                            Edit
-                          </button>
+                            {remainingAmount.toFixed(2)}
+                          </span>
 
-                          <button
-                            onClick={() =>
-                              handleDeleteRecord(record.id)
-                            }
-                            className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+
+                          <div className="flex justify-end gap-2">
+
+                            {remainingAmount > 0 && (
+                              <button
+                                onClick={() =>
+                                  openPaymentForm(record)
+                                }
+                                className="rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100"
+                              >
+                                + Payment
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() =>
+                                handleEditRecord(record)
+                              }
+                              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleDeleteRecord(record.id)
+                              }
+                              className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
+                            >
+                              Delete
+                            </button>
+
+                          </div>
+
+                        </td>
+
+                      </tr>
+                    );
+                  })}
+
                 </tbody>
+
               </table>
+
             </div>
           )}
+
+          {/* Payment Form */}
+          {showPaymentForm && selectedPaymentRecord && (
+            <div className="border-t border-slate-200 bg-green-50 p-6">
+
+              <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-900">
+                    Add Payment
+                  </h3>
+
+                  <p className="mt-1 text-sm text-slate-600">
+                    {selectedPaymentRecord.treatment_type ||
+                      "Treatment"}{" "}
+                    •{" "}
+                    {selectedPaymentRecord.treatment_date}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closePaymentForm}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+
+              </div>
+
+              <div className="mb-6 grid gap-4 md:grid-cols-3">
+
+                <div className="rounded-xl bg-white p-4">
+                  <p className="text-sm text-slate-500">
+                    Treatment Cost
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-slate-900">
+                    {Number(
+                      selectedPaymentRecord.cost || 0
+                    ).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-white p-4">
+                  <p className="text-sm text-slate-500">
+                    Already Paid
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-green-600">
+                    {getRecordPaidAmount(
+                      selectedPaymentRecord.id
+                    ).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-white p-4">
+                  <p className="text-sm text-slate-500">
+                    Remaining
+                  </p>
+
+                  <p className="mt-1 text-xl font-bold text-orange-600">
+                    {getRecordRemainingAmount(
+                      selectedPaymentRecord
+                    ).toFixed(2)}
+                  </p>
+                </div>
+
+              </div>
+
+              <form
+                onSubmit={handleSavePayment}
+                className="grid gap-4 md:grid-cols-2"
+              >
+
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={getRecordRemainingAmount(
+                    selectedPaymentRecord
+                  )}
+                  placeholder="Payment Amount"
+                  value={paymentAmount}
+                  onChange={(e) =>
+                    setPaymentAmount(e.target.value)
+                  }
+                  required
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                />
+
+                <select
+                  value={paymentMethod}
+                  onChange={(e) =>
+                    setPaymentMethod(e.target.value)
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="Card">Card</option>
+                  <option value="Vodafone Cash">
+                    Vodafone Cash
+                  </option>
+                  <option value="Instapay">
+                    Instapay
+                  </option>
+                  <option value="Other">Other</option>
+                </select>
+
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) =>
+                    setPaymentDate(e.target.value)
+                  }
+                  required
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Payment Description - e.g. First Payment"
+                  value={paymentDescription}
+                  onChange={(e) =>
+                    setPaymentDescription(e.target.value)
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                />
+
+                <textarea
+                  placeholder="Payment Notes"
+                  value={paymentNotes}
+                  onChange={(e) =>
+                    setPaymentNotes(e.target.value)
+                  }
+                  className="min-h-24 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500 md:col-span-2"
+                />
+
+                <button
+                  type="submit"
+                  disabled={savingPayment}
+                  className="rounded-xl bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
+                >
+                  {savingPayment
+                    ? "Saving Payment..."
+                    : "Save Payment"}
+                </button>
+
+              </form>
+
+            </div>
+          )}
+
+          {/* Payment History */}
+          {payments.length > 0 && (
+            <div className="border-t border-slate-200 p-6">
+
+              <div className="mb-5">
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Payment History
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  All payments made by this patient.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+
+                <table className="w-full">
+
+                  <thead className="bg-slate-50">
+                    <tr>
+
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                        Date
+                      </th>
+
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                        Treatment
+                      </th>
+
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                        Description
+                      </th>
+
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                        Amount
+                      </th>
+
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                        Method
+                      </th>
+
+                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
+                        Notes
+                      </th>
+
+                    </tr>
+                  </thead>
+
+                  <tbody>
+
+                    {payments.map((payment) => {
+
+                      const relatedRecord =
+                        medicalRecords.find(
+                          (record) =>
+                            record.id ===
+                            payment.medical_record_id
+                        );
+
+                      return (
+                        <tr
+                          key={payment.id}
+                          className="border-t border-slate-100"
+                        >
+
+                          <td className="px-5 py-4 text-sm text-slate-700">
+                            {payment.payment_date}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-700">
+                            {relatedRecord?.treatment_type ||
+                              "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-700">
+                            {payment.description || "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm font-semibold text-green-600">
+                            {payment.amount.toFixed(2)}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-700">
+                            {payment.payment_method}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            {payment.notes || "-"}
+                          </td>
+
+                        </tr>
+                      );
+                    })}
+
+                  </tbody>
+
+                </table>
+
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Prescriptions */}
         <div className="mb-8 rounded-2xl bg-white shadow-sm">
 
           <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between">
+
             <div>
               <h2 className="text-xl font-semibold text-slate-900">
                 Prescriptions
@@ -813,10 +1740,12 @@ const PatientDetails = () => {
                 ? "Cancel"
                 : "+ Add Prescription"}
             </button>
+
           </div>
 
           {showPrescriptionForm && (
             <div className="border-b border-slate-200 bg-slate-50 p-6">
+
               <h3 className="mb-5 text-lg font-semibold text-slate-900">
                 {editingPrescriptionId
                   ? "Edit Prescription"
@@ -827,6 +1756,7 @@ const PatientDetails = () => {
                 onSubmit={handleSavePrescription}
                 className="grid gap-4 md:grid-cols-2"
               >
+
                 <input
                   type="date"
                   value={prescriptionDate}
@@ -903,12 +1833,14 @@ const PatientDetails = () => {
                     ? "Update Prescription"
                     : "Save Prescription"}
                 </button>
+
               </form>
             </div>
           )}
 
           {prescriptions.length === 0 ? (
             <div className="p-10 text-center">
+
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-2xl">
                 💊
               </div>
@@ -920,12 +1852,16 @@ const PatientDetails = () => {
               <p className="mt-1 text-sm text-slate-400">
                 Add the first prescription for this patient.
               </p>
+
             </div>
           ) : (
             <div className="overflow-x-auto">
+
               <table className="w-full min-w-[1200px]">
+
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
+
                     <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
                       Date
                     </th>
@@ -953,22 +1889,27 @@ const PatientDetails = () => {
                     <th className="px-5 py-4 text-right text-sm font-semibold text-slate-600">
                       Actions
                     </th>
+
                   </tr>
                 </thead>
 
                 <tbody>
+
                   {prescriptions.map((prescription) => (
                     <tr
                       key={prescription.id}
                       className="border-b border-slate-100 transition hover:bg-slate-50"
                     >
+
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
                         {prescription.prescription_date ||
                           "-"}
                       </td>
 
                       <td className="px-5 py-4">
+
                         <div className="flex items-center gap-3">
+
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-lg">
                             💊
                           </div>
@@ -976,7 +1917,9 @@ const PatientDetails = () => {
                           <span className="font-semibold text-slate-900">
                             {prescription.medicine_name}
                           </span>
+
                         </div>
+
                       </td>
 
                       <td className="px-5 py-4 text-sm text-slate-700">
@@ -992,16 +1935,18 @@ const PatientDetails = () => {
                       </td>
 
                       <td className="max-w-xs px-5 py-4 text-sm text-slate-600">
+
                         <p className="line-clamp-2">
                           {prescription.instructions ||
                             "-"}
                         </p>
+
                       </td>
 
                       <td className="px-5 py-4">
+
                         <div className="flex justify-end gap-2">
 
-                          {/* Print */}
                           <Link
                             to={`/doctor/prescriptions/${prescription.id}/print`}
                             target="_blank"
@@ -1011,7 +1956,6 @@ const PatientDetails = () => {
                             🖨 Print
                           </Link>
 
-                          {/* Edit */}
                           <button
                             onClick={() =>
                               handleEditPrescription(
@@ -1023,7 +1967,6 @@ const PatientDetails = () => {
                             Edit
                           </button>
 
-                          {/* Delete */}
                           <button
                             onClick={() =>
                               handleDeletePrescription(
@@ -1036,11 +1979,16 @@ const PatientDetails = () => {
                           </button>
 
                         </div>
+
                       </td>
+
                     </tr>
                   ))}
+
                 </tbody>
+
               </table>
+
             </div>
           )}
 
@@ -1050,6 +1998,7 @@ const PatientDetails = () => {
         <div className="rounded-2xl bg-white shadow-sm">
 
           <div className="border-b border-slate-200 p-6">
+
             <h2 className="text-xl font-semibold text-slate-900">
               Appointment History
             </h2>
@@ -1057,19 +2006,26 @@ const PatientDetails = () => {
             <p className="mt-1 text-sm text-slate-500">
               Previous and upcoming appointments
             </p>
+
           </div>
 
           {appointments.length === 0 ? (
             <div className="p-10 text-center">
+
               <p className="text-slate-500">
                 No appointments yet.
               </p>
+
             </div>
           ) : (
             <div className="overflow-x-auto">
+
               <table className="w-full">
+
                 <thead className="bg-slate-50">
+
                   <tr>
+
                     <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
                       Date
                     </th>
@@ -1085,15 +2041,19 @@ const PatientDetails = () => {
                     <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
                       Notes
                     </th>
+
                   </tr>
+
                 </thead>
 
                 <tbody>
+
                   {appointments.map((appointment) => (
                     <tr
                       key={appointment.id}
                       className="border-t border-slate-100"
                     >
+
                       <td className="px-6 py-4 text-sm text-slate-700">
                         {appointment.appointment_date}
                       </td>
@@ -1103,6 +2063,7 @@ const PatientDetails = () => {
                       </td>
 
                       <td className="px-6 py-4">
+
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
                             appointment.status ===
@@ -1119,15 +2080,20 @@ const PatientDetails = () => {
                         >
                           {appointment.status}
                         </span>
+
                       </td>
 
                       <td className="px-6 py-4 text-sm text-slate-600">
                         {appointment.notes || "-"}
                       </td>
+
                     </tr>
                   ))}
+
                 </tbody>
+
               </table>
+
             </div>
           )}
 

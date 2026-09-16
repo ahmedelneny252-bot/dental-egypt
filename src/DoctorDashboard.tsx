@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 
@@ -11,6 +12,17 @@ type RecentAppointment = {
   } | null;
 };
 
+type MedicalRecord = {
+  id: string;
+  cost: number | null;
+};
+
+type Payment = {
+  id: string;
+  amount: number;
+  medical_record_id: string | null;
+};
+
 const DoctorDashboard = () => {
   const [doctorName, setDoctorName] = useState("");
   const [doctorEmail, setDoctorEmail] = useState("");
@@ -20,6 +32,10 @@ const DoctorDashboard = () => {
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [servicesCount, setServicesCount] = useState(0);
   const [reviewsCount, setReviewsCount] = useState(0);
+
+  const [totalTreatmentValue, setTotalTreatmentValue] = useState(0);
+  const [totalPaid, setTotalPaid] = useState(0);
+  const [totalRemaining, setTotalRemaining] = useState(0);
 
   const [recentAppointments, setRecentAppointments] = useState<
     RecentAppointment[]
@@ -179,6 +195,73 @@ const DoctorDashboard = () => {
       }
 
       // =========================
+      // Medical Records / Treatment Value
+      // =========================
+      const {
+        data: medicalRecords,
+        error: medicalRecordsError,
+      } = await supabase
+        .from("medical_records")
+        .select("id, cost")
+        .eq("clinic_id", clinicId);
+
+      if (medicalRecordsError) {
+        console.error(
+          "Medical records error:",
+          medicalRecordsError
+        );
+      } else {
+        const records: MedicalRecord[] =
+          medicalRecords || [];
+
+        const treatmentValue = records.reduce(
+          (total, record) =>
+            total + Number(record.cost || 0),
+          0
+        );
+
+        setTotalTreatmentValue(treatmentValue);
+
+        // =========================
+        // Payments
+        // =========================
+        const {
+          data: payments,
+          error: paymentsError,
+        } = await supabase
+          .from("payments")
+          .select(
+            "id, amount, medical_record_id"
+          )
+          .eq("clinic_id", clinicId);
+
+        if (paymentsError) {
+          console.error(
+            "Payments error:",
+            paymentsError
+          );
+        } else {
+          const paymentRows: Payment[] =
+            payments || [];
+
+          const paid = paymentRows.reduce(
+            (total, payment) =>
+              total + Number(payment.amount || 0),
+            0
+          );
+
+          setTotalPaid(paid);
+
+          const remaining = Math.max(
+            treatmentValue - paid,
+            0
+          );
+
+          setTotalRemaining(remaining);
+        }
+      }
+
+      // =========================
       // Recent Appointments
       // =========================
       const {
@@ -210,21 +293,24 @@ const DoctorDashboard = () => {
           recentError
         );
       } else {
-        const formattedAppointments: RecentAppointment[] = (
-          recentData || []
-        ).map((item: any) => ({
-          id: item.id,
-          appointment_date: item.appointment_date,
-          appointment_time: item.appointment_time,
-          status: item.status,
-          patients: item.patients
-            ? {
-                name: item.patients.name,
-              }
-            : null,
-        }));
+        const formattedAppointments: RecentAppointment[] =
+          (recentData || []).map((item: any) => ({
+            id: item.id,
+            appointment_date:
+              item.appointment_date,
+            appointment_time:
+              item.appointment_time,
+            status: item.status,
+            patients: item.patients
+              ? {
+                  name: item.patients.name,
+                }
+              : null,
+          }));
 
-        setRecentAppointments(formattedAppointments);
+        setRecentAppointments(
+          formattedAppointments
+        );
       }
 
       setLoading(false);
@@ -232,6 +318,13 @@ const DoctorDashboard = () => {
 
     loadDoctorData();
   }, []);
+
+  // =========================
+  // Format Money
+  // =========================
+  const formatMoney = (amount: number) => {
+    return `${amount.toLocaleString("en-US")} EGP`;
+  };
 
   // =========================
   // Loading
@@ -366,6 +459,143 @@ const DoctorDashboard = () => {
                 Patient reviews
               </p>
             </div>
+
+          </div>
+        </div>
+
+        {/* =========================
+            Financial Statistics
+        ========================== */}
+        <div className="mb-8">
+
+          <h2 className="mb-4 text-2xl font-bold text-slate-900">
+            Financial Overview
+          </h2>
+
+          <div className="grid gap-6 md:grid-cols-3">
+
+            {/* Treatment Value */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <p className="text-sm text-slate-500">
+                Treatment Value
+              </p>
+
+              <p className="mt-2 text-3xl font-bold text-slate-900">
+                {formatMoney(totalTreatmentValue)}
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Total treatment costs
+              </p>
+            </div>
+
+            {/* Paid */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <p className="text-sm text-slate-500">
+                Total Paid
+              </p>
+
+              <p className="mt-2 text-3xl font-bold text-teal-600">
+                {formatMoney(totalPaid)}
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Payments received
+              </p>
+            </div>
+
+            {/* Remaining */}
+            <div className="rounded-2xl bg-white p-6 shadow-sm">
+              <p className="text-sm text-slate-500">
+                Total Remaining
+              </p>
+
+              <p className="mt-2 text-3xl font-bold text-orange-600">
+                {formatMoney(totalRemaining)}
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Outstanding balance
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        {/* =========================
+            Quick Actions
+        ========================== */}
+        <div className="mb-8">
+
+          <h2 className="mb-4 text-2xl font-bold text-slate-900">
+            Quick Actions
+          </h2>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/patients";
+              }}
+              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+            >
+              <p className="text-lg font-bold">
+                Patients
+              </p>
+
+              <p className="mt-1 text-sm text-teal-50">
+                Manage patient records
+              </p>
+            </button>
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/appointments";
+              }}
+              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+            >
+              <p className="text-lg font-bold">
+                Appointments
+              </p>
+
+              <p className="mt-1 text-sm text-teal-50">
+                Manage appointments
+              </p>
+            </button>
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/payments";
+              }}
+              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+            >
+              <p className="text-lg font-bold">
+                Payments
+              </p>
+
+              <p className="mt-1 text-sm text-teal-50">
+                Track payments and balances
+              </p>
+            </button>
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/services";
+              }}
+              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+            >
+              <p className="text-lg font-bold">
+                Services
+              </p>
+
+              <p className="mt-1 text-sm text-teal-50">
+                Manage clinic services
+              </p>
+            </button>
 
           </div>
         </div>
@@ -560,6 +790,30 @@ const DoctorDashboard = () => {
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
               View Patients
+            </button>
+
+          </div>
+
+          {/* Payments */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+
+            <h2 className="text-xl font-semibold text-slate-900">
+              Payments
+            </h2>
+
+            <p className="mt-2 text-slate-600">
+              Track treatment payments and remaining
+              patient balances.
+            </p>
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/payments";
+              }}
+              className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
+            >
+              View Payments
             </button>
 
           </div>
