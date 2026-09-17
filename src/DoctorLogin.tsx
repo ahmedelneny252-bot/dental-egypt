@@ -1,62 +1,163 @@
-
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "./supabase";
 
 const DoctorLogin = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  // =========================
+  // Same Language System
+  // used by the whole app
+  // =========================
 
   const [language, setLanguage] = useState<"en" | "ar">(() => {
-    return (localStorage.getItem("language") as "en" | "ar") || "en";
+    const savedLanguage = localStorage.getItem("dentalcare-language");
+
+    return savedLanguage === "en" ? "en" : "ar";
   });
 
-  const [darkMode, setDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem("darkMode") === "true";
+  // =========================
+  // Same Theme System
+  // used by the whole app
+  // =========================
+
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const savedTheme = localStorage.getItem("dentalcare-theme");
+
+    return savedTheme === "dark" ? "dark" : "light";
   });
 
   const isArabic = language === "ar";
+  const isDark = theme === "dark";
+
+  // =========================
+  // Listen for Language Changes
+  // =========================
 
   useEffect(() => {
-    localStorage.setItem("language", language);
-    document.documentElement.dir = isArabic ? "rtl" : "ltr";
+    const handleLanguageChange = () => {
+      const savedLanguage = localStorage.getItem(
+        "dentalcare-language"
+      );
+
+      setLanguage(savedLanguage === "en" ? "en" : "ar");
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener("storage", handleLanguageChange);
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener("storage", handleLanguageChange);
+    };
+  }, []);
+
+  // =========================
+  // Keep HTML Language / Direction
+  // Same as Navbar
+  // =========================
+
+  useEffect(() => {
     document.documentElement.lang = language;
+    document.documentElement.dir = isArabic ? "rtl" : "ltr";
   }, [language, isArabic]);
 
-  useEffect(() => {
-    localStorage.setItem("darkMode", String(darkMode));
+  // =========================
+  // Listen for Theme Changes
+  // Same Theme System
+  // =========================
 
-    if (darkMode) {
+  useEffect(() => {
+    const handleThemeChange = () => {
+      const savedTheme = localStorage.getItem("dentalcare-theme");
+
+      setTheme(savedTheme === "dark" ? "dark" : "light");
+    };
+
+    window.addEventListener(
+      "dentalcare-theme-change",
+      handleThemeChange
+    );
+
+    window.addEventListener("storage", handleThemeChange);
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-theme-change",
+        handleThemeChange
+      );
+
+      window.removeEventListener("storage", handleThemeChange);
+    };
+  }, []);
+
+  // =========================
+  // Make sure the same
+  // Tailwind dark class is applied
+  // =========================
+
+  useEffect(() => {
+    if (theme === "dark") {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-  }, [darkMode]);
+  }, [theme]);
+
+  // =========================
+  // Toggle Language
+  // =========================
 
   const toggleLanguage = () => {
-    setLanguage((prev) => (prev === "en" ? "ar" : "en"));
+    const newLanguage = language === "en" ? "ar" : "en";
+
+    setLanguage(newLanguage);
+
+    localStorage.setItem(
+      "dentalcare-language",
+      newLanguage
+    );
+
+    window.dispatchEvent(
+      new Event("dentalcare-language-change")
+    );
   };
 
-  const toggleDarkMode = () => {
-    setDarkMode((prev) => !prev);
-  };
+  // =========================
+  // Login
+  // =========================
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
 
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
     if (error) {
       setError(
         isArabic
           ? "البريد الإلكتروني أو كلمة المرور غير صحيحة."
-          : error.message
+          : "Invalid email or password."
       );
+
       return;
     }
 
@@ -65,51 +166,67 @@ const DoctorLogin = () => {
 
   return (
     <div
-      className={`min-h-screen flex items-center justify-center px-4 transition-colors duration-300 ${
-        darkMode ? "bg-gray-950" : "bg-gray-50"
+      dir={isArabic ? "rtl" : "ltr"}
+      className={`min-h-screen flex items-center justify-center px-4 py-10 transition-colors duration-300 ${
+        isDark
+          ? "bg-slate-950 text-white"
+          : "bg-slate-50 text-slate-900"
       }`}
     >
-      <div className="absolute top-5 right-5 flex items-center gap-2">
-        {/* Language Button */}
+      {/* =========================
+          Top Controls
+      ========================= */}
+
+      <div
+        className={`absolute top-5 ${
+          isArabic ? "left-5" : "right-5"
+        } flex items-center gap-2`}
+      >
+        {/* Language */}
+
         <button
           type="button"
           onClick={toggleLanguage}
-          className={`px-4 py-2 rounded-lg border font-medium transition ${
-            darkMode
-              ? "bg-gray-900 border-gray-700 text-gray-200 hover:bg-gray-800"
-              : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100"
+          className={`rounded-xl border px-4 py-2 font-medium transition-all duration-300 ${
+            isDark
+              ? "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
           }`}
         >
           {isArabic ? "English" : "العربية"}
         </button>
-
-        {/* Dark Mode Button */}
-        <button
-          type="button"
-          onClick={toggleDarkMode}
-          className={`w-10 h-10 rounded-lg border flex items-center justify-center transition ${
-            darkMode
-              ? "bg-gray-900 border-gray-700 text-yellow-400 hover:bg-gray-800"
-              : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100"
-          }`}
-          aria-label={darkMode ? "Light Mode" : "Dark Mode"}
-        >
-          {darkMode ? "☀️" : "🌙"}
-        </button>
       </div>
 
+      {/* =========================
+          Login Card
+      ========================= */}
+
       <div
-        className={`w-full max-w-md rounded-2xl shadow-lg p-8 transition-colors duration-300 ${
-          darkMode ? "bg-gray-900 text-white" : "bg-white text-gray-900"
+        className={`w-full max-w-md rounded-3xl border p-8 shadow-2xl transition-colors duration-300 ${
+          isDark
+            ? "border-slate-800 bg-slate-900 text-white shadow-black/40"
+            : "border-slate-200 bg-white text-slate-900 shadow-slate-200/70"
         }`}
       >
-        <h1 className="text-3xl font-bold text-center text-teal-600 mb-2">
-          {isArabic ? "تسجيل دخول الطبيب" : "Doctor Login"}
+        {/* Title */}
+
+        <h1
+          className={`mb-2 text-center text-3xl font-bold ${
+            isDark ? "text-teal-400" : "text-teal-600"
+          }`}
+        >
+          {isArabic
+            ? "تسجيل دخول الطبيب"
+            : "Doctor Login"}
         </h1>
 
+        {/* Subtitle */}
+
         <p
-          className={`text-center mb-6 ${
-            darkMode ? "text-gray-400" : "text-gray-500"
+          className={`mb-7 text-center ${
+            isDark
+              ? "text-slate-400"
+              : "text-slate-500"
           }`}
         >
           {isArabic
@@ -117,47 +234,159 @@ const DoctorLogin = () => {
             : "Login to your DentalCare account"}
         </p>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <input
-            type="email"
-            placeholder={isArabic ? "البريد الإلكتروني" : "Email"}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            dir="ltr"
-            className={`w-full border rounded-lg px-4 py-3 outline-none transition ${
-              darkMode
-                ? "bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-teal-500"
-                : "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-teal-500"
-            }`}
-          />
+        <form
+          onSubmit={handleLogin}
+          className="space-y-5"
+        >
+          {/* =========================
+              Email
+          ========================= */}
 
-          <input
-            type="password"
-            placeholder={isArabic ? "كلمة المرور" : "Password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            dir="ltr"
-            className={`w-full border rounded-lg px-4 py-3 outline-none transition ${
-              darkMode
-                ? "bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-teal-500"
-                : "bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-teal-500"
-            }`}
-          />
+          <div>
+            <label
+              className={`mb-2 block text-sm font-medium ${
+                isDark
+                  ? "text-slate-300"
+                  : "text-slate-700"
+              }`}
+            >
+              {isArabic
+                ? "البريد الإلكتروني"
+                : "Email"}
+            </label>
+
+            <input
+              type="email"
+              placeholder={
+                isArabic
+                  ? "البريد الإلكتروني"
+                  : "Email"
+              }
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              required
+              dir="ltr"
+              className={`w-full rounded-xl border px-4 py-3 outline-none transition-all duration-300 ${
+                isDark
+                  ? "border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                  : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+              }`}
+            />
+          </div>
+
+          {/* =========================
+              Password
+          ========================= */}
+
+          <div>
+            <label
+              className={`mb-2 block text-sm font-medium ${
+                isDark
+                  ? "text-slate-300"
+                  : "text-slate-700"
+              }`}
+            >
+              {isArabic
+                ? "كلمة المرور"
+                : "Password"}
+            </label>
+
+            <div className="relative">
+              <input
+                type={
+                  showPassword
+                    ? "text"
+                    : "password"
+                }
+                placeholder={
+                  isArabic
+                    ? "كلمة المرور"
+                    : "Password"
+                }
+                value={password}
+                onChange={(e) =>
+                  setPassword(e.target.value)
+                }
+                required
+                dir="ltr"
+                className={`w-full rounded-xl border px-4 py-3 outline-none transition-all duration-300 ${
+                  isArabic
+                    ? "pl-12"
+                    : "pr-12"
+                } ${
+                  isDark
+                    ? "border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                    : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                }`}
+              />
+
+              {/* Eye Button */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowPassword(
+                    (prev) => !prev
+                  )
+                }
+                className={`absolute top-1/2 -translate-y-1/2 ${
+                  isArabic
+                    ? "left-3"
+                    : "right-3"
+                } transition-colors ${
+                  isDark
+                    ? "text-slate-400 hover:text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+                aria-label={
+                  showPassword
+                    ? isArabic
+                      ? "إخفاء كلمة المرور"
+                      : "Hide password"
+                    : isArabic
+                      ? "إظهار كلمة المرور"
+                      : "Show password"
+                }
+              >
+                {showPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* =========================
+              Login Button
+          ========================= */}
 
           <button
             type="submit"
-            className="w-full bg-teal-600 text-white py-3 rounded-lg font-semibold hover:bg-teal-700 transition"
+            className="w-full rounded-xl bg-teal-600 py-3.5 font-semibold text-white shadow-lg shadow-teal-600/20 transition-all duration-300 hover:bg-teal-700 hover:shadow-teal-600/30 active:scale-[0.99]"
           >
-            {isArabic ? "تسجيل الدخول" : "Login"}
+            {isArabic
+              ? "تسجيل الدخول"
+              : "Login"}
           </button>
         </form>
 
+        {/* =========================
+            Error
+        ========================= */}
+
         {error && (
-          <p className="mt-4 text-red-600 dark:text-red-400 text-sm text-center">
+          <div
+            className={`mt-5 rounded-xl border p-3 text-center text-sm ${
+              isDark
+                ? "border-red-900 bg-red-950/40 text-red-400"
+                : "border-red-200 bg-red-50 text-red-600"
+            }`}
+          >
             {error}
-          </p>
+          </div>
         )}
       </div>
     </div>
@@ -165,4 +394,3 @@ const DoctorLogin = () => {
 };
 
 export default DoctorLogin;
-

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -56,6 +55,9 @@ const Navbar = () => {
     } else {
       document.documentElement.classList.remove("dark");
     }
+
+    // Notify other pages/components about theme changes
+    window.dispatchEvent(new Event("dentalcare-theme-change"));
   }, [theme]);
 
   useEffect(() => {
@@ -528,7 +530,7 @@ const Navbar = () => {
                   type="button"
                   className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition-all ${
                     theme === "dark"
-                      ? "bg-slate-800 text-yellow-400 hover:bg-slate-700"
+                      ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
                       : "bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-700"
                   }`}
                 >
