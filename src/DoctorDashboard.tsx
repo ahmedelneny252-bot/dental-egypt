@@ -1,6 +1,6 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
+import { translations, type Language } from "./i18n";
 
 type RecentAppointment = {
   id: string;
@@ -27,29 +27,74 @@ const DoctorDashboard = () => {
   const [doctorName, setDoctorName] = useState("");
   const [doctorEmail, setDoctorEmail] = useState("");
   const [clinicName, setClinicName] = useState("");
+  const [subscriptionPlan, setSubscriptionPlan] =
+    useState("Free");
 
   const [patientsCount, setPatientsCount] = useState(0);
-  const [appointmentsCount, setAppointmentsCount] = useState(0);
+  const [appointmentsCount, setAppointmentsCount] =
+    useState(0);
   const [servicesCount, setServicesCount] = useState(0);
   const [reviewsCount, setReviewsCount] = useState(0);
 
-  const [totalTreatmentValue, setTotalTreatmentValue] = useState(0);
+  const [totalTreatmentValue, setTotalTreatmentValue] =
+    useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
   const [totalRemaining, setTotalRemaining] = useState(0);
 
-  const [recentAppointments, setRecentAppointments] = useState<
-    RecentAppointment[]
-  >([]);
+  const [recentAppointments, setRecentAppointments] =
+    useState<RecentAppointment[]>([]);
 
   const [loading, setLoading] = useState(true);
+
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem(
+      "dentalcare-language"
+    );
+
+    return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const isArabic = language === "ar";
+  const t = translations[language];
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage =
+        localStorage.getItem("dentalcare-language");
+
+      setLanguage(
+        savedLanguage === "en" ? "en" : "ar"
+      );
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener(
+      "storage",
+      handleLanguageChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
+    };
+  }, []);
 
   useEffect(() => {
     const loadDoctorData = async () => {
       setLoading(true);
 
-      // =========================
       // Get Logged-in Doctor
-      // =========================
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -59,9 +104,7 @@ const DoctorDashboard = () => {
         return;
       }
 
-      // =========================
       // Get Doctor Profile + Clinic
-      // =========================
       const { data: profile, error } = await supabase
         .from("profiles")
         .select(`
@@ -69,30 +112,39 @@ const DoctorDashboard = () => {
           email,
           clinic_id,
           clinics (
-            name
+            name,
+            subscription_plan,
+            subscription_status
           )
         `)
         .eq("id", user.id)
         .single();
 
       if (error) {
-        console.error("Error loading doctor:", error);
+        console.error(
+          "Error loading doctor:",
+          error
+        );
+
         setLoading(false);
         return;
       }
 
       setDoctorName(profile.name || "");
-      setDoctorEmail(profile.email || user.email || "");
+      setDoctorEmail(
+        profile.email || user.email || ""
+      );
 
-      // =========================
-      // Get Clinic Name
-      // =========================
       if (profile.clinics) {
         const clinic = Array.isArray(profile.clinics)
           ? profile.clinics[0]
           : profile.clinics;
 
         setClinicName(clinic?.name || "");
+
+        setSubscriptionPlan(
+          clinic?.subscription_plan || "Free"
+        );
       }
 
       const clinicId = profile.clinic_id;
@@ -102,9 +154,7 @@ const DoctorDashboard = () => {
         return;
       }
 
-      // =========================
       // Patients Count
-      // =========================
       const {
         count: patientsCount,
         error: patientsError,
@@ -122,12 +172,12 @@ const DoctorDashboard = () => {
           patientsError
         );
       } else {
-        setPatientsCount(patientsCount || 0);
+        setPatientsCount(
+          patientsCount || 0
+        );
       }
 
-      // =========================
       // Appointments Count
-      // =========================
       const {
         count: appointmentsCount,
         error: appointmentsError,
@@ -145,12 +195,12 @@ const DoctorDashboard = () => {
           appointmentsError
         );
       } else {
-        setAppointmentsCount(appointmentsCount || 0);
+        setAppointmentsCount(
+          appointmentsCount || 0
+        );
       }
 
-      // =========================
       // Services Count
-      // =========================
       const {
         count: servicesCount,
         error: servicesError,
@@ -168,12 +218,12 @@ const DoctorDashboard = () => {
           servicesError
         );
       } else {
-        setServicesCount(servicesCount || 0);
+        setServicesCount(
+          servicesCount || 0
+        );
       }
 
-      // =========================
       // Reviews Count
-      // =========================
       const {
         count: reviewsCount,
         error: reviewsError,
@@ -191,12 +241,12 @@ const DoctorDashboard = () => {
           reviewsError
         );
       } else {
-        setReviewsCount(reviewsCount || 0);
+        setReviewsCount(
+          reviewsCount || 0
+        );
       }
 
-      // =========================
-      // Medical Records / Treatment Value
-      // =========================
+      // Medical Records
       const {
         data: medicalRecords,
         error: medicalRecordsError,
@@ -214,17 +264,19 @@ const DoctorDashboard = () => {
         const records: MedicalRecord[] =
           medicalRecords || [];
 
-        const treatmentValue = records.reduce(
-          (total, record) =>
-            total + Number(record.cost || 0),
-          0
+        const treatmentValue =
+          records.reduce(
+            (total, record) =>
+              total +
+              Number(record.cost || 0),
+            0
+          );
+
+        setTotalTreatmentValue(
+          treatmentValue
         );
 
-        setTotalTreatmentValue(treatmentValue);
-
-        // =========================
         // Payments
-        // =========================
         const {
           data: payments,
           error: paymentsError,
@@ -244,11 +296,13 @@ const DoctorDashboard = () => {
           const paymentRows: Payment[] =
             payments || [];
 
-          const paid = paymentRows.reduce(
-            (total, payment) =>
-              total + Number(payment.amount || 0),
-            0
-          );
+          const paid =
+            paymentRows.reduce(
+              (total, payment) =>
+                total +
+                Number(payment.amount || 0),
+              0
+            );
 
           setTotalPaid(paid);
 
@@ -257,13 +311,13 @@ const DoctorDashboard = () => {
             0
           );
 
-          setTotalRemaining(remaining);
+          setTotalRemaining(
+            remaining
+          );
         }
       }
 
-      // =========================
       // Recent Appointments
-      // =========================
       const {
         data: recentData,
         error: recentError,
@@ -294,19 +348,22 @@ const DoctorDashboard = () => {
         );
       } else {
         const formattedAppointments: RecentAppointment[] =
-          (recentData || []).map((item: any) => ({
-            id: item.id,
-            appointment_date:
-              item.appointment_date,
-            appointment_time:
-              item.appointment_time,
-            status: item.status,
-            patients: item.patients
-              ? {
-                  name: item.patients.name,
-                }
-              : null,
-          }));
+          (recentData || []).map(
+            (item: any) => ({
+              id: item.id,
+              appointment_date:
+                item.appointment_date,
+              appointment_time:
+                item.appointment_time,
+              status: item.status,
+              patients: item.patients
+                ? {
+                    name:
+                      item.patients.name,
+                  }
+                : null,
+            })
+          );
 
         setRecentAppointments(
           formattedAppointments
@@ -319,233 +376,279 @@ const DoctorDashboard = () => {
     loadDoctorData();
   }, []);
 
-  // =========================
-  // Format Money
-  // =========================
-  const formatMoney = (amount: number) => {
-    return `${amount.toLocaleString("en-US")} EGP`;
+  const formatMoney = (
+    amount: number
+  ) => {
+    return `${amount.toLocaleString(
+      "en-US"
+    )} EGP`;
   };
 
-  // =========================
-  // Loading
-  // =========================
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-600">
-          Loading dashboard...
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <p className="text-slate-600 dark:text-slate-300">
+          {isArabic
+            ? "جاري تحميل لوحة التحكم..."
+            : "Loading dashboard..."}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 pt-32">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 p-6 pt-32 dark:bg-slate-950"
+    >
       <div className="mx-auto max-w-7xl">
-
-        {/* =========================
-            Header
-        ========================== */}
+        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">
-            Welcome, Dr. {doctorName}
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+            {isArabic
+              ? `مرحباً د. ${doctorName}`
+              : `Welcome, Dr. ${doctorName}`}
           </h1>
 
-          <p className="mt-2 text-slate-600">
-            Manage your dental clinic from one place.
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
+            {isArabic
+              ? "قم بإدارة عيادتك للأسنان من مكان واحد."
+              : "Manage your dental clinic from one place."}
           </p>
         </div>
 
-        {/* =========================
-            Doctor & Clinic
-        ========================== */}
-        <div className="mb-8 grid gap-6 md:grid-cols-2">
-
-          {/* Doctor */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Doctor
+        {/* Doctor + Clinic */}
+        <div className="mb-8 grid gap-6 md:grid-cols-3">
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "الطبيب"
+                : "Doctor"}
             </p>
 
-            <p className="mt-2 text-xl font-bold text-slate-900">
-              Dr. {doctorName}
+            <p className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+              {isArabic
+                ? `د. ${doctorName}`
+                : `Dr. ${doctorName}`}
             </p>
 
-            <p className="mt-1 text-slate-500">
+            <p className="mt-1 text-slate-500 dark:text-slate-400">
               {doctorEmail}
             </p>
           </div>
 
-          {/* Clinic */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-slate-500">
-              Clinic
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "العيادة"
+                : "Clinic"}
             </p>
 
-            <p className="mt-2 text-xl font-bold text-slate-900">
-              {clinicName || "No clinic found"}
+            <p className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
+              {clinicName ||
+                (isArabic
+                  ? "لم يتم العثور على عيادة"
+                  : "No clinic found")}
             </p>
           </div>
 
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "الاشتراك"
+                : "Subscription"}
+            </p>
+
+            <p className="mt-2 text-xl font-bold text-teal-600 dark:text-teal-400">
+              {subscriptionPlan}
+            </p>
+
+            <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/subscription";
+              }}
+              className="mt-4 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
+            >
+              {isArabic
+                ? "إدارة الخطة"
+                : "Manage Plan"}
+            </button>
+          </div>
         </div>
 
-        {/* =========================
-            Statistics
-        ========================== */}
+        {/* Statistics */}
         <div className="mb-8">
-
-          <h2 className="mb-4 text-2xl font-bold text-slate-900">
-            Statistics
+          <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">
+            {isArabic
+              ? "الإحصائيات"
+              : "Statistics"}
           </h2>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-
-            {/* Patients */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Patients
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t.dashboard.patients}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-slate-900">
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
                 {patientsCount}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Total patients
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي المرضى"
+                  : "Total patients"}
               </p>
             </div>
 
-            {/* Appointments */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Appointments
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t.dashboard.appointments}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-slate-900">
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
                 {appointmentsCount}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Total appointments
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي المواعيد"
+                  : "Total appointments"}
               </p>
             </div>
 
-            {/* Services */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Services
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t.dashboard.doctorServices}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-slate-900">
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
                 {servicesCount}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Clinic services
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "خدمات العيادة"
+                  : "Clinic services"}
               </p>
             </div>
 
-            {/* Reviews */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Reviews
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t.dashboard.reviews}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-slate-900">
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
                 {reviewsCount}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Patient reviews
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "تقييمات المرضى"
+                  : "Patient reviews"}
               </p>
             </div>
-
           </div>
         </div>
 
-        {/* =========================
-            Financial Statistics
-        ========================== */}
+        {/* Financial Overview */}
         <div className="mb-8">
-
-          <h2 className="mb-4 text-2xl font-bold text-slate-900">
-            Financial Overview
+          <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">
+            {isArabic
+              ? "نظرة عامة مالية"
+              : "Financial Overview"}
           </h2>
 
           <div className="grid gap-6 md:grid-cols-3">
-
-            {/* Treatment Value */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Treatment Value
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "قيمة العلاج"
+                  : "Treatment Value"}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-slate-900">
-                {formatMoney(totalTreatmentValue)}
+              <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
+                {formatMoney(
+                  totalTreatmentValue
+                )}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Total treatment costs
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي تكاليف العلاج"
+                  : "Total treatment costs"}
               </p>
             </div>
 
-            {/* Paid */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Total Paid
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي المدفوع"
+                  : "Total Paid"}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-teal-600">
+              <p className="mt-2 text-3xl font-bold text-teal-600 dark:text-teal-400">
                 {formatMoney(totalPaid)}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Payments received
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "المدفوعات المستلمة"
+                  : "Payments received"}
               </p>
             </div>
 
-            {/* Remaining */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm">
-              <p className="text-sm text-slate-500">
-                Total Remaining
+            <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "المبلغ المتبقي"
+                  : "Total Remaining"}
               </p>
 
-              <p className="mt-2 text-3xl font-bold text-orange-600">
-                {formatMoney(totalRemaining)}
+              <p className="mt-2 text-3xl font-bold text-orange-600 dark:text-orange-400">
+                {formatMoney(
+                  totalRemaining
+                )}
               </p>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Outstanding balance
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "الرصيد المستحق"
+                  : "Outstanding balance"}
               </p>
             </div>
-
           </div>
         </div>
 
-        {/* =========================
-            Quick Actions
-        ========================== */}
+        {/* Quick Actions */}
         <div className="mb-8">
-
-          <h2 className="mb-4 text-2xl font-bold text-slate-900">
-            Quick Actions
+          <h2 className="mb-4 text-2xl font-bold text-slate-900 dark:text-white">
+            {isArabic
+              ? "إجراءات سريعة"
+              : "Quick Actions"}
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
             <button
               onClick={() => {
                 window.location.href =
                   "/doctor/patients";
               }}
-              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+              className={`rounded-2xl bg-teal-600 p-5 text-white shadow-sm transition hover:bg-teal-700 ${
+                isArabic
+                  ? "text-right"
+                  : "text-left"
+              }`}
             >
               <p className="text-lg font-bold">
-                Patients
+                {t.dashboard.patients}
               </p>
 
               <p className="mt-1 text-sm text-teal-50">
-                Manage patient records
+                {isArabic
+                  ? "إدارة سجلات المرضى"
+                  : "Manage patient records"}
               </p>
             </button>
 
@@ -554,14 +657,20 @@ const DoctorDashboard = () => {
                 window.location.href =
                   "/doctor/appointments";
               }}
-              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+              className={`rounded-2xl bg-teal-600 p-5 text-white shadow-sm transition hover:bg-teal-700 ${
+                isArabic
+                  ? "text-right"
+                  : "text-left"
+              }`}
             >
               <p className="text-lg font-bold">
-                Appointments
+                {t.dashboard.appointments}
               </p>
 
               <p className="mt-1 text-sm text-teal-50">
-                Manage appointments
+                {isArabic
+                  ? "إدارة المواعيد"
+                  : "Manage appointments"}
               </p>
             </button>
 
@@ -570,14 +679,20 @@ const DoctorDashboard = () => {
                 window.location.href =
                   "/doctor/payments";
               }}
-              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+              className={`rounded-2xl bg-teal-600 p-5 text-white shadow-sm transition hover:bg-teal-700 ${
+                isArabic
+                  ? "text-right"
+                  : "text-left"
+              }`}
             >
               <p className="text-lg font-bold">
-                Payments
+                {t.dashboard.payments}
               </p>
 
               <p className="mt-1 text-sm text-teal-50">
-                Track payments and balances
+                {isArabic
+                  ? "متابعة المدفوعات والأرصدة"
+                  : "Track payments and balances"}
               </p>
             </button>
 
@@ -586,34 +701,39 @@ const DoctorDashboard = () => {
                 window.location.href =
                   "/doctor/services";
               }}
-              className="rounded-2xl bg-teal-600 p-5 text-left text-white shadow-sm transition hover:bg-teal-700"
+              className={`rounded-2xl bg-teal-600 p-5 text-white shadow-sm transition hover:bg-teal-700 ${
+                isArabic
+                  ? "text-right"
+                  : "text-left"
+              }`}
             >
               <p className="text-lg font-bold">
-                Services
+                {t.dashboard.doctorServices}
               </p>
 
               <p className="mt-1 text-sm text-teal-50">
-                Manage clinic services
+                {isArabic
+                  ? "إدارة خدمات العيادة"
+                  : "Manage clinic services"}
               </p>
             </button>
-
           </div>
         </div>
 
-        {/* =========================
-            Recent Appointments
-        ========================== */}
-        <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-
-          <div className="mb-5 flex items-center justify-between">
-
+        {/* Recent Appointments */}
+        <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+          <div className="mb-5 flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900">
-                Recent Appointments
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                {isArabic
+                  ? "أحدث المواعيد"
+                  : "Recent Appointments"}
               </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Your upcoming appointments
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "مواعيدك القادمة"
+                  : "Your upcoming appointments"}
               </p>
             </div>
 
@@ -624,16 +744,19 @@ const DoctorDashboard = () => {
               }}
               className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
             >
-              View All
+              {isArabic
+                ? "عرض الكل"
+                : "View All"}
             </button>
-
           </div>
 
-          {recentAppointments.length === 0 ? (
-            <div className="rounded-xl bg-slate-50 p-8 text-center">
-
-              <p className="text-slate-500">
-                No appointments yet.
+          {recentAppointments.length ===
+          0 ? (
+            <div className="rounded-xl bg-slate-50 p-8 text-center dark:bg-slate-800">
+              <p className="text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "لا توجد مواعيد حتى الآن."
+                  : "No appointments yet."}
               </p>
 
               <button
@@ -643,95 +766,122 @@ const DoctorDashboard = () => {
                 }}
                 className="mt-4 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
               >
-                Add Appointment
+                {isArabic
+                  ? "إضافة موعد"
+                  : "Add Appointment"}
               </button>
-
             </div>
           ) : (
             <div className="overflow-x-auto">
-
               <table className="w-full min-w-[700px]">
-
                 <thead>
-                  <tr className="border-b border-slate-200 text-left">
-
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">
-                      Patient
+                  <tr className="border-b border-slate-200 text-left dark:border-slate-700">
+                    <th
+                      className={`px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 ${
+                        isArabic
+                          ? "text-right"
+                          : "text-left"
+                      }`}
+                    >
+                      {isArabic
+                        ? "المريض"
+                        : "Patient"}
                     </th>
 
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">
-                      Date
+                    <th
+                      className={`px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 ${
+                        isArabic
+                          ? "text-right"
+                          : "text-left"
+                      }`}
+                    >
+                      {isArabic
+                        ? "التاريخ"
+                        : "Date"}
                     </th>
 
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">
-                      Time
+                    <th
+                      className={`px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 ${
+                        isArabic
+                          ? "text-right"
+                          : "text-left"
+                      }`}
+                    >
+                      {isArabic
+                        ? "الوقت"
+                        : "Time"}
                     </th>
 
-                    <th className="px-4 py-3 text-sm font-semibold text-slate-600">
-                      Status
+                    <th
+                      className={`px-4 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 ${
+                        isArabic
+                          ? "text-right"
+                          : "text-left"
+                      }`}
+                    >
+                      {isArabic
+                        ? "الحالة"
+                        : "Status"}
                     </th>
-
                   </tr>
                 </thead>
 
                 <tbody>
-
                   {recentAppointments.map(
                     (appointment) => (
                       <tr
-                        key={appointment.id}
-                        className="border-b border-slate-100 last:border-0"
+                        key={
+                          appointment.id
+                        }
+                        className="border-b border-slate-100 last:border-0 dark:border-slate-800"
                       >
-
-                        <td className="px-4 py-4 font-medium text-slate-900">
-                          {appointment.patients?.name ||
-                            "Unknown patient"}
+                        <td className="px-4 py-4 font-medium text-slate-900 dark:text-white">
+                          {appointment.patients
+                            ?.name ||
+                            (isArabic
+                              ? "مريض غير معروف"
+                              : "Unknown patient")}
                         </td>
 
-                        <td className="px-4 py-4 text-slate-600">
-                          {appointment.appointment_date}
+                        <td className="px-4 py-4 text-slate-600 dark:text-slate-400">
+                          {
+                            appointment.appointment_date
+                          }
                         </td>
 
-                        <td className="px-4 py-4 text-slate-600">
-                          {appointment.appointment_time}
+                        <td className="px-4 py-4 text-slate-600 dark:text-slate-400">
+                          {
+                            appointment.appointment_time
+                          }
                         </td>
 
                         <td className="px-4 py-4">
-
-                          <span className="rounded-full bg-teal-50 px-3 py-1 text-sm font-medium text-teal-700">
-                            {appointment.status}
+                          <span className="rounded-full bg-teal-50 px-3 py-1 text-sm font-medium text-teal-700 dark:bg-teal-950 dark:text-teal-400">
+                            {
+                              appointment.status
+                            }
                           </span>
-
                         </td>
-
                       </tr>
                     )
                   )}
-
                 </tbody>
-
               </table>
-
             </div>
           )}
-
         </div>
 
-        {/* =========================
-            Dashboard Sections
-        ========================== */}
+        {/* Dashboard Cards */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-
-          {/* Clinic Profile */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Clinic Profile
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.clinicProfile}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              Update your clinic name, address, phone,
-              WhatsApp and working hours.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "قم بتحديث اسم العيادة والعنوان والهاتف وواتساب وساعات العمل."
+                : "Update your clinic name, address, phone, WhatsApp and working hours."}
             </p>
 
             <button
@@ -741,21 +891,21 @@ const DoctorDashboard = () => {
               }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              Manage Clinic
+              {isArabic
+                ? "إدارة العيادة"
+                : "Manage Clinic"}
             </button>
-
           </div>
 
-          {/* Appointments */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Appointments
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.appointments}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              View and manage your upcoming patient
-              appointments.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "عرض وإدارة مواعيد المرضى القادمة."
+                : "View and manage your upcoming patient appointments."}
             </p>
 
             <button
@@ -765,21 +915,21 @@ const DoctorDashboard = () => {
               }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              View Appointments
+              {isArabic
+                ? "عرض المواعيد"
+                : "View Appointments"}
             </button>
-
           </div>
 
-          {/* Patients */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Patients
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.patients}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              Manage your patient information and
-              records.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "إدارة معلومات المرضى وسجلاتهم."
+                : "Manage your patient information and records."}
             </p>
 
             <button
@@ -789,21 +939,21 @@ const DoctorDashboard = () => {
               }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              View Patients
+              {isArabic
+                ? "عرض المرضى"
+                : "View Patients"}
             </button>
-
           </div>
 
-          {/* Payments */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Payments
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.payments}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              Track treatment payments and remaining
-              patient balances.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "متابعة مدفوعات العلاج والأرصدة المتبقية للمرضى."
+                : "Track treatment payments and remaining patient balances."}
             </p>
 
             <button
@@ -813,21 +963,21 @@ const DoctorDashboard = () => {
               }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              View Payments
+              {isArabic
+                ? "عرض المدفوعات"
+                : "View Payments"}
             </button>
-
           </div>
 
-          {/* Services */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Services
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.doctorServices}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              Add and manage the dental services
-              offered by your clinic.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "إضافة وإدارة خدمات الأسنان التي تقدمها العيادة."
+                : "Add and manage the dental services offered by your clinic."}
             </p>
 
             <button
@@ -837,21 +987,21 @@ const DoctorDashboard = () => {
               }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              Manage Services
+              {isArabic
+                ? "إدارة الخدمات"
+                : "Manage Services"}
             </button>
-
           </div>
 
-          {/* Reviews */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Reviews
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.reviews}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              See what patients are saying about your
-              clinic.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "شاهد آراء المرضى حول عيادتك."
+                : "See what patients are saying about your clinic."}
             </p>
 
             <button
@@ -861,37 +1011,43 @@ const DoctorDashboard = () => {
               }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              View Reviews
+              {isArabic
+                ? "عرض التقييمات"
+                : "View Reviews"}
             </button>
-
           </div>
 
-          {/* Subscription */}
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <h2 className="text-xl font-semibold text-slate-900">
-              Subscription
+          <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {t.dashboard.subscription}
             </h2>
 
-            <p className="mt-2 text-slate-600">
-              Manage your plan and subscription.
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "الخطة الحالية: "
+                : "Current plan: "}
+              <span className="font-semibold text-teal-600 dark:text-teal-400">
+                {subscriptionPlan}
+              </span>
             </p>
 
             <button
+              onClick={() => {
+                window.location.href =
+                  "/doctor/subscription";
+              }}
               className="mt-5 rounded-xl bg-teal-600 px-4 py-2 text-white hover:bg-teal-700"
             >
-              Manage Plan
+              {isArabic
+                ? "إدارة الخطة"
+                : "Manage Plan"}
             </button>
-
           </div>
-
         </div>
-
       </div>
     </div>
   );
 };
 
 export default DoctorDashboard;
-
 

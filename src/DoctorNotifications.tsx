@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell, Check, Calendar, User } from "lucide-react";
+import {
+  Bell,
+  Check,
+  Calendar,
+  User,
+  X,
+} from "lucide-react";
 import { supabase } from "./supabase";
+import { translations, type Language } from "./i18n";
 
 type Notification = {
   id: string;
@@ -13,11 +20,63 @@ type Notification = {
   patient_id: string | null;
 };
 
+type AppointmentAction = "confirm" | "reject";
+
 const DoctorNotifications = () => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<
+    Notification[]
+  >([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [clinicId, setClinicId] = useState("");
+
+  const [processingAppointments, setProcessingAppointments] =
+    useState<Record<string, boolean>>({});
+
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage =
+      localStorage.getItem("dentalcare-language");
+
+    return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const isArabic = language === "ar";
+  const t = translations[language];
+
+  // Listen for language changes
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage =
+        localStorage.getItem("dentalcare-language");
+
+      setLanguage(
+        savedLanguage === "en" ? "en" : "ar"
+      );
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener(
+      "storage",
+      handleLanguageChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
+    };
+  }, []);
 
   const loadNotifications = async () => {
     setLoading(true);
@@ -40,9 +99,6 @@ const DoctorNotifications = () => {
         return;
       }
 
-      console.log("Current user ID:", user.id);
-      console.log("Current user email:", user.email);
-
       const {
         data: profile,
         error: profileError,
@@ -52,26 +108,29 @@ const DoctorNotifications = () => {
         .eq("id", user.id)
         .maybeSingle();
 
-      console.log("Profile data:", profile);
-      console.log("Profile error:", profileError);
-
       if (profileError) {
         setError(
-          `Could not load doctor profile: ${profileError.message}`
+          isArabic
+            ? `تعذر تحميل ملف الطبيب: ${profileError.message}`
+            : `Could not load doctor profile: ${profileError.message}`
         );
         return;
       }
 
       if (!profile) {
         setError(
-          `Profile not found. Logged-in user ID: ${user.id}, email: ${user.email}`
+          isArabic
+            ? "لم يتم العثور على ملف الطبيب."
+            : "Doctor profile not found."
         );
         return;
       }
 
       if (!profile.clinic_id) {
         setError(
-          "This doctor profile does not have a clinic connected."
+          isArabic
+            ? "ملف الطبيب غير مرتبط بأي عيادة."
+            : "This doctor profile does not have a clinic connected."
         );
         return;
       }
@@ -79,8 +138,6 @@ const DoctorNotifications = () => {
       const currentClinicId = profile.clinic_id;
 
       setClinicId(currentClinicId);
-
-      console.log("Doctor clinic ID:", currentClinicId);
 
       const {
         data,
@@ -108,7 +165,9 @@ const DoctorNotifications = () => {
         );
 
         setError(
-          `Could not load notifications: ${notificationError.message}`
+          isArabic
+            ? `تعذر تحميل الإشعارات: ${notificationError.message}`
+            : `Could not load notifications: ${notificationError.message}`
         );
         return;
       }
@@ -121,7 +180,9 @@ const DoctorNotifications = () => {
       );
 
       setError(
-        "Something went wrong while loading notifications."
+        isArabic
+          ? "حدث خطأ أثناء تحميل الإشعارات."
+          : "Something went wrong while loading notifications."
       );
     } finally {
       setLoading(false);
@@ -191,47 +252,231 @@ const DoctorNotifications = () => {
     );
   };
 
+  const handleAppointmentAction = async (
+    notification: Notification,
+    action: AppointmentAction
+  ) => {
+    if (
+      !notification.appointment_id ||
+      !notification.patient_id ||
+      !clinicId
+    ) {
+      return;
+    }
+
+    const appointmentId = notification.appointment_id;
+
+    setProcessingAppointments((current) => ({
+      ...current,
+      [appointmentId]: true,
+    }));
+
+    setError("");
+
+    try {
+      /*
+       * confirm = accepted appointment
+       * reject = cancelled appointment
+       */
+      const newStatus =
+        action === "confirm"
+          ? "confirmed"
+          : "cancelled";
+
+      const {
+        data: updatedAppointment,
+        error: appointmentError,
+      } = await supabase
+        .from("appointments")
+        .update({
+          status: newStatus,
+        })
+        .eq("id", appointmentId)
+        .eq("clinic_id", clinicId)
+        .select("id, patient_id, clinic_id")
+        .maybeSingle();
+
+      if (appointmentError) {
+        console.error(
+          "Update appointment error:",
+          appointmentError
+        );
+
+        setError(
+          isArabic
+            ? `تعذر تحديث الموعد: ${appointmentError.message}`
+            : `Could not update appointment: ${appointmentError.message}`
+        );
+
+        return;
+      }
+
+      if (!updatedAppointment) {
+        setError(
+          isArabic
+            ? "لم يتم العثور على الموعد أو لا تملك العيادة صلاحية تعديله."
+            : "Appointment not found or you do not have permission to update it."
+        );
+
+        return;
+      }
+
+      const notificationTitle =
+        action === "confirm"
+          ? isArabic
+            ? "تم قبول موعدك"
+            : "Your appointment was confirmed"
+          : isArabic
+            ? "تم رفض موعدك"
+            : "Your appointment was rejected";
+
+      const notificationMessage =
+        action === "confirm"
+          ? isArabic
+            ? "وافقت العيادة على طلب حجز الموعد الخاص بك."
+            : "The clinic has accepted your appointment request."
+          : isArabic
+            ? "رفضت العيادة طلب حجز الموعد الخاص بك."
+            : "The clinic has rejected your appointment request.";
+
+      /*
+       * Send response notification to the patient.
+       */
+      const {
+        error: patientNotificationError,
+      } = await supabase
+        .from("notifications")
+        .insert({
+          clinic_id: clinicId,
+          patient_id: updatedAppointment.patient_id,
+          appointment_id: updatedAppointment.id,
+          title: notificationTitle,
+          message: notificationMessage,
+          is_read: false,
+        });
+
+      if (patientNotificationError) {
+        console.error(
+          "Patient notification error:",
+          patientNotificationError
+        );
+
+        setError(
+          isArabic
+            ? `تم تحديث حالة الموعد، لكن تعذر إرسال إشعار للمريض: ${patientNotificationError.message}`
+            : `Appointment updated, but the patient notification could not be sent: ${patientNotificationError.message}`
+        );
+
+        return;
+      }
+
+      /*
+       * Mark the doctor's original notification as read.
+       */
+      const {
+        error: markReadError,
+      } = await supabase
+        .from("notifications")
+        .update({
+          is_read: true,
+        })
+        .eq("id", notification.id);
+
+      if (markReadError) {
+        console.error(
+          "Mark notification as read error:",
+          markReadError
+        );
+      }
+
+      /*
+       * Update the notification locally.
+       */
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id
+            ? {
+                ...item,
+                is_read: true,
+              }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Appointment action error:",
+        error
+      );
+
+      setError(
+        isArabic
+          ? "حدث خطأ أثناء معالجة طلب الموعد."
+          : "Something went wrong while processing the appointment."
+      );
+    } finally {
+      setProcessingAppointments((current) => ({
+        ...current,
+        [appointmentId]: false,
+      }));
+    }
+  };
+
   const unreadCount = notifications.filter(
     (notification) => !notification.is_read
   ).length;
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleString("en-EG", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    return new Date(date).toLocaleString(
+      isArabic ? "ar-EG" : "en-EG",
+      {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }
+    );
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-28">
-        <p className="text-slate-600">
-          Loading notifications...
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center pt-28"
+      >
+        <p className="text-slate-600 dark:text-slate-300">
+          {isArabic
+            ? "جاري تحميل الإشعارات..."
+            : "Loading notifications..."}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pt-28 pb-12">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-28 pb-12"
+    >
       <div className="mx-auto max-w-4xl px-6">
+
+        {/* Header */}
 
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
           <div>
             <div className="flex items-center gap-3">
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-100">
-                <Bell className="h-6 w-6 text-teal-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-100 dark:bg-teal-950/50">
+                <Bell className="h-6 w-6 text-teal-600 dark:text-teal-400" />
               </div>
 
               <div>
-                <h1 className="text-3xl font-bold text-slate-900">
-                  Notifications
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                  {t.common.notifications}
                 </h1>
 
-                <p className="mt-1 text-slate-600">
-                  Clinic appointment notifications
+                <p className="mt-1 text-slate-600 dark:text-slate-300">
+                  {isArabic
+                    ? "إشعارات مواعيد العيادة"
+                    : "Clinic appointment notifications"}
                 </p>
               </div>
 
@@ -244,138 +489,239 @@ const DoctorNotifications = () => {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
             >
               <Check className="h-5 w-5" />
-              Mark All as Read
+
+              {isArabic
+                ? "تحديد الكل كمقروء"
+                : "Mark All as Read"}
             </button>
           )}
 
         </div>
 
+        {/* Error */}
+
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600">
+          <div
+            className={`mb-6 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 text-red-600 dark:text-red-400 ${
+              isArabic ? "text-right" : "text-left"
+            }`}
+          >
             {error}
           </div>
         )}
 
-        {notifications.length === 0 && !error ? (
-          <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
+        {/* No Notifications */}
 
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-              <Bell className="h-8 w-8 text-slate-400" />
+        {notifications.length === 0 && !error ? (
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-12 text-center shadow-sm">
+
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+              <Bell className="h-8 w-8 text-slate-400 dark:text-slate-500" />
             </div>
 
-            <h2 className="mt-5 text-xl font-semibold text-slate-800">
-              No notifications
+            <h2 className="mt-5 text-xl font-semibold text-slate-800 dark:text-white">
+              {isArabic
+                ? "لا توجد إشعارات"
+                : "No notifications"}
             </h2>
 
-            <p className="mt-2 text-slate-500">
-              Your clinic has no notifications yet.
+            <p className="mt-2 text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "لا توجد إشعارات لعيادتك حتى الآن."
+                : "Your clinic has no notifications yet."}
             </p>
 
           </div>
         ) : (
           <div className="space-y-4">
 
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={`rounded-2xl border p-5 shadow-sm ${
-                  notification.is_read
-                    ? "border-slate-200 bg-white"
-                    : "border-teal-200 bg-teal-50/40"
-                }`}
-              >
+            {notifications.map((notification) => {
+              const isAppointmentRequest =
+                Boolean(notification.appointment_id);
 
-                <div className="flex items-start gap-4">
+              const isProcessing =
+                notification.appointment_id
+                  ? Boolean(
+                      processingAppointments[
+                        notification.appointment_id
+                      ]
+                    )
+                  : false;
 
-                  <div
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                      notification.is_read
-                        ? "bg-slate-100"
-                        : "bg-teal-100"
-                    }`}
-                  >
-                    <Bell
-                      className={`h-5 w-5 ${
+              return (
+                <div
+                  key={notification.id}
+                  className={`rounded-2xl border p-5 shadow-sm ${
+                    notification.is_read
+                      ? "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      : "border-teal-200 dark:border-teal-800 bg-teal-50/40 dark:bg-teal-950/30"
+                  }`}
+                >
+
+                  <div className="flex items-start gap-4">
+
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
                         notification.is_read
-                          ? "text-slate-500"
-                          : "text-teal-600"
+                          ? "bg-slate-100 dark:bg-slate-800"
+                          : "bg-teal-100 dark:bg-teal-950/60"
                       }`}
-                    />
-                  </div>
+                    >
+                      <Bell
+                        className={`h-5 w-5 ${
+                          notification.is_read
+                            ? "text-slate-500 dark:text-slate-400"
+                            : "text-teal-600 dark:text-teal-400"
+                        }`}
+                      />
+                    </div>
 
-                  <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1">
 
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 
-                      <div>
-                        <h3 className="font-semibold text-slate-900">
-                          {notification.title}
-                        </h3>
+                        <div>
+                          <h3 className="font-semibold text-slate-900 dark:text-white">
+                            {notification.title}
+                          </h3>
 
-                        <p className="mt-1 text-slate-600">
-                          {notification.message}
-                        </p>
+                          <p className="mt-1 text-slate-600 dark:text-slate-300">
+                            {notification.message}
+                          </p>
+                        </div>
+
+                        {!notification.is_read && (
+                          <span className="w-fit rounded-full bg-teal-600 px-3 py-1 text-xs font-semibold text-white">
+                            {isArabic ? "جديد" : "New"}
+                          </span>
+                        )}
+
                       </div>
 
-                      {!notification.is_read && (
-                        <span className="w-fit rounded-full bg-teal-600 px-3 py-1 text-xs font-semibold text-white">
-                          New
-                        </span>
-                      )}
+                      <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
 
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500">
-
-                      <span className="inline-flex items-center gap-1.5">
-                        <Calendar className="h-4 w-4" />
-                        {formatDate(
-                          notification.created_at
-                        )}
-                      </span>
-
-                      {notification.patient_id && (
                         <span className="inline-flex items-center gap-1.5">
-                          <User className="h-4 w-4" />
-                          Patient request
+                          <Calendar className="h-4 w-4" />
+
+                          {formatDate(
+                            notification.created_at
+                          )}
                         </span>
-                      )}
 
-                    </div>
+                        {notification.patient_id && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <User className="h-4 w-4" />
 
-                    <div className="mt-4 flex flex-wrap gap-3">
+                            {isArabic
+                              ? "طلب من مريض"
+                              : "Patient request"}
+                          </span>
+                        )}
 
-                      {notification.appointment_id && (
-                        <Link
-                          to="/doctor/appointments"
-                          className="inline-flex items-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
-                        >
-                          View Appointment
-                        </Link>
-                      )}
+                      </div>
 
-                      {!notification.is_read && (
-                        <button
-                          onClick={() =>
-                            markAsRead(
-                              notification.id
-                            )
-                          }
-                          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          <Check className="h-4 w-4" />
-                          Mark as Read
-                        </button>
-                      )}
+                      {/* Appointment Actions */}
+
+                      {isAppointmentRequest &&
+                        notification.is_read === false && (
+                          <div className="mt-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
+
+                            <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                              {isArabic
+                                ? "هل تريد قبول طلب الموعد أم رفضه؟"
+                                : "Would you like to accept or reject this appointment request?"}
+                            </p>
+
+                            <div className="flex flex-wrap gap-3">
+
+                              <button
+                                type="button"
+                                disabled={isProcessing}
+                                onClick={() =>
+                                  handleAppointmentAction(
+                                    notification,
+                                    "confirm"
+                                  )
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Check className="h-4 w-4" />
+
+                                {isProcessing
+                                  ? isArabic
+                                    ? "جاري المعالجة..."
+                                    : "Processing..."
+                                  : isArabic
+                                    ? "قبول الموعد"
+                                    : "Accept Appointment"}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isProcessing}
+                                onClick={() =>
+                                  handleAppointmentAction(
+                                    notification,
+                                    "reject"
+                                  )
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <X className="h-4 w-4" />
+
+                                {isProcessing
+                                  ? isArabic
+                                    ? "جاري المعالجة..."
+                                    : "Processing..."
+                                  : isArabic
+                                    ? "رفض الموعد"
+                                    : "Reject Appointment"}
+                              </button>
+
+                            </div>
+
+                          </div>
+                        )}
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+
+                        {notification.appointment_id && (
+                          <Link
+                            to="/doctor/appointments"
+                            className="inline-flex items-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+                          >
+                            {isArabic
+                              ? "عرض الموعد"
+                              : "View Appointment"}
+                          </Link>
+                        )}
+
+                        {!notification.is_read && !isAppointmentRequest && (
+                          <button
+                            onClick={() =>
+                              markAsRead(
+                                notification.id
+                              )
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                          >
+                            <Check className="h-4 w-4" />
+
+                            {isArabic
+                              ? "تحديد كمقروء"
+                              : "Mark as Read"}
+                          </button>
+                        )}
+
+                      </div>
 
                     </div>
 
                   </div>
 
                 </div>
-
-              </div>
-            ))}
+              );
+            })}
 
           </div>
         )}

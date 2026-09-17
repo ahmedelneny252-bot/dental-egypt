@@ -1,110 +1,265 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   MapPin,
   Star,
   Phone,
   MessageCircle,
-  Facebook,
   ArrowUpRight,
   Heart,
 } from "lucide-react";
+import { translations, type Language } from "../i18n";
+import type { Clinic as LocalClinic } from "../data/clinics";
 
-const ClinicCard = ({ clinic }: { clinic: any }) => {
-  const whatsappUrl = `https://wa.me/${clinic.whatsapp}`;
-  const phoneUrl = `tel:${clinic.phone}`;
+type SupabaseClinic = {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  address: string | null;
+  description: string | null;
+  slug: string | null;
+};
+
+type ClinicCardProps = {
+  clinic: LocalClinic | SupabaseClinic;
+};
+
+const ClinicCard = ({ clinic }: ClinicCardProps) => {
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem(
+      "dentalcare-language"
+    );
+
+    return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const isArabic = language === "ar";
+  const t = translations[language];
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage = localStorage.getItem(
+        "dentalcare-language"
+      );
+
+      setLanguage(savedLanguage === "en" ? "en" : "ar");
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener("storage", handleLanguageChange);
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener("storage", handleLanguageChange);
+    };
+  }, []);
+
+  const isLocalClinic = "image" in clinic;
+
+  const image = isLocalClinic
+    ? clinic.image
+    : clinic.logo_url;
+
+  const phone = clinic.phone;
+
+  const whatsapp = clinic.whatsapp;
+
+  const address = clinic.address;
+
+  const description = clinic.description;
+
+  const clinicId = clinic.id;
+
+  const rating = isLocalClinic
+    ? clinic.rating
+    : null;
+
+  const reviewCount = isLocalClinic
+    ? clinic.reviewCount
+    : null;
+
+  const doctorName = isLocalClinic
+    ? clinic.doctorName
+    : null;
+
+  const whatsappNumber = whatsapp
+    ? whatsapp.replace(/\D/g, "")
+    : "";
+
+  const whatsappUrl = whatsappNumber
+    ? `https://wa.me/${whatsappNumber}`
+    : "";
+
+  const phoneUrl = phone
+    ? `tel:${phone}`
+    : "";
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden shadow-lg shadow-slate-200/60 border border-slate-100 hover:shadow-2xl hover:shadow-teal-500/10 hover:-translate-y-1.5 transition-all duration-300 flex flex-col">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900"
+    >
       {/* Image */}
       <div className="relative h-48 overflow-hidden">
-        <img
-          src={clinic.image}
-          alt={clinic.name}
-          className="w-full h-full object-cover transition-transform duration-700 hover:scale-110"
-        />
+        {image ? (
+          <img
+            src={image}
+            alt={clinic.name}
+            className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-teal-400 to-teal-700">
+            <span className="text-5xl font-bold text-white">
+              {clinic.name?.charAt(0) || "D"}
+            </span>
+          </div>
+        )}
+
         <div className="absolute inset-0 bg-gradient-to-t from-teal-950/60 via-teal-950/10 to-transparent" />
-        <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1.5 flex items-center gap-1.5 text-teal-700 text-sm font-semibold shadow-md">
-          <Star className="w-4 h-4 fill-teal-500 text-teal-500" />
-          {clinic.rating.toFixed(1)}
-        </div>
-        <div className="absolute bottom-4 left-4 bg-teal-500/90 backdrop-blur-sm rounded-full px-3 py-1.5 text-white text-sm font-semibold">
-          {clinic.governorate} · {clinic.city}
-        </div>
+
+        {/* Rating */}
+        {rating !== null ? (
+          <div
+            className={`absolute top-4 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-sm font-semibold text-teal-700 shadow-md ${
+              isArabic ? "right-4" : "left-4"
+            }`}
+          >
+            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+
+            <span>{rating.toFixed(1)}</span>
+          </div>
+        ) : null}
+
+        {/* Address */}
+        {address && (
+          <div
+            className={`absolute bottom-4 max-w-[80%] truncate rounded-full bg-teal-500/90 px-3 py-1.5 text-sm font-semibold text-white ${
+              isArabic ? "right-4" : "left-4"
+            }`}
+          >
+            {address}
+          </div>
+        )}
       </div>
 
       {/* Content */}
-      <div className="p-5 flex flex-col flex-1">
-        <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex flex-1 flex-col p-5">
+        <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-slate-800 leading-snug mb-1">
+            <h3 className="mb-1 text-lg font-bold text-slate-800 dark:text-white">
               {clinic.name}
             </h3>
-            <p className="text-sm text-teal-600 font-medium mb-1">
-              {clinic.doctorName}
+
+            <p className="text-sm font-medium text-teal-600 dark:text-teal-400">
+              {t.common.dentalClinic}
             </p>
           </div>
-          <Heart className="w-5 h-5 text-slate-300 hover:text-red-500 hover:fill-red-500 transition-all duration-200 cursor-pointer" />
+
+          <Heart className="h-5 w-5 shrink-0 text-slate-300 dark:text-slate-600" />
         </div>
 
-        <div className="flex items-center gap-1.5 text-sm text-slate-500 mb-2">
-          <MapPin className="w-4 h-4 text-teal-500 flex-shrink-0" />
-          <span className="truncate">{clinic.address}</span>
-        </div>
+        {/* Doctor */}
+        {doctorName && (
+          <p className="mb-3 text-sm font-medium text-slate-600 dark:text-slate-300">
+            {doctorName}
+          </p>
+        )}
 
-        <div className="flex items-center gap-1.5 text-sm text-slate-500 mb-3">
-          <span className="text-amber-400 font-bold">
-            <Star className="w-4 h-4 fill-amber-400" />
-          </span>
-          <span className="font-semibold text-slate-700">{clinic.rating.toFixed(1)}</span>
-          <span className="text-slate-400">({clinic.reviewCount} تقييم)</span>
-        </div>
+        {/* Address */}
+        {address && (
+          <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <MapPin className="h-4 w-4 flex-shrink-0 text-teal-500" />
 
-        {/* Services */}
-        <div className="mb-4">
-          <p className="text-xs font-medium text-slate-400 mb-2">الخدمات المتاحة</p>
-          <div className="flex flex-wrap gap-1.5">
-            {clinic.services.slice(0, 3).map((service: string) => (
-              <span
-                key={service}
-                className="text-xs px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 font-medium border border-teal-100"
-              >
-                {service}
-              </span>
-            ))}
-            {clinic.services.length > 3 && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium">
-                +{clinic.services.length - 3}
-              </span>
-            )}
+            <span className="truncate">
+              {address}
+            </span>
           </div>
+        )}
+
+        {/* Rating */}
+        {rating !== null && reviewCount !== null && (
+          <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              {rating.toFixed(1)}
+            </span>
+
+            <span>
+              ({reviewCount}{" "}
+              {isArabic ? "تقييم" : "reviews"})
+            </span>
+          </div>
+        )}
+
+        {/* Description */}
+        <div className="mb-4">
+          <p className="mb-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+            {t.clinic.aboutClinic}
+          </p>
+
+          <p className="line-clamp-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            {description ||
+              (isArabic
+                ? "يمكنك معرفة المزيد عن العيادة والتواصل معها من خلال صفحة العيادة."
+                : "You can learn more about this clinic and contact it through the clinic page.")}
+          </p>
         </div>
 
-        {/* ID */}
-        <p className="text-xs text-slate-400 mb-4">رقم العيادة: #{clinic.id}</p>
+        {/* Actions */}
+        <div className="mt-auto grid grid-cols-3 gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+          {/* Phone */}
+          {phone ? (
+            <a
+              href={phoneUrl}
+              className="flex items-center justify-center rounded-lg bg-slate-100 py-2.5 text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              title={t.common.phone}
+              aria-label={t.common.phone}
+            >
+              <Phone className="h-4 w-4" />
+            </a>
+          ) : (
+            <div className="flex items-center justify-center rounded-lg bg-slate-100 py-2.5 text-slate-300 dark:bg-slate-800 dark:text-slate-600">
+              <Phone className="h-4 w-4" />
+            </div>
+          )}
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-3 gap-2 mt-auto pt-4 border-t border-slate-100">
-          <a
-            href={phoneUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors text-sm font-semibold"
-          >
-            <Phone className="w-4 h-4" />
-          </a>
-          <a
-            href={whatsappUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors text-sm font-semibold"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </a>
+          {/* WhatsApp */}
+          {whatsappNumber ? (
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center rounded-lg bg-green-500 py-2.5 text-white transition-colors hover:bg-green-600"
+              title={t.common.whatsapp}
+              aria-label={t.common.whatsapp}
+            >
+              <MessageCircle className="h-4 w-4" />
+            </a>
+          ) : (
+            <div className="flex items-center justify-center rounded-lg bg-slate-100 py-2.5 text-slate-300 dark:bg-slate-800 dark:text-slate-600">
+              <MessageCircle className="h-4 w-4" />
+            </div>
+          )}
+
+          {/* Details */}
           <Link
-            to={`/clinics/${clinic.id}`}
-            className="flex items-center justify-center gap-1.5 py-2.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors text-sm font-semibold"
+            to={`/clinics/${clinicId}`}
+            className="relative z-10 flex items-center justify-center gap-1.5 rounded-lg bg-teal-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-teal-600"
           >
-            <ArrowUpRight className="w-4 h-4" />
+            <ArrowUpRight className="h-4 w-4" />
+
+            <span>{t.common.details}</span>
           </Link>
         </div>
       </div>

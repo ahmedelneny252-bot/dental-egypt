@@ -1,28 +1,38 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
+import { translations, type Language } from "./i18n";
 
 type Patient = {
   id: string;
   name: string;
 };
 
+type MedicalRecord = {
+  id: string;
+  patient_id: string;
+  treatment_date: string;
+  tooth_number: string | null;
+  diagnosis: string | null;
+  treatment_type: string | null;
+  cost: number | null;
+};
+
 type Payment = {
   id: string;
   patient_id: string;
+  medical_record_id: string | null;
   amount: number;
   payment_method: string;
   payment_date: string;
+  description: string | null;
   notes: string | null;
   created_at: string;
-  patient: {
-    name: string;
-  } | null;
 };
 
 const Payments = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
 
   const [clinicId, setClinicId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -30,13 +40,66 @@ const Payments = () => {
   const [showForm, setShowForm] = useState(false);
 
   const [patientId, setPatientId] = useState("");
+  const [medicalRecordId, setMedicalRecordId] = useState("");
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [paymentDate, setPaymentDate] = useState("");
+  const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // =========================
+  // Language
+  // =========================
+
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage =
+      localStorage.getItem("dentalcare-language");
+
+    return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const isArabic = language === "ar";
+  const t = translations[language];
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage =
+        localStorage.getItem("dentalcare-language");
+
+      setLanguage(
+        savedLanguage === "en" ? "en" : "ar"
+      );
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener(
+      "storage",
+      handleLanguageChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
+    };
+  }, []);
+
+  // =========================
+  // Get Clinic
+  // =========================
 
   const getClinic = async () => {
     setLoading(true);
@@ -51,7 +114,10 @@ const Payments = () => {
       return;
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
       .from("profiles")
       .select("clinic_id")
       .eq("id", user.id)
@@ -59,13 +125,24 @@ const Payments = () => {
 
     if (profileError) {
       console.error(profileError);
-      setError("Could not load clinic information.");
+
+      setError(
+        isArabic
+          ? "تعذر تحميل معلومات العيادة."
+          : "Could not load clinic information."
+      );
+
       setLoading(false);
       return;
     }
 
     if (!profile?.clinic_id) {
-      setError("No clinic is connected to this doctor.");
+      setError(
+        isArabic
+          ? "لا توجد عيادة مرتبطة بهذا الطبيب."
+          : "No clinic is connected to this doctor."
+      );
+
       setLoading(false);
       return;
     }
@@ -74,13 +151,20 @@ const Payments = () => {
 
     await Promise.all([
       loadPatients(profile.clinic_id),
+      loadMedicalRecords(profile.clinic_id),
       loadPayments(profile.clinic_id),
     ]);
 
     setLoading(false);
   };
 
-  const loadPatients = async (clinicIdValue: string) => {
+  // =========================
+  // Load Patients
+  // =========================
+
+  const loadPatients = async (
+    clinicIdValue: string
+  ) => {
     const { data, error } = await supabase
       .from("patients")
       .select("id, name")
@@ -96,23 +180,22 @@ const Payments = () => {
     setPatients(data || []);
   };
 
-  const loadPayments = async (clinicIdValue: string) => {
+  // =========================
+  // Load Medical Records
+  // =========================
+
+  const loadMedicalRecords = async (
+    clinicIdValue: string
+  ) => {
     const { data, error } = await supabase
-      .from("payments")
-      .select(`
-        id,
-        patient_id,
-        amount,
-        payment_method,
-        payment_date,
-        notes,
-        created_at,
-        patient:patients (
-          name
-        )
-      `)
+      .from("medical_records")
+      .select(
+        "id, patient_id, treatment_date, tooth_number, diagnosis, treatment_type, cost"
+      )
       .eq("clinic_id", clinicIdValue)
-      .order("created_at", { ascending: false });
+      .order("treatment_date", {
+        ascending: false,
+      });
 
     if (error) {
       console.error(error);
@@ -120,18 +203,57 @@ const Payments = () => {
       return;
     }
 
-    const formattedPayments: Payment[] = (data || []).map((payment) => ({
-      id: payment.id,
-      patient_id: payment.patient_id,
-      amount: Number(payment.amount),
-      payment_method: payment.payment_method,
-      payment_date: payment.payment_date,
-      notes: payment.notes,
-      created_at: payment.created_at,
-      patient: Array.isArray(payment.patient)
-        ? payment.patient[0] || null
-        : payment.patient || null,
-    }));
+    const formattedRecords: MedicalRecord[] =
+      (data || []).map((record) => ({
+        id: record.id,
+        patient_id: record.patient_id,
+        treatment_date: record.treatment_date,
+        tooth_number: record.tooth_number,
+        diagnosis: record.diagnosis,
+        treatment_type: record.treatment_type,
+        cost: Number(record.cost || 0),
+      }));
+
+    setMedicalRecords(formattedRecords);
+  };
+
+  // =========================
+  // Load Payments
+  // =========================
+
+  const loadPayments = async (
+    clinicIdValue: string
+  ) => {
+    const { data, error } = await supabase
+      .from("payments")
+      .select(
+        "id, patient_id, medical_record_id, amount, payment_method, payment_date, description, notes, created_at"
+      )
+      .eq("clinic_id", clinicIdValue)
+      .order("created_at", {
+        ascending: false,
+      });
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
+
+    const formattedPayments: Payment[] =
+      (data || []).map((payment) => ({
+        id: payment.id,
+        patient_id: payment.patient_id,
+        medical_record_id:
+          payment.medical_record_id,
+        amount: Number(payment.amount || 0),
+        payment_method:
+          payment.payment_method || "Cash",
+        payment_date: payment.payment_date,
+        description: payment.description,
+        notes: payment.notes,
+        created_at: payment.created_at,
+      }));
 
     setPayments(formattedPayments);
   };
@@ -140,84 +262,316 @@ const Payments = () => {
     getClinic();
   }, []);
 
-  const handleAddPayment = async (e: React.FormEvent) => {
+  // =========================
+  // Helpers
+  // =========================
+
+  const getPatientName = (
+    patientIdValue: string
+  ) => {
+    const patient = patients.find(
+      (item) => item.id === patientIdValue
+    );
+
+    return patient?.name || "-";
+  };
+
+  const getRecord = (
+    recordId: string | null
+  ) => {
+    if (!recordId) return null;
+
+    return (
+      medicalRecords.find(
+        (record) => record.id === recordId
+      ) || null
+    );
+  };
+
+  const getRecordPaidAmount = (
+    recordId: string
+  ) => {
+    return payments
+      .filter(
+        (payment) =>
+          payment.medical_record_id ===
+          recordId
+      )
+      .reduce(
+        (total, payment) =>
+          total + Number(payment.amount || 0),
+        0
+      );
+  };
+
+  const getRecordRemainingAmount = (
+    record: MedicalRecord
+  ) => {
+    const costValue = Number(
+      record.cost || 0
+    );
+
+    const paidValue =
+      getRecordPaidAmount(record.id);
+
+    return Math.max(
+      costValue - paidValue,
+      0
+    );
+  };
+
+  const selectedPatientRecords = useMemo(() => {
+    if (!patientId) return [];
+
+    return medicalRecords.filter(
+      (record) =>
+        record.patient_id === patientId
+    );
+  }, [medicalRecords, patientId]);
+
+  const selectedRecord = medicalRecords.find(
+    (record) =>
+      record.id === medicalRecordId
+  );
+
+  const resetForm = () => {
+    setPatientId("");
+    setMedicalRecordId("");
+    setAmount("");
+    setPaymentMethod("Cash");
+    setPaymentDate("");
+    setDescription("");
+    setNotes("");
+  };
+
+  const handlePatientChange = (
+    value: string
+  ) => {
+    setPatientId(value);
+    setMedicalRecordId("");
+    setAmount("");
+    setError("");
+  };
+
+  // =========================
+  // Add Payment
+  // =========================
+
+  const handleAddPayment = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
 
     setError("");
     setSuccess("");
 
     if (!clinicId) {
-      setError("Clinic not found.");
+      setError(
+        isArabic
+          ? "لم يتم العثور على العيادة."
+          : "Clinic not found."
+      );
       return;
     }
 
     if (!patientId) {
-      setError("Please select a patient.");
+      setError(
+        isArabic
+          ? "يرجى اختيار مريض."
+          : "Please select a patient."
+      );
       return;
     }
 
-    if (!amount || Number(amount) <= 0) {
-      setError("Please enter a valid amount.");
+    if (!medicalRecordId) {
+      setError(
+        isArabic
+          ? "يرجى اختيار علاج."
+          : "Please select a treatment."
+      );
       return;
     }
 
-    const { error } = await supabase.from("payments").insert({
-      clinic_id: clinicId,
-      patient_id: patientId,
-      amount: Number(amount),
-      payment_method: paymentMethod,
-      payment_date:
-        paymentDate || new Date().toISOString().split("T")[0],
-      notes: notes || null,
-    });
-
-    if (error) {
-      console.error(error);
-      setError(error.message);
+    if (!selectedRecord) {
+      setError(
+        isArabic
+          ? "لم يتم العثور على سجل العلاج."
+          : "Treatment record not found."
+      );
       return;
     }
 
-    setSuccess("Payment added successfully.");
+    const amountValue = Number(amount);
 
-    setPatientId("");
-    setAmount("");
-    setPaymentMethod("Cash");
-    setPaymentDate("");
-    setNotes("");
+    const remainingValue =
+      getRecordRemainingAmount(
+        selectedRecord
+      );
 
+    if (!amount || amountValue <= 0) {
+      setError(
+        isArabic
+          ? "يرجى إدخال مبلغ صحيح."
+          : "Please enter a valid amount."
+      );
+      return;
+    }
+
+    if (remainingValue <= 0) {
+      setError(
+        isArabic
+          ? "تم دفع تكلفة هذا العلاج بالكامل بالفعل."
+          : "This treatment has already been fully paid."
+      );
+      return;
+    }
+
+    if (amountValue > remainingValue) {
+      setError(
+        isArabic
+          ? `لا يمكن أن يكون الدفع أكبر من المبلغ المتبقي (${remainingValue.toFixed(
+              2
+            )}).`
+          : `Payment cannot be greater than the remaining amount (${remainingValue.toFixed(
+              2
+            )}).`
+      );
+      return;
+    }
+
+    const { error: insertError } =
+      await supabase
+        .from("payments")
+        .insert({
+          clinic_id: clinicId,
+          patient_id: patientId,
+          medical_record_id:
+            medicalRecordId,
+          amount: amountValue,
+          payment_method:
+            paymentMethod,
+          payment_date:
+            paymentDate ||
+            new Date()
+              .toISOString()
+              .split("T")[0],
+          description:
+            description || null,
+          notes: notes || null,
+        });
+
+    if (insertError) {
+      console.error(insertError);
+
+      setError(insertError.message);
+      return;
+    }
+
+    setSuccess(
+      isArabic
+        ? "تمت إضافة الدفع بنجاح."
+        : "Payment added successfully."
+    );
+
+    resetForm();
     setShowForm(false);
 
     await loadPayments(clinicId);
   };
 
+  // =========================
+  // Statistics
+  // =========================
+
   const totalPayments = payments.reduce(
-    (total, payment) => total + Number(payment.amount || 0),
+    (total, payment) =>
+      total + Number(payment.amount || 0),
     0
   );
 
+  const totalTreatmentCost =
+    medicalRecords.reduce(
+      (total, record) =>
+        total + Number(record.cost || 0),
+      0
+    );
+
+  const totalRemaining = Math.max(
+    totalTreatmentCost - totalPayments,
+    0
+  );
+
+  const cashTotal = payments
+    .filter(
+      (payment) =>
+        payment.payment_method === "Cash"
+    )
+    .reduce(
+      (total, payment) =>
+        total + Number(payment.amount || 0),
+      0
+    );
+
+  const cardTotal = payments
+    .filter(
+      (payment) =>
+        payment.payment_method === "Card"
+    )
+    .reduce(
+      (total, payment) =>
+        total + Number(payment.amount || 0),
+      0
+    );
+
+  const vodafoneCashTotal = payments
+    .filter(
+      (payment) =>
+        payment.payment_method ===
+        "Vodafone Cash"
+    )
+    .reduce(
+      (total, payment) =>
+        total + Number(payment.amount || 0),
+      0
+    );
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-600">
-          Loading payments...
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center"
+      >
+        <p className="text-slate-600 dark:text-slate-300">
+          {isArabic
+            ? "جاري تحميل المدفوعات..."
+            : "Loading payments..."}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pt-32 pb-12 px-6">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-32 pb-12 px-6"
+    >
       <div className="mx-auto max-w-7xl">
 
         {/* Header */}
+
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              Payments
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+              {isArabic
+                ? "المدفوعات"
+                : "Payments"}
             </h1>
 
-            <p className="mt-2 text-slate-600">
-              Manage patient payments and clinic revenue.
+            <p className="mt-2 text-slate-600 dark:text-slate-300">
+              {isArabic
+                ? "إدارة مدفوعات المرضى وإيرادات العيادة."
+                : "Manage patient payments and clinic revenue."}
             </p>
           </div>
 
@@ -226,67 +580,113 @@ const Payments = () => {
               setShowForm(!showForm);
               setError("");
               setSuccess("");
+
+              if (showForm) {
+                resetForm();
+              }
             }}
             className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
           >
-            {showForm ? "Cancel" : "+ Add Payment"}
+            {showForm
+              ? isArabic
+                ? "إلغاء"
+                : "Cancel"
+              : isArabic
+              ? "+ إضافة دفعة"
+              : "+ Add Payment"}
           </button>
+
         </div>
 
         {/* Messages */}
+
         {error && (
-          <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-600">
+          <div className="mb-5 rounded-xl bg-red-50 dark:bg-red-950/30 p-4 text-red-600 dark:text-red-400">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-5 rounded-xl bg-green-50 p-4 text-green-600">
+          <div className="mb-5 rounded-xl bg-green-50 dark:bg-green-950/30 p-4 text-green-600 dark:text-green-400">
             {success}
           </div>
         )}
 
         {/* Statistics */}
-        <div className="mb-8 grid gap-5 md:grid-cols-3">
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">
-              Total Payments
+        <div className="mb-8 grid gap-5 md:grid-cols-2 lg:grid-cols-5">
+
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "قيمة العلاجات"
+                : "Treatment Value"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold text-teal-600">
+            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+              {totalTreatmentCost.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "إجمالي المدفوع"
+                : "Total Paid"}
+            </p>
+
+            <p className="mt-2 text-2xl font-bold text-green-600">
               {totalPayments.toFixed(2)}
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">
-              Payment Records
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "إجمالي المتبقي"
+                : "Total Remaining"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold text-slate-900">
-              {payments.length}
+            <p className="mt-2 text-2xl font-bold text-orange-600">
+              {totalRemaining.toFixed(2)}
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">
-              Patients
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "نقدي"
+                : "Cash"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold text-slate-900">
-              {patients.length}
+            <p className="mt-2 text-2xl font-bold text-green-600">
+              {cashTotal.toFixed(2)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "بطاقة"
+                : "Card"}
+            </p>
+
+            <p className="mt-2 text-2xl font-bold text-blue-600">
+              {cardTotal.toFixed(2)}
             </p>
           </div>
 
         </div>
 
         {/* Add Payment Form */}
-        {showForm && (
-          <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
 
-            <h2 className="mb-6 text-2xl font-semibold text-slate-900">
-              Add New Payment
+        {showForm && (
+          <div className="mb-8 rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+
+            <h2 className="mb-6 text-2xl font-semibold text-slate-900 dark:text-white">
+              {isArabic
+                ? "إضافة دفعة جديدة"
+                : "Add New Payment"}
             </h2>
 
             <form
@@ -294,180 +694,498 @@ const Payments = () => {
               className="grid gap-4 md:grid-cols-2"
             >
 
-              <select
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                required
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
-              >
-                <option value="">
-                  Select Patient
-                </option>
+              {/* Patient */}
 
-                {patients.map((patient) => (
-                  <option
-                    key={patient.id}
-                    value={patient.id}
-                  >
-                    {patient.name}
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic
+                    ? "المريض"
+                    : "Patient"}
+                </label>
+
+                <select
+                  value={patientId}
+                  onChange={(e) =>
+                    handlePatientChange(
+                      e.target.value
+                    )
+                  }
+                  required
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500"
+                >
+                  <option value="">
+                    {isArabic
+                      ? "اختر المريض"
+                      : "Select Patient"}
                   </option>
-                ))}
-              </select>
 
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Amount"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-                className="rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-teal-500"
-              />
+                  {patients.map(
+                    (patient) => (
+                      <option
+                        key={patient.id}
+                        value={patient.id}
+                      >
+                        {patient.name}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
 
-              <select
-                value={paymentMethod}
-                onChange={(e) =>
-                  setPaymentMethod(e.target.value)
-                }
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
-              >
-                <option value="Cash">
-                  Cash
-                </option>
+              {/* Treatment */}
 
-                <option value="Card">
-                  Card
-                </option>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic
+                    ? "العلاج"
+                    : "Treatment"}
+                </label>
 
-                <option value="Vodafone Cash">
-                  Vodafone Cash
-                </option>
+                <select
+                  value={medicalRecordId}
+                  onChange={(e) => {
+                    setMedicalRecordId(
+                      e.target.value
+                    );
+                    setAmount("");
+                    setError("");
+                  }}
+                  disabled={!patientId}
+                  required
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500 disabled:bg-slate-100 dark:disabled:bg-slate-700"
+                >
+                  <option value="">
+                    {patientId
+                      ? isArabic
+                        ? "اختر العلاج"
+                        : "Select Treatment"
+                      : isArabic
+                      ? "اختر المريض أولاً"
+                      : "Select Patient First"}
+                  </option>
 
-                <option value="Instapay">
-                  Instapay
-                </option>
+                  {selectedPatientRecords.map(
+                    (record) => {
+                      const remaining =
+                        getRecordRemainingAmount(
+                          record
+                        );
 
-                <option value="Other">
-                  Other
-                </option>
-              </select>
+                      return (
+                        <option
+                          key={record.id}
+                          value={record.id}
+                        >
+                          {record.treatment_type ||
+                            (isArabic
+                              ? "علاج"
+                              : "Treatment")}{" "}
+                          {record.tooth_number
+                            ? isArabic
+                              ? `- السن ${record.tooth_number}`
+                              : `- Tooth ${record.tooth_number}`
+                            : ""}{" "}
+                          -{" "}
+                          {isArabic
+                            ? "المتبقي:"
+                            : "Remaining:"}{" "}
+                          {remaining.toFixed(2)}
+                        </option>
+                      );
+                    }
+                  )}
+                </select>
+              </div>
 
-              <input
-                type="date"
-                value={paymentDate}
-                onChange={(e) =>
-                  setPaymentDate(e.target.value)
-                }
-                className="rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-teal-500"
-              />
+              {/* Treatment Summary */}
+
+              {selectedRecord && (
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-4 md:col-span-2">
+
+                  <div className="grid gap-4 md:grid-cols-3">
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {isArabic
+                          ? "تكلفة العلاج"
+                          : "Treatment Cost"}
+                      </p>
+
+                      <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                        {Number(
+                          selectedRecord.cost ||
+                            0
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {isArabic
+                          ? "المدفوع بالفعل"
+                          : "Already Paid"}
+                      </p>
+
+                      <p className="mt-1 text-lg font-bold text-green-600">
+                        {getRecordPaidAmount(
+                          selectedRecord.id
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {isArabic
+                          ? "المتبقي"
+                          : "Remaining"}
+                      </p>
+
+                      <p className="mt-1 text-lg font-bold text-orange-600">
+                        {getRecordRemainingAmount(
+                          selectedRecord
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* Amount */}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic
+                    ? "مبلغ الدفع"
+                    : "Payment Amount"}
+                </label>
+
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  max={
+                    selectedRecord
+                      ? getRecordRemainingAmount(
+                          selectedRecord
+                        )
+                      : undefined
+                  }
+                  placeholder={
+                    isArabic
+                      ? "المبلغ"
+                      : "Amount"
+                  }
+                  value={amount}
+                  onChange={(e) =>
+                    setAmount(
+                      e.target.value
+                    )
+                  }
+                  required
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 px-4 py-3 outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Method */}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic
+                    ? "طريقة الدفع"
+                    : "Payment Method"}
+                </label>
+
+                <select
+                  value={paymentMethod}
+                  onChange={(e) =>
+                    setPaymentMethod(
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500"
+                >
+                  <option value="Cash">
+                    {isArabic
+                      ? "نقدي"
+                      : "Cash"}
+                  </option>
+
+                  <option value="Card">
+                    {isArabic
+                      ? "بطاقة"
+                      : "Card"}
+                  </option>
+
+                  <option value="Vodafone Cash">
+                    Vodafone Cash
+                  </option>
+
+                  <option value="Instapay">
+                    Instapay
+                  </option>
+
+                  <option value="Other">
+                    {isArabic
+                      ? "أخرى"
+                      : "Other"}
+                  </option>
+                </select>
+              </div>
+
+              {/* Date */}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic
+                    ? "تاريخ الدفع"
+                    : "Payment Date"}
+                </label>
+
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) =>
+                    setPaymentDate(
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Description */}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic
+                    ? "الوصف"
+                    : "Description"}
+                </label>
+
+                <input
+                  type="text"
+                  placeholder={
+                    isArabic
+                      ? "مثال: القسط الأول"
+                      : "Example: First installment"
+                  }
+                  value={description}
+                  onChange={(e) =>
+                    setDescription(
+                      e.target.value
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 px-4 py-3 outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Notes */}
 
               <textarea
-                placeholder="Notes"
+                placeholder={
+                  isArabic
+                    ? "ملاحظات الدفع"
+                    : "Payment Notes"
+                }
                 value={notes}
                 onChange={(e) =>
                   setNotes(e.target.value)
                 }
-                className="min-h-28 rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-teal-500 md:col-span-2"
+                className="min-h-28 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 px-4 py-3 outline-none focus:border-teal-500 md:col-span-2"
               />
 
               <button
                 type="submit"
                 className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 md:col-span-2"
               >
-                Add Payment
+                {isArabic
+                  ? "إضافة الدفعة"
+                  : "Add Payment"}
               </button>
 
             </form>
           </div>
         )}
 
-        {/* Payments List */}
-        <div className="rounded-2xl bg-white shadow-sm">
+        {/* Payment History */}
 
-          <div className="border-b border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Payment History
+        <div className="rounded-2xl bg-white dark:bg-slate-900 shadow-sm">
+
+          <div className="border-b border-slate-200 dark:border-slate-700 p-6">
+
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {isArabic
+                ? "سجل المدفوعات"
+                : "Payment History"}
             </h2>
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "جميع المدفوعات التي استلمتها العيادة."
+                : "All payments received by the clinic."}
+            </p>
+
           </div>
 
           {payments.length === 0 ? (
+
             <div className="p-10 text-center">
 
-              <p className="text-slate-500">
-                No payments yet.
+              <p className="text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "لا توجد مدفوعات حتى الآن."
+                  : "No payments yet."}
               </p>
 
-              <p className="mt-2 text-sm text-slate-400">
-                Click "Add Payment" to record the first payment.
+              <p className="mt-2 text-sm text-slate-400 dark:text-slate-500">
+                {isArabic
+                  ? 'اضغط على "إضافة دفعة" لتسجيل أول دفعة.'
+                  : 'Click "Add Payment" to record the first payment.'}
               </p>
 
             </div>
+
           ) : (
+
             <div className="overflow-x-auto">
 
-              <table className="w-full">
+              <table className="w-full min-w-[1100px]">
 
-                <thead className="bg-slate-50">
+                <thead className="bg-slate-50 dark:bg-slate-800">
+
                   <tr>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Patient
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "المريض"
+                        : "Patient"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Amount
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "العلاج"
+                        : "Treatment"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Method
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "المبلغ"
+                        : "Amount"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Date
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "طريقة الدفع"
+                        : "Method"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Notes
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "التاريخ"
+                        : "Date"}
+                    </th>
+
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الوصف"
+                        : "Description"}
+                    </th>
+
+                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الملاحظات"
+                        : "Notes"}
                     </th>
 
                   </tr>
+
                 </thead>
 
                 <tbody>
-                  {payments.map((payment) => (
-                    <tr
-                      key={payment.id}
-                      className="border-t border-slate-100"
-                    >
 
-                      <td className="px-6 py-4 font-medium text-slate-900">
-                        {payment.patient?.name || "-"}
-                      </td>
+                  {payments.map(
+                    (payment) => {
+                      const record =
+                        getRecord(
+                          payment.medical_record_id
+                        );
 
-                      <td className="px-6 py-4 font-semibold text-teal-600">
-                        {Number(payment.amount).toFixed(2)}
-                      </td>
+                      return (
+                        <tr
+                          key={payment.id}
+                          className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                        >
 
-                      <td className="px-6 py-4 text-slate-600">
-                        {payment.payment_method || "-"}
-                      </td>
+                          <td className="px-5 py-4 font-medium text-slate-900 dark:text-white">
+                            {getPatientName(
+                              payment.patient_id
+                            )}
+                          </td>
 
-                      <td className="px-6 py-4 text-slate-600">
-                        {payment.payment_date || "-"}
-                      </td>
+                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                            {record?.treatment_type ||
+                              "-"}
+                            {record?.tooth_number
+                              ? isArabic
+                                ? ` - السن ${record.tooth_number}`
+                                : ` - Tooth ${record.tooth_number}`
+                              : ""}
+                          </td>
 
-                      <td className="px-6 py-4 text-slate-600">
-                        {payment.notes || "-"}
-                      </td>
+                          <td className="px-5 py-4 font-semibold text-green-600">
+                            {payment.amount.toFixed(
+                              2
+                            )}
+                          </td>
 
-                    </tr>
-                  ))}
+                          <td className="px-5 py-4 text-slate-600 dark:text-slate-300">
+                            {payment.payment_method ===
+                            "Cash"
+                              ? isArabic
+                                ? "نقدي"
+                                : "Cash"
+                              : payment.payment_method ===
+                                "Card"
+                              ? isArabic
+                                ? "بطاقة"
+                                : "Card"
+                              : payment.payment_method ===
+                                "Other"
+                              ? isArabic
+                                ? "أخرى"
+                                : "Other"
+                              : payment.payment_method ||
+                                "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-slate-600 dark:text-slate-300">
+                            {payment.payment_date ||
+                              "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-slate-600 dark:text-slate-300">
+                            {payment.description ||
+                              "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-slate-600 dark:text-slate-300">
+                            {payment.notes ||
+                              "-"}
+                          </td>
+
+                        </tr>
+                      );
+                    }
+                  )}
+
                 </tbody>
 
               </table>
 
             </div>
+
           )}
 
         </div>
@@ -478,5 +1196,4 @@ const Payments = () => {
 };
 
 export default Payments;
-
 

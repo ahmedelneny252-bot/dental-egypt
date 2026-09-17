@@ -1,4 +1,3 @@
-
 import {
   BrowserRouter as Router,
   Routes,
@@ -22,6 +21,7 @@ import PublicServices from "./pages/Services";
 import DoctorDashboard from "./DoctorDashboard";
 import DoctorRegister from "./DoctorRegister";
 import DoctorLogin from "./DoctorLogin";
+import Subscription from "./Subscription";
 
 import Patients from "./Patients";
 import PatientDetails from "./PatientDetails";
@@ -51,7 +51,7 @@ function App() {
         <main className="flex-1">
           <Routes>
 
-            {/* Public Routes */}
+            {/* ==================== PUBLIC ROUTES ==================== */}
 
             <Route
               path="/"
@@ -88,7 +88,7 @@ function App() {
               element={<PublicServices />}
             />
 
-            {/* Doctor Routes */}
+            {/* ==================== DOCTOR ROUTES ==================== */}
 
             <Route
               path="/doctor/register"
@@ -114,8 +114,6 @@ function App() {
               path="/doctor/patients/:id"
               element={<PatientDetails />}
             />
-
-            {/* Prescription Print Route */}
 
             <Route
               path="/doctor/prescriptions/:id/print"
@@ -147,14 +145,17 @@ function App() {
               element={<DoctorNotifications />}
             />
 
-            {/* Payments */}
-
             <Route
               path="/doctor/payments"
               element={<Payments />}
             />
 
-            {/* Patient Routes */}
+            <Route
+              path="/doctor/subscription"
+              element={<Subscription />}
+            />
+
+            {/* ==================== PATIENT ROUTES ==================== */}
 
             <Route
               path="/patient/register"
@@ -176,7 +177,7 @@ function App() {
               element={<PatientNotifications />}
             />
 
-            {/* Unknown Route */}
+            {/* ==================== UNKNOWN ROUTE ==================== */}
 
             <Route
               path="*"
@@ -196,8 +197,6 @@ function App() {
 }
 
 export default App;
-
-
 
 
 

@@ -1,104 +1,188 @@
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
+import type { Language } from "./i18n";
 
-type Appointment = {
-  id: string;
-  patient_id: string;
-  appointment_date: string;
-  appointment_time: string;
-  status: string;
-  notes: string | null;
-  patients?: {
-    name: string;
-    phone: string | null;
-  } | null;
-};
-
-type FilterType =
-  | "all"
+type AppointmentStatus =
   | "pending"
   | "confirmed"
   | "completed"
   | "cancelled";
 
-const Appointments = () => {
-  const [appointments, setAppointments] = useState<Appointment[]>(
-    []
-  );
+type PatientInfo = {
+  name: string;
+  phone: string | null;
+};
 
+type Appointment = {
+  id: string;
+  appointment_date: string;
+  appointment_time: string;
+  status: AppointmentStatus;
+  notes: string | null;
+  patient_id: string;
+  clinic_id: string;
+  patient: PatientInfo | null;
+};
+
+const Appointments = () => {
+  const [appointments, setAppointments] = useState<
+    Appointment[]
+  >([]);
+
+  const [clinicId, setClinicId] = useState("");
   const [loading, setLoading] = useState(true);
-  const [updatingId, setUpdatingId] = useState<string | null>(
-    null
-  );
+  const [actionLoading, setActionLoading] =
+    useState<string | null>(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [filter, setFilter] = useState<FilterType>("all");
+  // =========================
+  // Language
+  // =========================
+
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage =
+      localStorage.getItem("dentalcare-language");
+
+    return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const isArabic = language === "ar";
+
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage =
+        localStorage.getItem("dentalcare-language");
+
+      setLanguage(
+        savedLanguage === "en" ? "en" : "ar"
+      );
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener(
+      "storage",
+      handleLanguageChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
+    };
+  }, []);
 
   // =========================
-  // Get Doctor Clinic ID
+  // Format Date
   // =========================
-  const getClinicId = async () => {
+
+  const formatDate = (date: string) => {
+    try {
+      return new Intl.DateTimeFormat(
+        isArabic ? "ar-EG" : "en-US",
+        {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }
+      ).format(new Date(`${date}T00:00:00`));
+    } catch {
+      return date;
+    }
+  };
+
+  // =========================
+  // Get Doctor Clinic
+  // =========================
+
+  const getClinic = async () => {
+    setLoading(true);
+    setError("");
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
       window.location.href = "/doctor/login";
-      return null;
+      return;
     }
 
-    const { data: profile, error } = await supabase
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
       .from("profiles")
       .select("clinic_id")
       .eq("id", user.id)
       .single();
 
-    if (error) {
-      console.error("Profile error:", error);
-      setError("Could not load clinic information.");
-      return null;
+    if (profileError) {
+      console.error(profileError);
+
+      setError(
+        isArabic
+          ? "تعذر تحميل معلومات العيادة."
+          : "Could not load clinic information."
+      );
+
+      setLoading(false);
+      return;
     }
 
     if (!profile?.clinic_id) {
-      setError("No clinic is connected to this doctor.");
-      return null;
+      setError(
+        isArabic
+          ? "لا توجد عيادة مرتبطة بهذا الطبيب."
+          : "No clinic is connected to this doctor."
+      );
+
+      setLoading(false);
+      return;
     }
 
-    return profile.clinic_id;
+    setClinicId(profile.clinic_id);
+
+    await loadAppointments(profile.clinic_id);
   };
 
   // =========================
   // Load Appointments
   // =========================
-  const loadAppointments = async () => {
-    setLoading(true);
-    setError("");
 
-    const clinicId = await getClinicId();
-
-    if (!clinicId) {
-      setLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
+  const loadAppointments = async (
+    clinicIdValue: string
+  ) => {
+    const {
+      data,
+      error: appointmentsError,
+    } = await supabase
       .from("appointments")
       .select(`
         id,
-        patient_id,
         appointment_date,
         appointment_time,
         status,
         notes,
+        patient_id,
+        clinic_id,
         patients (
           name,
           phone
         )
       `)
-      .eq("clinic_id", clinicId)
+      .eq("clinic_id", clinicIdValue)
       .order("appointment_date", {
         ascending: true,
       })
@@ -106,269 +190,257 @@ const Appointments = () => {
         ascending: true,
       });
 
-    if (error) {
-      console.error("Appointments error:", error);
-      setError(error.message);
-    } else {
-      const formattedAppointments: Appointment[] = (
-        data || []
-      ).map((appointment: any) => ({
-        id: appointment.id,
-        patient_id: appointment.patient_id,
-        appointment_date:
-          appointment.appointment_date,
-        appointment_time:
-          appointment.appointment_time,
-        status: appointment.status,
-        notes: appointment.notes,
-        patients: Array.isArray(
-          appointment.patients
-        )
-          ? appointment.patients[0] || null
-          : appointment.patients || null,
-      }));
+    if (appointmentsError) {
+      console.error(appointmentsError);
 
-      setAppointments(formattedAppointments);
+      setError(appointmentsError.message);
+      setLoading(false);
+
+      return;
     }
 
+    /*
+      We intentionally do not rely on the generated
+      Supabase TypeScript type for patients here.
+      The database relationship may be generated as
+      an object or an array depending on the schema.
+    */
+
+    const formattedAppointments: Appointment[] = (
+      data ?? []
+    ).map((item) => {
+      const row = item as unknown as {
+        id: string;
+        appointment_date: string;
+        appointment_time: string;
+        status: string;
+        notes: string | null;
+        patient_id: string;
+        clinic_id: string;
+        patients:
+          | {
+              name: string;
+              phone: string | null;
+            }
+          | {
+              name: string;
+              phone: string | null;
+            }[]
+          | null;
+      };
+
+      let patient: PatientInfo | null = null;
+
+      if (Array.isArray(row.patients)) {
+        if (row.patients.length > 0) {
+          patient = {
+            name: row.patients[0].name,
+            phone: row.patients[0].phone,
+          };
+        }
+      } else if (row.patients) {
+        patient = {
+          name: row.patients.name,
+          phone: row.patients.phone,
+        };
+      }
+
+      return {
+        id: row.id,
+        appointment_date: row.appointment_date,
+        appointment_time: row.appointment_time,
+        status: row.status as AppointmentStatus,
+        notes: row.notes,
+        patient_id: row.patient_id,
+        clinic_id: row.clinic_id,
+        patient,
+      };
+    });
+
+    setAppointments(formattedAppointments);
     setLoading(false);
   };
 
+  // =========================
+  // Initial Load
+  // =========================
+
   useEffect(() => {
-    loadAppointments();
+    getClinic();
   }, []);
 
   // =========================
-  // Update Appointment Status
+  // Appointment Action
   // =========================
-  const updateStatus = async (
-    appointmentId: string,
-    newStatus: string
+
+  const handleAppointmentAction = async (
+    appointment: Appointment,
+    action: "confirm" | "cancel"
   ) => {
-    setUpdatingId(appointmentId);
-    setError("");
-    setSuccess("");
-
-    const appointment = appointments.find(
-      (item) => item.id === appointmentId
-    );
-
-    if (!appointment) {
-      setError("Appointment not found.");
-      setUpdatingId(null);
+    if (!clinicId) {
       return;
     }
+
+    setError("");
+    setSuccess("");
+    setActionLoading(appointment.id);
+
+    const newStatus: AppointmentStatus =
+      action === "confirm"
+        ? "confirmed"
+        : "cancelled";
 
     // =========================
     // Update Appointment
     // =========================
-    const { error: updateError } = await supabase
+
+    const {
+      data: updatedAppointment,
+      error: updateError,
+    } = await supabase
       .from("appointments")
       .update({
         status: newStatus,
       })
-      .eq("id", appointmentId);
+      .eq("id", appointment.id)
+      .eq("clinic_id", clinicId)
+      .select(`
+        id,
+        appointment_date,
+        appointment_time,
+        patient_id,
+        clinic_id,
+        status
+      `)
+      .single();
 
-    if (updateError) {
-      console.error(
-        "Update status error:",
-        updateError
+    if (updateError || !updatedAppointment) {
+      console.error(updateError);
+
+      setError(
+        updateError?.message ||
+          (isArabic
+            ? "تعذر تحديث حالة الموعد."
+            : "Could not update appointment status.")
       );
 
-      setError(updateError.message);
-      setUpdatingId(null);
+      setActionLoading(null);
+
       return;
     }
 
     // =========================
-    // Create Patient Notification
+    // Patient Notification
     // =========================
-    let notificationTitle = "";
-    let notificationMessage = "";
 
-    if (newStatus === "confirmed") {
-      notificationTitle = "Appointment Confirmed";
+    const patientName =
+      appointment.patient?.name ||
+      (isArabic ? "المريض" : "Patient");
 
-      notificationMessage =
-        `Your appointment on ${appointment.appointment_date} ` +
-        `at ${appointment.appointment_time} ` +
-        `has been confirmed by the doctor.`;
-    }
-
-    if (newStatus === "cancelled") {
-      notificationTitle = "Appointment Cancelled";
-
-      notificationMessage =
-        `Your appointment on ${appointment.appointment_date} ` +
-        `at ${appointment.appointment_time} ` +
-        `has been cancelled by the doctor.`;
-    }
-
-    if (newStatus === "completed") {
-      notificationTitle = "Appointment Completed";
-
-      notificationMessage =
-        `Your appointment on ${appointment.appointment_date} ` +
-        `at ${appointment.appointment_time} ` +
-        `has been marked as completed.`;
-    }
-
-    if (
-      notificationTitle &&
-      notificationMessage
-    ) {
-      const { error: notificationError } =
-        await supabase
-          .from("notifications")
-          .insert({
-            patient_id:
-              appointment.patient_id,
-            appointment_id:
-              appointment.id,
-            title: notificationTitle,
-            message: notificationMessage,
-            is_read: false,
-          });
-
-      if (notificationError) {
-        console.error(
-          "Notification error:",
-          notificationError
-        );
-
-        setError(
-          "Appointment status updated, but the patient notification could not be created."
-        );
-
-        setAppointments(
-          (currentAppointments) =>
-            currentAppointments.map(
-              (item) =>
-                item.id === appointmentId
-                  ? {
-                      ...item,
-                      status: newStatus,
-                    }
-                  : item
-            )
-        );
-
-        setUpdatingId(null);
-        return;
-      }
-    }
-
-    // =========================
-    // Success Message
-    // =========================
-    if (newStatus === "confirmed") {
-      setSuccess(
-        "Appointment confirmed and patient notified successfully."
-      );
-    } else if (newStatus === "cancelled") {
-      setSuccess(
-        "Appointment cancelled and patient notified successfully."
-      );
-    } else if (newStatus === "completed") {
-      setSuccess(
-        "Appointment marked as completed successfully."
-      );
-    }
-
-    // =========================
-    // Update Screen
-    // =========================
-    setAppointments(
-      (currentAppointments) =>
-        currentAppointments.map(
-          (item) =>
-            item.id === appointmentId
-              ? {
-                  ...item,
-                  status: newStatus,
-                }
-              : item
-        )
+    const formattedDate = formatDate(
+      appointment.appointment_date
     );
 
-    setUpdatingId(null);
+    const notificationTitle =
+      action === "confirm"
+        ? isArabic
+          ? "تم قبول موعدك"
+          : "Your Appointment Was Confirmed"
+        : isArabic
+        ? "تم رفض موعدك"
+        : "Your Appointment Was Rejected";
+
+    const notificationMessage =
+      action === "confirm"
+        ? isArabic
+          ? `مرحبًا ${patientName}، تم قبول موعدك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+          : `Hello ${patientName}, your appointment on ${formattedDate} at ${appointment.appointment_time} has been confirmed.`
+        : isArabic
+        ? `مرحبًا ${patientName}، نعتذر، تم رفض موعدك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+        : `Hello ${patientName}, unfortunately your appointment on ${formattedDate} at ${appointment.appointment_time} has been rejected.`;
+
+    const {
+      error: notificationError,
+    } = await supabase
+      .from("notifications")
+      .insert({
+        clinic_id: clinicId,
+        patient_id: updatedAppointment.patient_id,
+        appointment_id: updatedAppointment.id,
+        title: notificationTitle,
+        message: notificationMessage,
+        is_read: false,
+        recipient_type: "patient",
+      });
+
+    if (notificationError) {
+      console.error(
+        "Notification error:",
+        notificationError
+      );
+
+      setError(
+        isArabic
+          ? "تم تحديث الموعد، لكن تعذر إرسال إشعار للمريض."
+          : "Appointment updated, but the patient notification could not be sent."
+      );
+    } else {
+      setSuccess(
+        action === "confirm"
+          ? isArabic
+            ? "تم قبول الموعد وإرسال إشعار للمريض."
+            : "Appointment confirmed and the patient was notified."
+          : isArabic
+          ? "تم رفض الموعد وإرسال إشعار للمريض."
+          : "Appointment rejected and the patient was notified."
+      );
+    }
+
+    // =========================
+    // Update UI
+    // =========================
+
+    setAppointments((currentAppointments) =>
+      currentAppointments.map((item) =>
+        item.id === appointment.id
+          ? {
+              ...item,
+              status: newStatus,
+            }
+          : item
+      )
+    );
+
+    setActionLoading(null);
   };
 
   // =========================
-  // Filter Appointments
+  // Status Label
   // =========================
-  const filteredAppointments = useMemo(() => {
-    if (filter === "all") {
-      return appointments;
-    }
 
-    return appointments.filter(
-      (appointment) =>
-        appointment.status === filter
-    );
-  }, [appointments, filter]);
-
-  // =========================
-  // Statistics
-  // =========================
-  const pendingCount = appointments.filter(
-    (appointment) =>
-      appointment.status === "pending"
-  ).length;
-
-  const confirmedCount = appointments.filter(
-    (appointment) =>
-      appointment.status === "confirmed"
-  ).length;
-
-  const completedCount = appointments.filter(
-    (appointment) =>
-      appointment.status === "completed"
-  ).length;
-
-  const cancelledCount = appointments.filter(
-    (appointment) =>
-      appointment.status === "cancelled"
-  ).length;
-
-  // =========================
-  // Status Style
-  // =========================
-  const getStatusStyle = (status: string) => {
+  const getStatusLabel = (
+    status: AppointmentStatus
+  ) => {
     switch (status) {
       case "pending":
-        return "bg-yellow-100 text-yellow-700";
+        return isArabic
+          ? "في انتظار الموافقة"
+          : "Pending";
 
       case "confirmed":
-        return "bg-green-100 text-green-700";
-
-      case "cancelled":
-        return "bg-red-100 text-red-700";
-
-      case "completed":
-        return "bg-blue-100 text-blue-700";
-
-      default:
-        return "bg-slate-100 text-slate-700";
-    }
-  };
-
-  // =========================
-  // Status Text
-  // =========================
-  const formatStatus = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "Pending";
-
-      case "confirmed":
-        return "Confirmed";
-
-      case "cancelled":
-        return "Cancelled";
+        return isArabic
+          ? "تم التأكيد"
+          : "Confirmed";
 
       case "completed":
-        return "Completed";
+        return isArabic
+          ? "مكتمل"
+          : "Completed";
+
+      case "cancelled":
+        return isArabic
+          ? "مرفوض"
+          : "Rejected";
 
       default:
         return status;
@@ -376,246 +448,257 @@ const Appointments = () => {
   };
 
   // =========================
+  // Status Classes
+  // =========================
+
+  const getStatusClasses = (
+    status: AppointmentStatus
+  ) => {
+    switch (status) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
+
+      case "confirmed":
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+
+      case "completed":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+
+      case "cancelled":
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+
+      default:
+        return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+    }
+  };
+
+  // =========================
   // Loading
   // =========================
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-28">
-        <p className="text-slate-600">
-          Loading appointments...
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center pt-28"
+      >
+        <p className="text-slate-600 dark:text-slate-300">
+          {isArabic
+            ? "جاري تحميل المواعيد..."
+            : "Loading appointments..."}
         </p>
       </div>
     );
   }
 
+  // =========================
+  // Page
+  // =========================
+
   return (
-    <div className="min-h-screen bg-slate-50 pt-28 pb-12 px-6">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-32 pb-12 px-6"
+    >
       <div className="mx-auto max-w-7xl">
 
-        {/* =========================
-            Header
-        ========================== */}
+        {/* Header */}
+
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              Appointments
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+              {isArabic
+                ? "المواعيد"
+                : "Appointments"}
             </h1>
 
-            <p className="mt-2 text-slate-600">
-              Manage your clinic appointments.
+            <p className="mt-2 text-slate-600 dark:text-slate-300">
+              {isArabic
+                ? "إدارة مواعيد المرضى وطلبات الحجز."
+                : "Manage patient appointments and booking requests."}
             </p>
           </div>
 
           <button
+            type="button"
             onClick={() => {
-              window.location.href =
-                "/doctor/dashboard";
+              setError("");
+              setSuccess("");
+              loadAppointments(clinicId);
             }}
-            className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
+            className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
           >
-            Back to Dashboard
+            {isArabic
+              ? "تحديث المواعيد"
+              : "Refresh Appointments"}
           </button>
 
         </div>
 
-        {/* =========================
-            Messages
-        ========================== */}
+        {/* Messages */}
+
         {error && (
-          <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-700">
+          <div className="mb-5 rounded-xl bg-red-50 dark:bg-red-950/30 p-4 text-red-600 dark:text-red-400">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-5 rounded-xl bg-green-50 p-4 text-green-700">
+          <div className="mb-5 rounded-xl bg-green-50 dark:bg-green-950/30 p-4 text-green-600 dark:text-green-400">
             {success}
           </div>
         )}
 
-        {/* =========================
-            Statistics
-        ========================== */}
-        <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Statistics */}
 
-          {/* All */}
-          <button
-            onClick={() => setFilter("all")}
-            className={`rounded-2xl p-5 text-left shadow-sm transition ${
-              filter === "all"
-                ? "bg-teal-600 text-white"
-                : "bg-white text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <p className="text-sm opacity-80">
-              All
+        <div className="mb-8 grid gap-4 md:grid-cols-4">
+
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "كل المواعيد"
+                : "All Appointments"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold">
+            <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
               {appointments.length}
             </p>
-          </button>
+          </div>
 
-          {/* Pending */}
-          <button
-            onClick={() => setFilter("pending")}
-            className={`rounded-2xl p-5 text-left shadow-sm transition ${
-              filter === "pending"
-                ? "bg-yellow-500 text-white"
-                : "bg-white text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <p className="text-sm opacity-80">
-              Pending
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "طلبات معلقة"
+                : "Pending Requests"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold">
-              {pendingCount}
+            <p className="mt-2 text-3xl font-bold text-yellow-600">
+              {
+                appointments.filter(
+                  (appointment) =>
+                    appointment.status ===
+                    "pending"
+                ).length
+              }
             </p>
-          </button>
+          </div>
 
-          {/* Confirmed */}
-          <button
-            onClick={() => setFilter("confirmed")}
-            className={`rounded-2xl p-5 text-left shadow-sm transition ${
-              filter === "confirmed"
-                ? "bg-green-600 text-white"
-                : "bg-white text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <p className="text-sm opacity-80">
-              Confirmed
-            </p>
-
-            <p className="mt-2 text-3xl font-bold">
-              {confirmedCount}
-            </p>
-          </button>
-
-          {/* Completed */}
-          <button
-            onClick={() => setFilter("completed")}
-            className={`rounded-2xl p-5 text-left shadow-sm transition ${
-              filter === "completed"
-                ? "bg-blue-600 text-white"
-                : "bg-white text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <p className="text-sm opacity-80">
-              Completed
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "مواعيد مؤكدة"
+                : "Confirmed"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold">
-              {completedCount}
+            <p className="mt-2 text-3xl font-bold text-green-600">
+              {
+                appointments.filter(
+                  (appointment) =>
+                    appointment.status ===
+                    "confirmed"
+                ).length
+              }
             </p>
-          </button>
+          </div>
 
-          {/* Cancelled */}
-          <button
-            onClick={() => setFilter("cancelled")}
-            className={`rounded-2xl p-5 text-left shadow-sm transition ${
-              filter === "cancelled"
-                ? "bg-red-600 text-white"
-                : "bg-white text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <p className="text-sm opacity-80">
-              Cancelled
+          <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "مواعيد مرفوضة"
+                : "Rejected"}
             </p>
 
-            <p className="mt-2 text-3xl font-bold">
-              {cancelledCount}
+            <p className="mt-2 text-3xl font-bold text-red-600">
+              {
+                appointments.filter(
+                  (appointment) =>
+                    appointment.status ===
+                    "cancelled"
+                ).length
+              }
             </p>
-          </button>
+          </div>
 
         </div>
 
-        {/* =========================
-            Appointments
-        ========================== */}
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+        {/* Appointments */}
 
-          {/* Section Header */}
-          <div className="border-b border-slate-200 p-6">
+        <div className="rounded-2xl bg-white dark:bg-slate-900 shadow-sm">
 
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Patient Appointments
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Review and manage appointment requests.
-                </p>
-              </div>
-
-              <button
-                onClick={loadAppointments}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Refresh
-              </button>
-
-            </div>
-
+          <div className="border-b border-slate-200 dark:border-slate-700 p-6">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {isArabic
+                ? "قائمة المواعيد"
+                : "Appointment List"}
+            </h2>
           </div>
 
-          {/* No appointments */}
-          {filteredAppointments.length === 0 ? (
+          {appointments.length === 0 ? (
+            <div className="p-12 text-center">
 
-            <div className="p-10 text-center">
-
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                <span className="text-2xl">
-                  📅
-                </span>
-              </div>
-
-              <p className="font-semibold text-slate-700">
-                No appointments found
+              <p className="text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "لا توجد مواعيد حتى الآن."
+                  : "No appointments yet."}
               </p>
 
-              <p className="mt-2 text-sm text-slate-500">
-                There are no appointments matching this filter.
+              <p className="mt-2 text-sm text-slate-400 dark:text-slate-500">
+                {isArabic
+                  ? "عندما يحجز مريض موعدًا سيظهر هنا."
+                  : "When a patient books an appointment, it will appear here."}
               </p>
 
             </div>
-
           ) : (
-
-            /* Appointments Table */
             <div className="overflow-x-auto">
 
               <table className="w-full">
 
-                <thead className="bg-slate-50">
+                <thead className="bg-slate-50 dark:bg-slate-800">
 
                   <tr>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Patient
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "المريض"
+                        : "Patient"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Phone
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الهاتف"
+                        : "Phone"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Date
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "التاريخ"
+                        : "Date"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Time
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الوقت"
+                        : "Time"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Status
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الحالة"
+                        : "Status"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Actions
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الملاحظات"
+                        : "Notes"}
+                    </th>
+
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+                      {isArabic
+                        ? "الإجراء"
+                        : "Action"}
                     </th>
 
                   </tr>
@@ -624,165 +707,124 @@ const Appointments = () => {
 
                 <tbody>
 
-                  {filteredAppointments.map(
-                    (appointment) => (
+                  {appointments.map(
+                    (appointment) => {
 
-                      <tr
-                        key={appointment.id}
-                        className="border-t border-slate-100"
-                      >
+                      const isPending =
+                        appointment.status ===
+                        "pending";
 
-                        {/* Patient */}
-                        <td className="px-6 py-5">
+                      const isProcessing =
+                        actionLoading ===
+                        appointment.id;
 
-                          <p className="font-semibold text-slate-900">
-                            {appointment.patients?.name ||
-                              "Unknown Patient"}
-                          </p>
+                      return (
+                        <tr
+                          key={appointment.id}
+                          className="border-t border-slate-100 dark:border-slate-800"
+                        >
 
-                          {appointment.notes && (
-                            <p className="mt-1 max-w-xs text-sm text-slate-500">
-                              {appointment.notes}
-                            </p>
-                          )}
+                          <td className="px-6 py-5">
+                            <div className="font-semibold text-slate-900 dark:text-white">
+                              {appointment.patient
+                                ?.name ||
+                                (isArabic
+                                  ? "مريض غير معروف"
+                                  : "Unknown Patient")}
+                            </div>
+                          </td>
 
-                        </td>
+                          <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
+                            {appointment.patient
+                              ?.phone || "-"}
+                          </td>
 
-                        {/* Phone */}
-                        <td className="px-6 py-5 text-slate-600">
-                          {appointment.patients?.phone ||
-                            "-"}
-                        </td>
-
-                        {/* Date */}
-                        <td className="px-6 py-5 text-slate-600">
-                          {appointment.appointment_date}
-                        </td>
-
-                        {/* Time */}
-                        <td className="px-6 py-5 text-slate-600">
-                          {appointment.appointment_time}
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-6 py-5">
-
-                          <span
-                            className={`rounded-full px-3 py-1 text-sm font-semibold ${getStatusStyle(
-                              appointment.status
-                            )}`}
-                          >
-                            {formatStatus(
-                              appointment.status
+                          <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
+                            {formatDate(
+                              appointment.appointment_date
                             )}
-                          </span>
+                          </td>
 
-                        </td>
+                          <td className="px-6 py-5 font-medium text-slate-700 dark:text-slate-200">
+                            {appointment.appointment_time}
+                          </td>
 
-                        {/* Actions */}
-                        <td className="px-6 py-5">
-
-                          {appointment.status ===
-                          "pending" ? (
-
-                            <div className="flex flex-wrap gap-2">
-
-                              {/* Confirm */}
-                              <button
-                                onClick={() =>
-                                  updateStatus(
-                                    appointment.id,
-                                    "confirmed"
-                                  )
-                                }
-                                disabled={
-                                  updatingId ===
-                                  appointment.id
-                                }
-                                className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {updatingId ===
-                                appointment.id
-                                  ? "Updating..."
-                                  : "Confirm"}
-                              </button>
-
-                              {/* Cancel */}
-                              <button
-                                onClick={() =>
-                                  updateStatus(
-                                    appointment.id,
-                                    "cancelled"
-                                  )
-                                }
-                                disabled={
-                                  updatingId ===
-                                  appointment.id
-                                }
-                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Cancel
-                              </button>
-
-                            </div>
-
-                          ) : appointment.status ===
-                            "confirmed" ? (
-
-                            <div className="flex flex-wrap gap-2">
-
-                              {/* Complete */}
-                              <button
-                                onClick={() =>
-                                  updateStatus(
-                                    appointment.id,
-                                    "completed"
-                                  )
-                                }
-                                disabled={
-                                  updatingId ===
-                                  appointment.id
-                                }
-                                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {updatingId ===
-                                appointment.id
-                                  ? "Updating..."
-                                  : "Complete"}
-                              </button>
-
-                              {/* Cancel */}
-                              <button
-                                onClick={() =>
-                                  updateStatus(
-                                    appointment.id,
-                                    "cancelled"
-                                  )
-                                }
-                                disabled={
-                                  updatingId ===
-                                  appointment.id
-                                }
-                                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                Cancel
-                              </button>
-
-                            </div>
-
-                          ) : (
-
-                            <span className="text-sm text-slate-400">
-                              No actions
+                          <td className="px-6 py-5">
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getStatusClasses(
+                                appointment.status
+                              )}`}
+                            >
+                              {getStatusLabel(
+                                appointment.status
+                              )}
                             </span>
+                          </td>
 
-                          )}
+                          <td className="max-w-xs px-6 py-5 text-slate-600 dark:text-slate-300">
+                            {appointment.notes ||
+                              "-"}
+                          </td>
 
-                        </td>
+                          <td className="px-6 py-5">
 
-                      </tr>
+                            {isPending ? (
+                              <div className="flex flex-col gap-2 sm:flex-row">
 
-                    )
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isProcessing
+                                  }
+                                  onClick={() =>
+                                    handleAppointmentAction(
+                                      appointment,
+                                      "confirm"
+                                    )
+                                  }
+                                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isProcessing
+                                    ? "..."
+                                    : isArabic
+                                    ? "قبول"
+                                    : "Accept"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isProcessing
+                                  }
+                                  onClick={() =>
+                                    handleAppointmentAction(
+                                      appointment,
+                                      "cancel"
+                                    )
+                                  }
+                                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isProcessing
+                                    ? "..."
+                                    : isArabic
+                                    ? "رفض"
+                                    : "Reject"}
+                                </button>
+
+                              </div>
+                            ) : (
+                              <span className="text-sm text-slate-400 dark:text-slate-500">
+                                {isArabic
+                                  ? "لا يوجد إجراء"
+                                  : "No action"}
+                              </span>
+                            )}
+
+                          </td>
+
+                        </tr>
+                      );
+                    }
                   )}
 
                 </tbody>
@@ -790,7 +832,6 @@ const Appointments = () => {
               </table>
 
             </div>
-
           )}
 
         </div>
@@ -801,7 +842,3 @@ const Appointments = () => {
 };
 
 export default Appointments;
-
-
-
-

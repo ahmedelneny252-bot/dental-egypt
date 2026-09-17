@@ -1,7 +1,7 @@
-
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "./supabase";
+import { translations, type Language } from "./i18n";
 
 type Patient = {
   id: string;
@@ -62,10 +62,38 @@ type Payment = {
 };
 
 const toothNumbers = [
-  "18", "17", "16", "15", "14", "13", "12", "11",
-  "21", "22", "23", "24", "25", "26", "27", "28",
-  "48", "47", "46", "45", "44", "43", "42", "41",
-  "31", "32", "33", "34", "35", "36", "37", "38",
+  "18",
+  "17",
+  "16",
+  "15",
+  "14",
+  "13",
+  "12",
+  "11",
+  "21",
+  "22",
+  "23",
+  "24",
+  "25",
+  "26",
+  "27",
+  "28",
+  "48",
+  "47",
+  "46",
+  "45",
+  "44",
+  "43",
+  "42",
+  "41",
+  "31",
+  "32",
+  "33",
+  "34",
+  "35",
+  "36",
+  "37",
+  "38",
 ];
 
 const toothStatuses = [
@@ -80,6 +108,14 @@ const toothStatuses = [
 
 const PatientDetails = () => {
   const { id } = useParams();
+
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem("dentalcare-language");
+    return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const isArabic = language === "ar";
+  const t = translations[language];
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -143,8 +179,38 @@ const PatientDetails = () => {
     useState("");
 
   useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage = localStorage.getItem(
+        "dentalcare-language"
+      );
+
+      setLanguage(savedLanguage === "en" ? "en" : "ar");
+    };
+
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
+
+    window.addEventListener("storage", handleLanguageChange);
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+
+      window.removeEventListener("storage", handleLanguageChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!id) {
-      setError("Patient ID is missing.");
+      setError(
+        isArabic
+          ? "معرف المريض غير موجود."
+          : "Patient ID is missing."
+      );
       setLoading(false);
       return;
     }
@@ -179,7 +245,9 @@ const PatientDetails = () => {
 
       if (!profile?.clinic_id) {
         throw new Error(
-          "No clinic is connected to this doctor."
+          isArabic
+            ? "لا توجد عيادة مرتبطة بهذا الطبيب."
+            : "No clinic is connected to this doctor."
         );
       }
 
@@ -309,7 +377,11 @@ const PatientDetails = () => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Could not load patient details.");
+        setError(
+          isArabic
+            ? "تعذر تحميل بيانات المريض."
+            : "Could not load patient details."
+        );
       }
     } finally {
       setLoading(false);
@@ -346,7 +418,11 @@ const PatientDetails = () => {
     const remaining = getRecordRemainingAmount(record);
 
     if (remaining <= 0) {
-      setError("This treatment has already been fully paid.");
+      setError(
+        isArabic
+          ? "تم دفع تكلفة هذا العلاج بالكامل بالفعل."
+          : "This treatment has already been fully paid."
+      );
       return;
     }
 
@@ -378,12 +454,20 @@ const PatientDetails = () => {
     e.preventDefault();
 
     if (!clinicId || !id) {
-      setError("Clinic or patient information is missing.");
+      setError(
+        isArabic
+          ? "بيانات العيادة أو المريض غير موجودة."
+          : "Clinic or patient information is missing."
+      );
       return;
     }
 
     if (!selectedPaymentRecordId) {
-      setError("Please select a treatment.");
+      setError(
+        isArabic
+          ? "من فضلك اختر العلاج."
+          : "Please select a treatment."
+      );
       return;
     }
 
@@ -392,7 +476,11 @@ const PatientDetails = () => {
     );
 
     if (!record) {
-      setError("Treatment record not found.");
+      setError(
+        isArabic
+          ? "لم يتم العثور على سجل العلاج."
+          : "Treatment record not found."
+      );
       return;
     }
 
@@ -401,15 +489,23 @@ const PatientDetails = () => {
       getRecordRemainingAmount(record);
 
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      setError("Please enter a valid payment amount.");
+      setError(
+        isArabic
+          ? "من فضلك أدخل مبلغ دفع صحيح."
+          : "Please enter a valid payment amount."
+      );
       return;
     }
 
     if (amountValue > remainingValue) {
       setError(
-        `Payment cannot be greater than the remaining amount (${remainingValue.toFixed(
-          2
-        )}).`
+        isArabic
+          ? `لا يمكن أن يكون مبلغ الدفع أكبر من المبلغ المتبقي (${remainingValue.toFixed(
+              2
+            )}).`
+          : `Payment cannot be greater than the remaining amount (${remainingValue.toFixed(
+              2
+            )}).`
       );
       return;
     }
@@ -448,7 +544,11 @@ const PatientDetails = () => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Could not save payment.");
+        setError(
+          isArabic
+            ? "تعذر حفظ الدفعة."
+            : "Could not save payment."
+        );
       }
     } finally {
       setSavingPayment(false);
@@ -469,25 +569,41 @@ const PatientDetails = () => {
     const tooth = getToothData(toothNumberValue);
 
     if (!tooth) {
-      return "border-slate-300 bg-white text-slate-700 hover:border-teal-500 hover:bg-teal-50";
+      return "border-slate-300 bg-white text-slate-700 hover:border-teal-500 hover:bg-teal-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800";
     }
 
     switch (tooth.tooth_status) {
       case "Cavity":
-        return "border-red-300 bg-red-50 text-red-700";
+        return "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
       case "Filled":
-        return "border-blue-300 bg-blue-50 text-blue-700";
+        return "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
       case "Missing":
-        return "border-slate-400 bg-slate-200 text-slate-500";
+        return "border-slate-400 bg-slate-200 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400";
       case "Root Canal":
-        return "border-purple-300 bg-purple-50 text-purple-700";
+        return "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-400";
       case "Crown":
-        return "border-yellow-300 bg-yellow-50 text-yellow-700";
+        return "border-yellow-300 bg-yellow-50 text-yellow-700 dark:border-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-400";
       case "Extraction Needed":
-        return "border-orange-300 bg-orange-50 text-orange-700";
+        return "border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-400";
       default:
-        return "border-green-300 bg-green-50 text-green-700";
+        return "border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400";
     }
+  };
+
+  const getToothStatusLabel = (status: string) => {
+    if (!isArabic) return status;
+
+    const labels: Record<string, string> = {
+      Healthy: "سليم",
+      Cavity: "تسوس",
+      Filled: "محشو",
+      Missing: "مفقود",
+      "Root Canal": "علاج جذور",
+      Crown: "تاج",
+      "Extraction Needed": "يحتاج خلع",
+    };
+
+    return labels[status] || status;
   };
 
   const handleSelectTooth = (toothNumberValue: string) => {
@@ -508,12 +624,20 @@ const PatientDetails = () => {
 
   const handleSaveTooth = async () => {
     if (!clinicId || !id) {
-      setError("Clinic or patient information is missing.");
+      setError(
+        isArabic
+          ? "بيانات العيادة أو المريض غير موجودة."
+          : "Clinic or patient information is missing."
+      );
       return;
     }
 
     if (!selectedTooth) {
-      setError("Please select a tooth first.");
+      setError(
+        isArabic
+          ? "من فضلك اختر سنة أولًا."
+          : "Please select a tooth first."
+      );
       return;
     }
 
@@ -547,7 +671,11 @@ const PatientDetails = () => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Could not save tooth information.");
+        setError(
+          isArabic
+            ? "تعذر حفظ بيانات السنة."
+            : "Could not save tooth information."
+        );
       }
     } finally {
       setSavingTooth(false);
@@ -560,7 +688,9 @@ const PatientDetails = () => {
     }
 
     const confirmed = window.confirm(
-      `Remove the dental chart information for tooth ${selectedTooth}?`
+      isArabic
+        ? `هل تريد حذف بيانات السنة ${selectedTooth}؟`
+        : `Remove the dental chart information for tooth ${selectedTooth}?`
     );
 
     if (!confirmed) {
@@ -606,14 +736,22 @@ const PatientDetails = () => {
     e.preventDefault();
 
     if (!clinicId || !id) {
-      setError("Clinic or patient information is missing.");
+      setError(
+        isArabic
+          ? "بيانات العيادة أو المريض غير موجودة."
+          : "Clinic or patient information is missing."
+      );
       return;
     }
 
     const costValue = Number(cost || 0);
 
     if (!Number.isFinite(costValue) || costValue < 0) {
-      setError("Please enter a valid treatment cost.");
+      setError(
+        isArabic
+          ? "من فضلك أدخل تكلفة علاج صحيحة."
+          : "Please enter a valid treatment cost."
+      );
       return;
     }
 
@@ -637,9 +775,13 @@ const PatientDetails = () => {
 
       if (costValue < paidAmount) {
         setError(
-          `Treatment cost cannot be less than the amount already paid (${paidAmount.toFixed(
-            2
-          )}).`
+          isArabic
+            ? `لا يمكن أن تكون تكلفة العلاج أقل من المبلغ المدفوع بالفعل (${paidAmount.toFixed(
+                2
+              )}).`
+            : `Treatment cost cannot be less than the amount already paid (${paidAmount.toFixed(
+                2
+              )}).`
         );
         return;
       }
@@ -688,13 +830,17 @@ const PatientDetails = () => {
 
     if (recordPayments.length > 0) {
       setError(
-        "This treatment cannot be deleted because it has payments. Delete the payments first."
+        isArabic
+          ? "لا يمكن حذف هذا العلاج لأنه يحتوي على دفعات. احذف الدفعات أولًا."
+          : "This treatment cannot be deleted because it has payments. Delete the payments first."
       );
       return;
     }
 
     const confirmed = window.confirm(
-      "Are you sure you want to delete this medical record?"
+      isArabic
+        ? "هل أنت متأكد من حذف هذا السجل الطبي؟"
+        : "Are you sure you want to delete this medical record?"
     );
 
     if (!confirmed) return;
@@ -736,12 +882,20 @@ const PatientDetails = () => {
     e.preventDefault();
 
     if (!clinicId || !id) {
-      setError("Clinic or patient information is missing.");
+      setError(
+        isArabic
+          ? "بيانات العيادة أو المريض غير موجودة."
+          : "Clinic or patient information is missing."
+      );
       return;
     }
 
     if (!medicineName.trim()) {
-      setError("Medicine name is required.");
+      setError(
+        isArabic
+          ? "اسم الدواء مطلوب."
+          : "Medicine name is required."
+      );
       return;
     }
 
@@ -808,7 +962,9 @@ const PatientDetails = () => {
     prescriptionId: string
   ) => {
     const confirmed = window.confirm(
-      "Are you sure you want to delete this prescription?"
+      isArabic
+        ? "هل أنت متأكد من حذف هذه الروشتة؟"
+        : "Are you sure you want to delete this prescription?"
     );
 
     if (!confirmed) return;
@@ -830,9 +986,14 @@ const PatientDetails = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-600 text-lg">
-          Loading patient details...
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="flex min-h-screen items-center justify-center bg-slate-50 px-6 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+      >
+        <p className="text-lg text-slate-600 dark:text-slate-400">
+          {isArabic
+            ? "جاري تحميل بيانات المريض..."
+            : "Loading patient details..."}
         </p>
       </div>
     );
@@ -840,18 +1001,26 @@ const PatientDetails = () => {
 
   if (!patient) {
     return (
-      <div className="min-h-screen bg-slate-50 pt-32 px-6">
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="min-h-screen bg-slate-50 px-6 pt-32 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+      >
         <div className="mx-auto max-w-5xl">
-          <div className="rounded-2xl bg-white p-8 shadow-sm">
-            <p className="text-red-600">
-              {error || "Patient not found."}
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-red-600 dark:text-red-400">
+              {error ||
+                (isArabic
+                  ? "لم يتم العثور على المريض."
+                  : "Patient not found.")}
             </p>
 
             <Link
               to="/doctor/patients"
               className="mt-5 inline-block rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
             >
-              Back to Patients
+              {isArabic
+                ? "العودة إلى المرضى"
+                : "Back to Patients"}
             </Link>
           </div>
         </div>
@@ -864,7 +1033,10 @@ const PatientDetails = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 pt-32 pb-12 px-6">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 px-6 pb-12 pt-32 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+    >
       <div className="mx-auto max-w-7xl">
 
         {/* Header */}
@@ -872,113 +1044,137 @@ const PatientDetails = () => {
           <div>
             <Link
               to="/doctor/patients"
-              className="text-sm font-semibold text-teal-600 hover:text-teal-700"
+              className="text-sm font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
             >
-              ← Back to Patients
+              {isArabic
+                ? "→ العودة إلى المرضى"
+                : "← Back to Patients"}
             </Link>
 
-            <h1 className="mt-3 text-3xl font-bold text-slate-900">
+            <h1 className="mt-3 text-3xl font-bold text-slate-900 dark:text-white">
               {patient.name}
             </h1>
 
-            <p className="mt-2 text-slate-600">
-              Patient medical profile
+            <p className="mt-2 text-slate-600 dark:text-slate-400">
+              {isArabic
+                ? "الملف الطبي للمريض"
+                : "Patient medical profile"}
             </p>
           </div>
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl bg-red-50 p-4 text-red-600">
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
             {error}
           </div>
         )}
 
         {/* Patient Information */}
-        <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-6 text-xl font-semibold text-slate-900">
-            Patient Information
+        <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="mb-6 text-xl font-semibold text-slate-900 dark:text-white">
+            {isArabic
+              ? "معلومات المريض"
+              : "Patient Information"}
           </h2>
 
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
 
             <div>
-              <p className="text-sm text-slate-500">Full Name</p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic ? "الاسم بالكامل" : "Full Name"}
+              </p>
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.name}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Phone</p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t.common.phone}
+              </p>
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.phone || "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Age</p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic ? "العمر" : "Age"}
+              </p>
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.age ?? "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Gender</p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic ? "النوع" : "Gender"}
+              </p>
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.gender || "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Address</p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t.common.address}
+              </p>
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.address || "-"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">
-                Patient Since
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic ? "تاريخ التسجيل" : "Patient Since"}
               </p>
-              <p className="mt-1 font-semibold text-slate-900">
+              <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {new Date(
                   patient.created_at
-                ).toLocaleDateString()}
+                ).toLocaleDateString(
+                  isArabic ? "ar-EG" : "en-US"
+                )}
               </p>
             </div>
 
           </div>
 
-          <div className="mt-6 border-t border-slate-100 pt-6">
-            <p className="text-sm text-slate-500">
-              General Medical Notes
+          <div className="mt-6 border-t border-slate-100 pt-6 dark:border-slate-800">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "ملاحظات طبية عامة"
+                : "General Medical Notes"}
             </p>
 
-            <p className="mt-2 whitespace-pre-wrap text-slate-700">
+            <p className="mt-2 whitespace-pre-wrap text-slate-700 dark:text-slate-300">
               {patient.medical_notes ||
-                "No general medical notes."}
+                (isArabic
+                  ? "لا توجد ملاحظات طبية عامة."
+                  : "No general medical notes.")}
             </p>
           </div>
         </div>
 
         {/* Dental Chart */}
-        <div className="mb-8 rounded-2xl bg-white shadow-sm">
+        <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
 
-          <div className="border-b border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Dental Chart
+          <div className="border-b border-slate-200 p-6 dark:border-slate-800">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {isArabic ? "مخطط الأسنان" : "Dental Chart"}
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Select a tooth to view or update its condition.
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "اختر سنة لعرض أو تحديث حالتها."
+                : "Select a tooth to view or update its condition."}
             </p>
           </div>
 
           <div className="p-6">
 
             <div className="mb-8">
-              <div className="mb-3 text-center text-sm font-semibold text-slate-500">
-                Upper Teeth
+              <div className="mb-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {isArabic ? "الأسنان العلوية" : "Upper Teeth"}
               </div>
 
               <div className="grid grid-cols-8 gap-2 md:gap-3">
@@ -991,7 +1187,7 @@ const PatientDetails = () => {
                       tooth
                     )} ${
                       selectedTooth === tooth
-                        ? "ring-2 ring-teal-500 ring-offset-2"
+                        ? "ring-2 ring-teal-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
                         : ""
                     }`}
                   >
@@ -1006,8 +1202,8 @@ const PatientDetails = () => {
             </div>
 
             <div>
-              <div className="mb-3 text-center text-sm font-semibold text-slate-500">
-                Lower Teeth
+              <div className="mb-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {isArabic ? "الأسنان السفلية" : "Lower Teeth"}
               </div>
 
               <div className="grid grid-cols-8 gap-2 md:gap-3">
@@ -1020,7 +1216,7 @@ const PatientDetails = () => {
                       tooth
                     )} ${
                       selectedTooth === tooth
-                        ? "ring-2 ring-teal-500 ring-offset-2"
+                        ? "ring-2 ring-teal-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
                         : ""
                     }`}
                   >
@@ -1035,23 +1231,30 @@ const PatientDetails = () => {
             </div>
 
             {selectedTooth && (
-              <div className="mt-8 rounded-2xl border border-teal-100 bg-teal-50 p-6">
+              <div className="mt-8 rounded-2xl border border-teal-100 bg-teal-50 p-6 dark:border-teal-900/50 dark:bg-teal-950/20">
 
                 <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">
-                      Tooth {selectedTooth}
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      {isArabic ? "السنة" : "Tooth"}{" "}
+                      {selectedTooth}
                     </h3>
 
-                    <p className="text-sm text-slate-500">
-                      Update the condition and notes.
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {isArabic
+                        ? "قم بتحديث الحالة والملاحظات."
+                        : "Update the condition and notes."}
                     </p>
                   </div>
 
-                  <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700">
+                  <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700 dark:bg-slate-900 dark:text-teal-400">
                     {getToothData(selectedTooth)
-                      ? "Saved"
+                      ? isArabic
+                        ? "تم الحفظ"
+                        : "Saved"
+                      : isArabic
+                      ? "غير محفوظ"
                       : "Not saved"}
                   </span>
 
@@ -1060,8 +1263,8 @@ const PatientDetails = () => {
                 <div className="grid gap-4 md:grid-cols-2">
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700">
-                      Tooth Status
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      {isArabic ? "حالة السنة" : "Tooth Status"}
                     </label>
 
                     <select
@@ -1069,19 +1272,19 @@ const PatientDetails = () => {
                       onChange={(e) =>
                         setToothStatus(e.target.value)
                       }
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
                     >
                       {toothStatuses.map((status) => (
                         <option key={status} value={status}>
-                          {status}
+                          {getToothStatusLabel(status)}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700">
-                      Notes
+                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      {isArabic ? "ملاحظات" : "Notes"}
                     </label>
 
                     <input
@@ -1090,8 +1293,12 @@ const PatientDetails = () => {
                       onChange={(e) =>
                         setToothNotes(e.target.value)
                       }
-                      placeholder="Example: Needs filling"
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                      placeholder={
+                        isArabic
+                          ? "مثال: يحتاج حشو"
+                          : "Example: Needs filling"
+                      }
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
                     />
                   </div>
 
@@ -1104,7 +1311,11 @@ const PatientDetails = () => {
                       className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {savingTooth
-                        ? "Saving..."
+                        ? isArabic
+                          ? "جاري الحفظ..."
+                          : "Saving..."
+                        : isArabic
+                        ? "حفظ السنة"
                         : "Save Tooth"}
                     </button>
 
@@ -1112,9 +1323,11 @@ const PatientDetails = () => {
                       <button
                         type="button"
                         onClick={handleDeleteTooth}
-                        className="rounded-xl bg-red-50 px-5 py-3 font-semibold text-red-600 hover:bg-red-100"
+                        className="rounded-xl bg-red-50 px-5 py-3 font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
                       >
-                        Remove Tooth Data
+                        {isArabic
+                          ? "حذف بيانات السنة"
+                          : "Remove Tooth Data"}
                       </button>
                     )}
 
@@ -1123,40 +1336,42 @@ const PatientDetails = () => {
               </div>
             )}
 
-            <div className="mt-8 border-t border-slate-100 pt-6">
+            <div className="mt-8 border-t border-slate-100 pt-6 dark:border-slate-800">
 
-              <p className="mb-3 text-sm font-semibold text-slate-600">
-                Status Legend
+              <p className="mb-3 text-sm font-semibold text-slate-600 dark:text-slate-400">
+                {isArabic ? "دليل الحالات" : "Status Legend"}
               </p>
 
               <div className="flex flex-wrap gap-3">
 
-                <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
-                  Healthy
+                <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-400">
+                  {isArabic ? "سليم" : "Healthy"}
                 </span>
 
-                <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700">
-                  Cavity
+                <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400">
+                  {isArabic ? "تسوس" : "Cavity"}
                 </span>
 
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  Filled
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
+                  {isArabic ? "محشو" : "Filled"}
                 </span>
 
-                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
-                  Missing
+                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  {isArabic ? "مفقود" : "Missing"}
                 </span>
 
-                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                  Root Canal
+                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-400">
+                  {isArabic ? "علاج جذور" : "Root Canal"}
                 </span>
 
-                <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700">
-                  Crown
+                <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400">
+                  {isArabic ? "تاج" : "Crown"}
                 </span>
 
-                <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700">
-                  Extraction Needed
+                <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-950/40 dark:text-orange-400">
+                  {isArabic
+                    ? "يحتاج خلع"
+                    : "Extraction Needed"}
                 </span>
 
               </div>
@@ -1166,17 +1381,19 @@ const PatientDetails = () => {
         </div>
 
         {/* Medical Records */}
-        <div className="mb-8 rounded-2xl bg-white shadow-sm">
+        <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
 
-          <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between dark:border-slate-800">
 
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Medical Records
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                {isArabic ? "السجلات الطبية" : "Medical Records"}
               </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Treatment history, clinical records and payments
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "تاريخ العلاج والسجلات الطبية والمدفوعات"
+                  : "Treatment history, clinical records and payments"}
               </p>
             </div>
 
@@ -1195,18 +1412,26 @@ const PatientDetails = () => {
               className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
             >
               {showRecordForm
-                ? "Cancel"
+                ? isArabic
+                  ? "إلغاء"
+                  : "Cancel"
+                : isArabic
+                ? "+ إضافة سجل"
                 : "+ Add Record"}
             </button>
 
           </div>
 
           {showRecordForm && (
-            <div className="border-b border-slate-200 bg-slate-50 p-6">
+            <div className="border-b border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-950/50">
 
-              <h3 className="mb-5 text-lg font-semibold text-slate-900">
+              <h3 className="mb-5 text-lg font-semibold text-slate-900 dark:text-white">
                 {editingRecordId
-                  ? "Edit Medical Record"
+                  ? isArabic
+                    ? "تعديل السجل الطبي"
+                    : "Edit Medical Record"
+                  : isArabic
+                  ? "إضافة سجل طبي"
                   : "Add Medical Record"}
               </h3>
 
@@ -1221,67 +1446,85 @@ const PatientDetails = () => {
                   onChange={(e) =>
                     setTreatmentDate(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Tooth Number"
+                  placeholder={
+                    isArabic ? "رقم السنة" : "Tooth Number"
+                  }
                   value={toothNumber}
                   onChange={(e) =>
                     setToothNumber(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Diagnosis"
+                  placeholder={
+                    isArabic ? "التشخيص" : "Diagnosis"
+                  }
                   value={diagnosis}
                   onChange={(e) =>
                     setDiagnosis(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Treatment Type"
+                  placeholder={
+                    isArabic ? "نوع العلاج" : "Treatment Type"
+                  }
                   value={treatmentType}
                   onChange={(e) =>
                     setTreatmentType(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <textarea
-                  placeholder="Treatment Details"
+                  placeholder={
+                    isArabic
+                      ? "تفاصيل العلاج"
+                      : "Treatment Details"
+                  }
                   value={treatmentDetails}
                   onChange={(e) =>
                     setTreatmentDetails(e.target.value)
                   }
-                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500 md:col-span-2"
+                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white md:col-span-2"
                 />
 
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="Treatment Cost"
+                  placeholder={
+                    isArabic
+                      ? "تكلفة العلاج"
+                      : "Treatment Cost"
+                  }
                   value={cost}
                   onChange={(e) =>
                     setCost(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <textarea
-                  placeholder="Doctor Notes"
+                  placeholder={
+                    isArabic
+                      ? "ملاحظات الطبيب"
+                      : "Doctor Notes"
+                  }
                   value={doctorNotes}
                   onChange={(e) =>
                     setDoctorNotes(e.target.value)
                   }
-                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <button
@@ -1289,7 +1532,11 @@ const PatientDetails = () => {
                   className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 md:col-span-2"
                 >
                   {editingRecordId
-                    ? "Update Record"
+                    ? isArabic
+                      ? "تحديث السجل"
+                      : "Update Record"
+                    : isArabic
+                    ? "حفظ السجل"
                     : "Save Record"}
                 </button>
 
@@ -1299,8 +1546,10 @@ const PatientDetails = () => {
 
           {medicalRecords.length === 0 ? (
             <div className="p-10 text-center">
-              <p className="text-slate-500">
-                No medical records yet.
+              <p className="text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "لا توجد سجلات طبية حتى الآن."
+                  : "No medical records yet."}
               </p>
             </div>
           ) : (
@@ -1308,40 +1557,30 @@ const PatientDetails = () => {
 
               <table className="w-full min-w-[1400px]">
 
-                <thead className="bg-slate-50">
+                <thead className="bg-slate-50 dark:bg-slate-950/50">
                   <tr>
 
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Date
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Tooth
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Diagnosis
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Treatment
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Cost
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Paid
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Remaining
-                    </th>
-
-                    <th className="px-5 py-4 text-right text-sm font-semibold text-slate-600">
-                      Actions
-                    </th>
+                    {[
+                      isArabic ? "التاريخ" : "Date",
+                      isArabic ? "السنة" : "Tooth",
+                      isArabic ? "التشخيص" : "Diagnosis",
+                      isArabic ? "العلاج" : "Treatment",
+                      isArabic ? "التكلفة" : "Cost",
+                      isArabic ? "المدفوع" : "Paid",
+                      isArabic ? "المتبقي" : "Remaining",
+                      isArabic ? "الإجراءات" : "Actions",
+                    ].map((header, index) => (
+                      <th
+                        key={header}
+                        className={`px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400 ${
+                          index === 7
+                            ? "text-right"
+                            : "text-left"
+                        }`}
+                      >
+                        {header}
+                      </th>
+                    ))}
 
                   </tr>
                 </thead>
@@ -1358,30 +1597,30 @@ const PatientDetails = () => {
                     return (
                       <tr
                         key={record.id}
-                        className="border-t border-slate-100 hover:bg-slate-50"
+                        className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                       >
 
-                        <td className="px-5 py-4 text-sm text-slate-700">
+                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                           {record.treatment_date || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-medium text-slate-900">
+                        <td className="px-5 py-4 text-sm font-medium text-slate-900 dark:text-white">
                           {record.tooth_number || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-700">
+                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                           {record.diagnosis || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-700">
+                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                           {record.treatment_type || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                        <td className="px-5 py-4 text-sm font-semibold text-slate-900 dark:text-white">
                           {Number(record.cost || 0).toFixed(2)}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-semibold text-green-600">
+                        <td className="px-5 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
                           {paidAmount.toFixed(2)}
                         </td>
 
@@ -1390,8 +1629,8 @@ const PatientDetails = () => {
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-semibold ${
                               remainingAmount === 0
-                                ? "bg-green-100 text-green-700"
-                                : "bg-orange-100 text-orange-700"
+                                ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                                : "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400"
                             }`}
                           >
                             {remainingAmount.toFixed(2)}
@@ -1408,9 +1647,12 @@ const PatientDetails = () => {
                                 onClick={() =>
                                   openPaymentForm(record)
                                 }
-                                className="rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100"
+                                className="rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100 dark:bg-green-950/30 dark:text-green-400 dark:hover:bg-green-950/50"
                               >
-                                + Payment
+                                +{" "}
+                                {isArabic
+                                  ? "دفعة"
+                                  : "Payment"}
                               </button>
                             )}
 
@@ -1418,18 +1660,18 @@ const PatientDetails = () => {
                               onClick={() =>
                                 handleEditRecord(record)
                               }
-                              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                             >
-                              Edit
+                              {isArabic ? "تعديل" : "Edit"}
                             </button>
 
                             <button
                               onClick={() =>
                                 handleDeleteRecord(record.id)
                               }
-                              className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
+                              className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
                             >
-                              Delete
+                              {isArabic ? "حذف" : "Delete"}
                             </button>
 
                           </div>
@@ -1449,18 +1691,20 @@ const PatientDetails = () => {
 
           {/* Payment Form */}
           {showPaymentForm && selectedPaymentRecord && (
-            <div className="border-t border-slate-200 bg-green-50 p-6">
+            <div className="border-t border-slate-200 bg-green-50 p-6 dark:border-slate-800 dark:bg-green-950/20">
 
               <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 
                 <div>
-                  <h3 className="text-xl font-semibold text-slate-900">
-                    Add Payment
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+                    {isArabic
+                      ? "إضافة دفعة"
+                      : "Add Payment"}
                   </h3>
 
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                     {selectedPaymentRecord.treatment_type ||
-                      "Treatment"}{" "}
+                      (isArabic ? "علاج" : "Treatment")}{" "}
                     •{" "}
                     {selectedPaymentRecord.treatment_date}
                   </p>
@@ -1469,45 +1713,47 @@ const PatientDetails = () => {
                 <button
                   type="button"
                   onClick={closePaymentForm}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
-                  Cancel
+                  {isArabic ? "إلغاء" : "Cancel"}
                 </button>
 
               </div>
 
               <div className="mb-6 grid gap-4 md:grid-cols-3">
 
-                <div className="rounded-xl bg-white p-4">
-                  <p className="text-sm text-slate-500">
-                    Treatment Cost
+                <div className="rounded-xl bg-white p-4 dark:bg-slate-900">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {isArabic
+                      ? "تكلفة العلاج"
+                      : "Treatment Cost"}
                   </p>
 
-                  <p className="mt-1 text-xl font-bold text-slate-900">
+                  <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
                     {Number(
                       selectedPaymentRecord.cost || 0
                     ).toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white p-4">
-                  <p className="text-sm text-slate-500">
-                    Already Paid
+                <div className="rounded-xl bg-white p-4 dark:bg-slate-900">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {isArabic ? "المدفوع" : "Already Paid"}
                   </p>
 
-                  <p className="mt-1 text-xl font-bold text-green-600">
+                  <p className="mt-1 text-xl font-bold text-green-600 dark:text-green-400">
                     {getRecordPaidAmount(
                       selectedPaymentRecord.id
                     ).toFixed(2)}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white p-4">
-                  <p className="text-sm text-slate-500">
-                    Remaining
+                <div className="rounded-xl bg-white p-4 dark:bg-slate-900">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {isArabic ? "المتبقي" : "Remaining"}
                   </p>
 
-                  <p className="mt-1 text-xl font-bold text-orange-600">
+                  <p className="mt-1 text-xl font-bold text-orange-600 dark:text-orange-400">
                     {getRecordRemainingAmount(
                       selectedPaymentRecord
                     ).toFixed(2)}
@@ -1528,13 +1774,17 @@ const PatientDetails = () => {
                   max={getRecordRemainingAmount(
                     selectedPaymentRecord
                   )}
-                  placeholder="Payment Amount"
+                  placeholder={
+                    isArabic
+                      ? "مبلغ الدفع"
+                      : "Payment Amount"
+                  }
                   value={paymentAmount}
                   onChange={(e) =>
                     setPaymentAmount(e.target.value)
                   }
                   required
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-green-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <select
@@ -1542,17 +1792,23 @@ const PatientDetails = () => {
                   onChange={(e) =>
                     setPaymentMethod(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-green-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 >
-                  <option value="Cash">Cash</option>
-                  <option value="Card">Card</option>
+                  <option value="Cash">
+                    {isArabic ? "نقدي" : "Cash"}
+                  </option>
+                  <option value="Card">
+                    {isArabic ? "بطاقة" : "Card"}
+                  </option>
                   <option value="Vodafone Cash">
                     Vodafone Cash
                   </option>
                   <option value="Instapay">
                     Instapay
                   </option>
-                  <option value="Other">Other</option>
+                  <option value="Other">
+                    {isArabic ? "أخرى" : "Other"}
+                  </option>
                 </select>
 
                 <input
@@ -1562,26 +1818,32 @@ const PatientDetails = () => {
                     setPaymentDate(e.target.value)
                   }
                   required
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-green-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Payment Description - e.g. First Payment"
+                  placeholder={
+                    isArabic
+                      ? "وصف الدفع - مثال: الدفعة الأولى"
+                      : "Payment Description - e.g. First Payment"
+                  }
                   value={paymentDescription}
                   onChange={(e) =>
                     setPaymentDescription(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-green-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <textarea
-                  placeholder="Payment Notes"
+                  placeholder={
+                    isArabic ? "ملاحظات الدفع" : "Payment Notes"
+                  }
                   value={paymentNotes}
                   onChange={(e) =>
                     setPaymentNotes(e.target.value)
                   }
-                  className="min-h-24 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-green-500 md:col-span-2"
+                  className="min-h-24 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-green-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white md:col-span-2"
                 />
 
                 <button
@@ -1590,7 +1852,11 @@ const PatientDetails = () => {
                   className="rounded-xl bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
                 >
                   {savingPayment
-                    ? "Saving Payment..."
+                    ? isArabic
+                      ? "جاري حفظ الدفعة..."
+                      : "Saving Payment..."
+                    : isArabic
+                    ? "حفظ الدفعة"
                     : "Save Payment"}
                 </button>
 
@@ -1601,15 +1867,19 @@ const PatientDetails = () => {
 
           {/* Payment History */}
           {payments.length > 0 && (
-            <div className="border-t border-slate-200 p-6">
+            <div className="border-t border-slate-200 p-6 dark:border-slate-800">
 
               <div className="mb-5">
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Payment History
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  {isArabic
+                    ? "سجل المدفوعات"
+                    : "Payment History"}
                 </h3>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  All payments made by this patient.
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {isArabic
+                    ? "جميع المدفوعات التي قام بها هذا المريض."
+                    : "All payments made by this patient."}
                 </p>
               </div>
 
@@ -1617,32 +1887,24 @@ const PatientDetails = () => {
 
                 <table className="w-full">
 
-                  <thead className="bg-slate-50">
+                  <thead className="bg-slate-50 dark:bg-slate-950/50">
                     <tr>
 
-                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                        Date
-                      </th>
-
-                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                        Treatment
-                      </th>
-
-                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                        Description
-                      </th>
-
-                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                        Amount
-                      </th>
-
-                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                        Method
-                      </th>
-
-                      <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                        Notes
-                      </th>
+                      {[
+                        isArabic ? "التاريخ" : "Date",
+                        isArabic ? "العلاج" : "Treatment",
+                        isArabic ? "الوصف" : "Description",
+                        isArabic ? "المبلغ" : "Amount",
+                        isArabic ? "الطريقة" : "Method",
+                        isArabic ? "ملاحظات" : "Notes",
+                      ].map((header) => (
+                        <th
+                          key={header}
+                          className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400"
+                        >
+                          {header}
+                        </th>
+                      ))}
 
                     </tr>
                   </thead>
@@ -1661,31 +1923,31 @@ const PatientDetails = () => {
                       return (
                         <tr
                           key={payment.id}
-                          className="border-t border-slate-100"
+                          className="border-t border-slate-100 dark:border-slate-800"
                         >
 
-                          <td className="px-5 py-4 text-sm text-slate-700">
+                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                             {payment.payment_date}
                           </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-700">
+                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                             {relatedRecord?.treatment_type ||
                               "-"}
                           </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-700">
+                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                             {payment.description || "-"}
                           </td>
 
-                          <td className="px-5 py-4 text-sm font-semibold text-green-600">
+                          <td className="px-5 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
                             {payment.amount.toFixed(2)}
                           </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-700">
+                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                             {payment.payment_method}
                           </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-600">
+                          <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
                             {payment.notes || "-"}
                           </td>
 
@@ -1704,17 +1966,19 @@ const PatientDetails = () => {
         </div>
 
         {/* Prescriptions */}
-        <div className="mb-8 rounded-2xl bg-white shadow-sm">
+        <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
 
-          <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between dark:border-slate-800">
 
             <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Prescriptions
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                {isArabic ? "الروشتات" : "Prescriptions"}
               </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Medicines prescribed for this patient
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "الأدوية الموصوفة لهذا المريض"
+                  : "Medicines prescribed for this patient"}
               </p>
             </div>
 
@@ -1737,18 +2001,26 @@ const PatientDetails = () => {
               className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
             >
               {showPrescriptionForm
-                ? "Cancel"
+                ? isArabic
+                  ? "إلغاء"
+                  : "Cancel"
+                : isArabic
+                ? "+ إضافة روشتة"
                 : "+ Add Prescription"}
             </button>
 
           </div>
 
           {showPrescriptionForm && (
-            <div className="border-b border-slate-200 bg-slate-50 p-6">
+            <div className="border-b border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-950/50">
 
-              <h3 className="mb-5 text-lg font-semibold text-slate-900">
+              <h3 className="mb-5 text-lg font-semibold text-slate-900 dark:text-white">
                 {editingPrescriptionId
-                  ? "Edit Prescription"
+                  ? isArabic
+                    ? "تعديل الروشتة"
+                    : "Edit Prescription"
+                  : isArabic
+                  ? "إضافة روشتة"
                   : "Add Prescription"}
               </h3>
 
@@ -1763,66 +2035,86 @@ const PatientDetails = () => {
                   onChange={(e) =>
                     setPrescriptionDate(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Medicine Name"
+                  placeholder={
+                    isArabic ? "اسم الدواء" : "Medicine Name"
+                  }
                   value={medicineName}
                   onChange={(e) =>
                     setMedicineName(e.target.value)
                   }
                   required
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Dosage - e.g. 500 mg"
+                  placeholder={
+                    isArabic
+                      ? "الجرعة - مثال: 500 mg"
+                      : "Dosage - e.g. 500 mg"
+                  }
                   value={dosage}
                   onChange={(e) =>
                     setDosage(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Frequency - e.g. 3 times/day"
+                  placeholder={
+                    isArabic
+                      ? "التكرار - مثال: 3 مرات يوميًا"
+                      : "Frequency - e.g. 3 times/day"
+                  }
                   value={frequency}
                   onChange={(e) =>
                     setFrequency(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <input
                   type="text"
-                  placeholder="Duration - e.g. 5 days"
+                  placeholder={
+                    isArabic
+                      ? "المدة - مثال: 5 أيام"
+                      : "Duration - e.g. 5 days"
+                  }
                   value={duration}
                   onChange={(e) =>
                     setDuration(e.target.value)
                   }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <textarea
-                  placeholder="Instructions"
+                  placeholder={
+                    isArabic ? "التعليمات" : "Instructions"
+                  }
                   value={instructions}
                   onChange={(e) =>
                     setInstructions(e.target.value)
                   }
-                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 />
 
                 <textarea
-                  placeholder="Doctor Notes"
+                  placeholder={
+                    isArabic
+                      ? "ملاحظات الطبيب"
+                      : "Doctor Notes"
+                  }
                   value={prescriptionDoctorNotes}
                   onChange={(e) =>
                     setPrescriptionDoctorNotes(e.target.value)
                   }
-                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-500 md:col-span-2"
+                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white md:col-span-2"
                 />
 
                 <button
@@ -1830,7 +2122,11 @@ const PatientDetails = () => {
                   className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 md:col-span-2"
                 >
                   {editingPrescriptionId
-                    ? "Update Prescription"
+                    ? isArabic
+                      ? "تحديث الروشتة"
+                      : "Update Prescription"
+                    : isArabic
+                    ? "حفظ الروشتة"
                     : "Save Prescription"}
                 </button>
 
@@ -1841,16 +2137,20 @@ const PatientDetails = () => {
           {prescriptions.length === 0 ? (
             <div className="p-10 text-center">
 
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-2xl">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-teal-50 text-2xl dark:bg-teal-950/40">
                 💊
               </div>
 
-              <p className="font-medium text-slate-600">
-                No prescriptions yet.
+              <p className="font-medium text-slate-600 dark:text-slate-300">
+                {isArabic
+                  ? "لا توجد روشتات حتى الآن."
+                  : "No prescriptions yet."}
               </p>
 
               <p className="mt-1 text-sm text-slate-400">
-                Add the first prescription for this patient.
+                {isArabic
+                  ? "أضف أول روشتة لهذا المريض."
+                  : "Add the first prescription for this patient."}
               </p>
 
             </div>
@@ -1860,35 +2160,28 @@ const PatientDetails = () => {
               <table className="w-full min-w-[1200px]">
 
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
+                  <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50">
 
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Date
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Medicine
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Dosage
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Frequency
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Duration
-                    </th>
-
-                    <th className="px-5 py-4 text-left text-sm font-semibold text-slate-600">
-                      Instructions
-                    </th>
-
-                    <th className="px-5 py-4 text-right text-sm font-semibold text-slate-600">
-                      Actions
-                    </th>
+                    {[
+                      isArabic ? "التاريخ" : "Date",
+                      isArabic ? "الدواء" : "Medicine",
+                      isArabic ? "الجرعة" : "Dosage",
+                      isArabic ? "التكرار" : "Frequency",
+                      isArabic ? "المدة" : "Duration",
+                      isArabic ? "التعليمات" : "Instructions",
+                      isArabic ? "الإجراءات" : "Actions",
+                    ].map((header, index) => (
+                      <th
+                        key={header}
+                        className={`px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400 ${
+                          index === 6
+                            ? "text-right"
+                            : "text-left"
+                        }`}
+                      >
+                        {header}
+                      </th>
+                    ))}
 
                   </tr>
                 </thead>
@@ -1898,10 +2191,10 @@ const PatientDetails = () => {
                   {prescriptions.map((prescription) => (
                     <tr
                       key={prescription.id}
-                      className="border-b border-slate-100 transition hover:bg-slate-50"
+                      className="border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                     >
 
-                      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
+                      <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
                         {prescription.prescription_date ||
                           "-"}
                       </td>
@@ -1910,11 +2203,11 @@ const PatientDetails = () => {
 
                         <div className="flex items-center gap-3">
 
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-lg">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-50 text-lg dark:bg-teal-950/40">
                             💊
                           </div>
 
-                          <span className="font-semibold text-slate-900">
+                          <span className="font-semibold text-slate-900 dark:text-white">
                             {prescription.medicine_name}
                           </span>
 
@@ -1922,19 +2215,19 @@ const PatientDetails = () => {
 
                       </td>
 
-                      <td className="px-5 py-4 text-sm text-slate-700">
+                      <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                         {prescription.dosage || "-"}
                       </td>
 
-                      <td className="px-5 py-4 text-sm text-slate-700">
+                      <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                         {prescription.frequency || "-"}
                       </td>
 
-                      <td className="px-5 py-4 text-sm text-slate-700">
+                      <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                         {prescription.duration || "-"}
                       </td>
 
-                      <td className="max-w-xs px-5 py-4 text-sm text-slate-600">
+                      <td className="max-w-xs px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
 
                         <p className="line-clamp-2">
                           {prescription.instructions ||
@@ -1951,9 +2244,10 @@ const PatientDetails = () => {
                             to={`/doctor/prescriptions/${prescription.id}/print`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="rounded-lg bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100"
+                            className="rounded-lg bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100 dark:bg-teal-950/30 dark:text-teal-400 dark:hover:bg-teal-950/50"
                           >
-                            🖨 Print
+                            🖨{" "}
+                            {isArabic ? "طباعة" : "Print"}
                           </Link>
 
                           <button
@@ -1962,9 +2256,9 @@ const PatientDetails = () => {
                                 prescription
                               )
                             }
-                            className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                            className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                           >
-                            Edit
+                            {isArabic ? "تعديل" : "Edit"}
                           </button>
 
                           <button
@@ -1973,9 +2267,9 @@ const PatientDetails = () => {
                                 prescription.id
                               )
                             }
-                            className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100"
+                            className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
                           >
-                            Delete
+                            {isArabic ? "حذف" : "Delete"}
                           </button>
 
                         </div>
@@ -1995,16 +2289,20 @@ const PatientDetails = () => {
         </div>
 
         {/* Appointment History */}
-        <div className="rounded-2xl bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
 
-          <div className="border-b border-slate-200 p-6">
+          <div className="border-b border-slate-200 p-6 dark:border-slate-800">
 
-            <h2 className="text-xl font-semibold text-slate-900">
-              Appointment History
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {isArabic
+                ? "سجل المواعيد"
+                : "Appointment History"}
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Previous and upcoming appointments
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "المواعيد السابقة والقادمة"
+                : "Previous and upcoming appointments"}
             </p>
 
           </div>
@@ -2012,8 +2310,10 @@ const PatientDetails = () => {
           {appointments.length === 0 ? (
             <div className="p-10 text-center">
 
-              <p className="text-slate-500">
-                No appointments yet.
+              <p className="text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "لا توجد مواعيد حتى الآن."
+                  : "No appointments yet."}
               </p>
 
             </div>
@@ -2022,24 +2322,24 @@ const PatientDetails = () => {
 
               <table className="w-full">
 
-                <thead className="bg-slate-50">
+                <thead className="bg-slate-50 dark:bg-slate-950/50">
 
                   <tr>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Date
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "التاريخ" : "Date"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Time
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "الوقت" : "Time"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Status
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "الحالة" : "Status"}
                     </th>
 
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600">
-                      Notes
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "ملاحظات" : "Notes"}
                     </th>
 
                   </tr>
@@ -2051,14 +2351,14 @@ const PatientDetails = () => {
                   {appointments.map((appointment) => (
                     <tr
                       key={appointment.id}
-                      className="border-t border-slate-100"
+                      className="border-t border-slate-100 dark:border-slate-800"
                     >
 
-                      <td className="px-6 py-4 text-sm text-slate-700">
+                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
                         {appointment.appointment_date}
                       </td>
 
-                      <td className="px-6 py-4 text-sm text-slate-700">
+                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
                         {appointment.appointment_time}
                       </td>
 
@@ -2068,22 +2368,38 @@ const PatientDetails = () => {
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
                             appointment.status ===
                             "confirmed"
-                              ? "bg-green-100 text-green-700"
+                              ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
                               : appointment.status ===
                                 "cancelled"
-                              ? "bg-red-100 text-red-700"
+                              ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
                               : appointment.status ===
                                 "completed"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-yellow-100 text-yellow-700"
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                              : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400"
                           }`}
                         >
-                          {appointment.status}
+                          {appointment.status === "confirmed"
+                            ? isArabic
+                              ? "مؤكد"
+                              : "Confirmed"
+                            : appointment.status ===
+                              "cancelled"
+                            ? isArabic
+                              ? "ملغي"
+                              : "Cancelled"
+                            : appointment.status ===
+                              "completed"
+                            ? isArabic
+                              ? "مكتمل"
+                              : "Completed"
+                            : isArabic
+                            ? "قيد الانتظار"
+                            : "Pending"}
                         </span>
 
                       </td>
 
-                      <td className="px-6 py-4 text-sm text-slate-600">
+                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
                         {appointment.notes || "-"}
                       </td>
 
