@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -6,9 +7,13 @@ import {
   Calendar,
   User,
   X,
+  Clock,
 } from "lucide-react";
 import { supabase } from "./supabase";
-import { translations, type Language } from "./i18n";
+import {
+  translations,
+  type Language,
+} from "./i18n";
 
 type Notification = {
   id: string;
@@ -18,40 +23,75 @@ type Notification = {
   created_at: string;
   appointment_id: string | null;
   patient_id: string | null;
+  recipient_type:
+    | "doctor"
+    | "patient"
+    | null;
+  notification_type:
+    | "appointment_request"
+    | "appointment_confirmed"
+    | "appointment_rejected"
+    | null;
 };
 
-type AppointmentAction = "confirm" | "reject";
+type AppointmentAction =
+  | "confirm"
+  | "reject";
+
+type AppointmentType =
+  | "new_checkup"
+  | "follow_up"
+  | "xray"
+  | "unknown";
 
 const DoctorNotifications = () => {
-  const [notifications, setNotifications] = useState<
-    Notification[]
-  >([]);
+  const [notifications, setNotifications] =
+    useState<Notification[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [clinicId, setClinicId] = useState("");
+  const [loading, setLoading] =
+    useState(true);
 
-  const [processingAppointments, setProcessingAppointments] =
-    useState<Record<string, boolean>>({});
+  const [error, setError] =
+    useState("");
 
-  const [language, setLanguage] = useState<Language>(() => {
-    const savedLanguage =
-      localStorage.getItem("dentalcare-language");
+  const [clinicId, setClinicId] =
+    useState("");
 
-    return savedLanguage === "en" ? "en" : "ar";
-  });
+  const [
+    processingAppointments,
+    setProcessingAppointments,
+  ] = useState<Record<string, boolean>>({});
+
+  const [language, setLanguage] =
+    useState<Language>(() => {
+      const savedLanguage =
+        localStorage.getItem(
+          "dentalcare-language"
+        );
+
+      return savedLanguage === "en"
+        ? "en"
+        : "ar";
+    });
 
   const isArabic = language === "ar";
   const t = translations[language];
 
-  // Listen for language changes
+  // ============================================
+  // Language
+  // ============================================
+
   useEffect(() => {
     const handleLanguageChange = () => {
       const savedLanguage =
-        localStorage.getItem("dentalcare-language");
+        localStorage.getItem(
+          "dentalcare-language"
+        );
 
       setLanguage(
-        savedLanguage === "en" ? "en" : "ar"
+        savedLanguage === "en"
+          ? "en"
+          : "ar"
       );
     };
 
@@ -78,6 +118,67 @@ const DoctorNotifications = () => {
     };
   }, []);
 
+  // ============================================
+  // Get Appointment Type
+  // ============================================
+
+  const getAppointmentType = (
+    message: string
+  ): AppointmentType => {
+    if (
+      message.includes("كشف جديد") ||
+      message.includes("New Checkup")
+    ) {
+      return "new_checkup";
+    }
+
+    if (
+      message.includes("إعادة") ||
+      message.includes("Follow-up")
+    ) {
+      return "follow_up";
+    }
+
+    if (
+      message.includes("أشعة") ||
+      message.includes("X-ray")
+    ) {
+      return "xray";
+    }
+
+    return "unknown";
+  };
+
+  const getAppointmentTypeLabel = (
+    type: AppointmentType
+  ) => {
+    if (type === "new_checkup") {
+      return isArabic
+        ? "كشف جديد"
+        : "New Checkup";
+    }
+
+    if (type === "follow_up") {
+      return isArabic
+        ? "إعادة"
+        : "Follow-up";
+    }
+
+    if (type === "xray") {
+      return isArabic
+        ? "أشعة"
+        : "X-ray";
+    }
+
+    return isArabic
+      ? "نوع غير محدد"
+      : "Unknown Type";
+  };
+
+  // ============================================
+  // Load Notifications
+  // ============================================
+
   const loadNotifications = async () => {
     setLoading(true);
     setError("");
@@ -89,22 +190,28 @@ const DoctorNotifications = () => {
       } = await supabase.auth.getUser();
 
       if (userError) {
-        console.error("Auth error:", userError);
         setError(userError.message);
         return;
       }
 
       if (!user) {
-        window.location.href = "/doctor/login";
+        window.location.href =
+          "/doctor/login";
         return;
       }
+
+      // ======================================
+      // Doctor Profile
+      // ======================================
 
       const {
         data: profile,
         error: profileError,
       } = await supabase
         .from("profiles")
-        .select("id, name, email, clinic_id")
+        .select(
+          "id, name, email, clinic_id"
+        )
         .eq("id", user.id)
         .maybeSingle();
 
@@ -135,13 +242,28 @@ const DoctorNotifications = () => {
         return;
       }
 
-      const currentClinicId = profile.clinic_id;
+      const currentClinicId =
+        profile.clinic_id;
 
       setClinicId(currentClinicId);
 
+      // ======================================
+      // ONLY UNREAD DOCTOR APPOINTMENT REQUESTS
+      // ======================================
+      //
+      // Important:
+      // Once the doctor accepts/rejects a request,
+      // we mark it as read.
+      //
+      // Because this query only loads unread requests,
+      // the notification disappears from the doctor's
+      // notification page permanently.
+      //
+
       const {
         data,
-        error: notificationError,
+        error:
+          notificationError,
       } = await supabase
         .from("notifications")
         .select(`
@@ -151,19 +273,31 @@ const DoctorNotifications = () => {
           is_read,
           created_at,
           appointment_id,
-          patient_id
+          patient_id,
+          recipient_type,
+          notification_type
         `)
-        .eq("clinic_id", currentClinicId)
+        .eq(
+          "clinic_id",
+          currentClinicId
+        )
+        .eq(
+          "recipient_type",
+          "doctor"
+        )
+        .eq(
+          "notification_type",
+          "appointment_request"
+        )
+        .eq(
+          "is_read",
+          false
+        )
         .order("created_at", {
           ascending: false,
         });
 
       if (notificationError) {
-        console.error(
-          "Notification error:",
-          notificationError
-        );
-
         setError(
           isArabic
             ? `تعذر تحميل الإشعارات: ${notificationError.message}`
@@ -172,12 +306,11 @@ const DoctorNotifications = () => {
         return;
       }
 
-      setNotifications(data || []);
-    } catch (error) {
-      console.error(
-        "Load doctor notifications error:",
-        error
+      setNotifications(
+        (data || []) as Notification[]
       );
+    } catch (err) {
+      console.error(err);
 
       setError(
         isArabic
@@ -193,241 +326,388 @@ const DoctorNotifications = () => {
     loadNotifications();
   }, []);
 
+  // ============================================
+  // Mark One Read
+  // ============================================
+
   const markAsRead = async (
     notificationId: string
   ) => {
-    const { error } = await supabase
-      .from("notifications")
-      .update({
-        is_read: true,
-      })
-      .eq("id", notificationId);
+    const { error } =
+      await supabase
+        .from("notifications")
+        .update({
+          is_read: true,
+        })
+        .eq(
+          "id",
+          notificationId
+        )
+        .eq(
+          "recipient_type",
+          "doctor"
+        );
 
     if (error) {
-      console.error(
-        "Mark notification error:",
-        error
-      );
+      console.error(error);
+      setError(error.message);
       return;
     }
 
-    setNotifications((current) =>
-      current.map((notification) =>
-        notification.id === notificationId
-          ? {
-              ...notification,
-              is_read: true,
-            }
-          : notification
-      )
+    // Remove it from the screen immediately.
+    setNotifications(
+      (current) =>
+        current.filter(
+          (notification) =>
+            notification.id !==
+            notificationId
+        )
     );
   };
+
+  // ============================================
+  // Mark All Read
+  // ============================================
 
   const markAllAsRead = async () => {
     if (!clinicId) {
       return;
     }
 
-    const { error } = await supabase
-      .from("notifications")
-      .update({
-        is_read: true,
-      })
-      .eq("clinic_id", clinicId)
-      .eq("is_read", false);
-
-    if (error) {
-      console.error(
-        "Mark all notifications error:",
-        error
-      );
-      return;
-    }
-
-    setNotifications((current) =>
-      current.map((notification) => ({
-        ...notification,
-        is_read: true,
-      }))
-    );
-  };
-
-  const handleAppointmentAction = async (
-    notification: Notification,
-    action: AppointmentAction
-  ) => {
-    if (
-      !notification.appointment_id ||
-      !notification.patient_id ||
-      !clinicId
-    ) {
-      return;
-    }
-
-    const appointmentId = notification.appointment_id;
-
-    setProcessingAppointments((current) => ({
-      ...current,
-      [appointmentId]: true,
-    }));
-
-    setError("");
-
-    try {
-      /*
-       * confirm = accepted appointment
-       * reject = cancelled appointment
-       */
-      const newStatus =
-        action === "confirm"
-          ? "confirmed"
-          : "cancelled";
-
-      const {
-        data: updatedAppointment,
-        error: appointmentError,
-      } = await supabase
-        .from("appointments")
-        .update({
-          status: newStatus,
-        })
-        .eq("id", appointmentId)
-        .eq("clinic_id", clinicId)
-        .select("id, patient_id, clinic_id")
-        .maybeSingle();
-
-      if (appointmentError) {
-        console.error(
-          "Update appointment error:",
-          appointmentError
-        );
-
-        setError(
-          isArabic
-            ? `تعذر تحديث الموعد: ${appointmentError.message}`
-            : `Could not update appointment: ${appointmentError.message}`
-        );
-
-        return;
-      }
-
-      if (!updatedAppointment) {
-        setError(
-          isArabic
-            ? "لم يتم العثور على الموعد أو لا تملك العيادة صلاحية تعديله."
-            : "Appointment not found or you do not have permission to update it."
-        );
-
-        return;
-      }
-
-      const notificationTitle =
-        action === "confirm"
-          ? isArabic
-            ? "تم قبول موعدك"
-            : "Your appointment was confirmed"
-          : isArabic
-            ? "تم رفض موعدك"
-            : "Your appointment was rejected";
-
-      const notificationMessage =
-        action === "confirm"
-          ? isArabic
-            ? "وافقت العيادة على طلب حجز الموعد الخاص بك."
-            : "The clinic has accepted your appointment request."
-          : isArabic
-            ? "رفضت العيادة طلب حجز الموعد الخاص بك."
-            : "The clinic has rejected your appointment request.";
-
-      /*
-       * Send response notification to the patient.
-       */
-      const {
-        error: patientNotificationError,
-      } = await supabase
-        .from("notifications")
-        .insert({
-          clinic_id: clinicId,
-          patient_id: updatedAppointment.patient_id,
-          appointment_id: updatedAppointment.id,
-          title: notificationTitle,
-          message: notificationMessage,
-          is_read: false,
-        });
-
-      if (patientNotificationError) {
-        console.error(
-          "Patient notification error:",
-          patientNotificationError
-        );
-
-        setError(
-          isArabic
-            ? `تم تحديث حالة الموعد، لكن تعذر إرسال إشعار للمريض: ${patientNotificationError.message}`
-            : `Appointment updated, but the patient notification could not be sent: ${patientNotificationError.message}`
-        );
-
-        return;
-      }
-
-      /*
-       * Mark the doctor's original notification as read.
-       */
-      const {
-        error: markReadError,
-      } = await supabase
+    const { error } =
+      await supabase
         .from("notifications")
         .update({
           is_read: true,
         })
-        .eq("id", notification.id);
-
-      if (markReadError) {
-        console.error(
-          "Mark notification as read error:",
-          markReadError
-        );
-      }
-
-      /*
-       * Update the notification locally.
-       */
-      setNotifications((current) =>
-        current.map((item) =>
-          item.id === notification.id
-            ? {
-                ...item,
-                is_read: true,
-              }
-            : item
+        .eq(
+          "clinic_id",
+          clinicId
         )
-      );
-    } catch (error) {
-      console.error(
-        "Appointment action error:",
-        error
-      );
+        .eq(
+          "recipient_type",
+          "doctor"
+        )
+        .eq(
+          "notification_type",
+          "appointment_request"
+        )
+        .eq(
+          "is_read",
+          false
+        );
 
-      setError(
-        isArabic
-          ? "حدث خطأ أثناء معالجة طلب الموعد."
-          : "Something went wrong while processing the appointment."
-      );
-    } finally {
-      setProcessingAppointments((current) => ({
-        ...current,
-        [appointmentId]: false,
-      }));
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
     }
+
+    // Remove all requests from the screen.
+    setNotifications([]);
   };
 
-  const unreadCount = notifications.filter(
-    (notification) => !notification.is_read
-  ).length;
+  // ============================================
+  // Appointment Action
+  // ============================================
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleString(
-      isArabic ? "ar-EG" : "en-EG",
+  const handleAppointmentAction =
+    async (
+      notification: Notification,
+      action: AppointmentAction
+    ) => {
+      if (
+        !notification.appointment_id ||
+        !notification.patient_id ||
+        !clinicId
+      ) {
+        setError(
+          isArabic
+            ? "بيانات طلب الموعد غير مكتملة."
+            : "Appointment request data is incomplete."
+        );
+        return;
+      }
+
+      // Only appointment requests can be accepted/rejected.
+      if (
+        notification.notification_type !==
+        "appointment_request"
+      ) {
+        return;
+      }
+
+      const appointmentId =
+        notification.appointment_id;
+
+      setProcessingAppointments(
+        (current) => ({
+          ...current,
+          [appointmentId]: true,
+        })
+      );
+
+      setError("");
+
+      try {
+        // ======================================
+        // 1. New Appointment Status
+        // ======================================
+
+        const newStatus =
+          action === "confirm"
+            ? "confirmed"
+            : "cancelled";
+
+        // ======================================
+        // 2. Update Appointment
+        // ======================================
+
+        const {
+          data:
+            updatedAppointment,
+          error:
+            appointmentError,
+        } = await supabase
+          .from("appointments")
+          .update({
+            status: newStatus,
+          })
+          .eq(
+            "id",
+            appointmentId
+          )
+          .eq(
+            "clinic_id",
+            clinicId
+          )
+          .eq(
+            "patient_id",
+            notification.patient_id
+          )
+          .select(`
+            id,
+            patient_id,
+            clinic_id,
+            appointment_date,
+            appointment_time,
+            appointment_type,
+            status
+          `)
+          .maybeSingle();
+
+        if (appointmentError) {
+          setError(
+            isArabic
+              ? `تعذر تحديث الموعد: ${appointmentError.message}`
+              : `Could not update appointment: ${appointmentError.message}`
+          );
+          return;
+        }
+
+        if (!updatedAppointment) {
+          setError(
+            isArabic
+              ? "لم يتم العثور على الموعد."
+              : "Appointment not found."
+          );
+          return;
+        }
+
+        // ======================================
+        // 3. Appointment Type
+        // ======================================
+
+        const appointmentType =
+          (updatedAppointment.appointment_type ||
+            "new_checkup") as AppointmentType;
+
+        const appointmentTypeLabel =
+          getAppointmentTypeLabel(
+            appointmentType
+          );
+
+        // ======================================
+        // 4. Patient Notification
+        // ======================================
+
+        const notificationType =
+          action === "confirm"
+            ? "appointment_confirmed"
+            : "appointment_rejected";
+
+        const notificationTitle =
+          action === "confirm"
+            ? isArabic
+              ? "تم قبول موعدك"
+              : "Your appointment was confirmed"
+            : isArabic
+              ? "تم رفض موعدك"
+              : "Your appointment was rejected";
+
+        const appointmentDate =
+          new Date(
+            `${updatedAppointment.appointment_date}T00:00:00`
+          ).toLocaleDateString(
+            isArabic
+              ? "ar-EG"
+              : "en-US",
+            {
+              dateStyle: "medium",
+            }
+          );
+
+        const notificationMessage =
+          action === "confirm"
+            ? isArabic
+              ? `تم قبول موعدك يوم ${appointmentDate} الساعة ${updatedAppointment.appointment_time}. نوع الحجز: ${appointmentTypeLabel}.`
+              : `Your appointment on ${appointmentDate} at ${updatedAppointment.appointment_time} has been confirmed. Appointment type: ${appointmentTypeLabel}.`
+            : isArabic
+              ? `تم رفض موعدك يوم ${appointmentDate} الساعة ${updatedAppointment.appointment_time}. نوع الحجز: ${appointmentTypeLabel}.`
+              : `Your appointment on ${appointmentDate} at ${updatedAppointment.appointment_time} has been rejected. Appointment type: ${appointmentTypeLabel}.`;
+
+        // ======================================
+        // 5. Send Notification To PATIENT ONLY
+        // ======================================
+
+        const {
+          error:
+            patientNotificationError,
+        } = await supabase
+          .from("notifications")
+          .insert({
+            clinic_id:
+              clinicId,
+
+            patient_id:
+              updatedAppointment.patient_id,
+
+            appointment_id:
+              updatedAppointment.id,
+
+            title:
+              notificationTitle,
+
+            message:
+              notificationMessage,
+
+            is_read: false,
+
+            recipient_type:
+              "patient",
+
+            notification_type:
+              notificationType,
+          });
+
+        if (
+          patientNotificationError
+        ) {
+          setError(
+            isArabic
+              ? `تم تحديث حالة الموعد، لكن تعذر إرسال إشعار للمريض: ${patientNotificationError.message}`
+              : `Appointment updated, but the patient notification could not be sent: ${patientNotificationError.message}`
+          );
+          return;
+        }
+
+        // ======================================
+        // 6. Mark Doctor Request As Read
+        // ======================================
+        //
+        // This makes the request disappear because
+        // DoctorNotifications only loads unread requests.
+        //
+
+        const {
+          error:
+            doctorNotificationError,
+        } = await supabase
+          .from("notifications")
+          .update({
+            is_read: true,
+          })
+          .eq(
+            "id",
+            notification.id
+          )
+          .eq(
+            "clinic_id",
+            clinicId
+          )
+          .eq(
+            "recipient_type",
+            "doctor"
+          )
+          .eq(
+            "notification_type",
+            "appointment_request"
+          );
+
+        if (
+          doctorNotificationError
+        ) {
+          console.error(
+            "Doctor notification update error:",
+            doctorNotificationError
+          );
+
+          setError(
+            isArabic
+              ? "تم تحديث الموعد وإرسال إشعار للمريض، لكن تعذر إخفاء إشعار الطلب."
+              : "The appointment was updated and the patient was notified, but the doctor notification could not be hidden."
+          );
+
+          return;
+        }
+
+        // ======================================
+        // 7. Remove From Screen Immediately
+        // ======================================
+
+        setNotifications(
+          (current) =>
+            current.filter(
+              (item) =>
+                item.id !==
+                notification.id
+            )
+        );
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          isArabic
+            ? "حدث خطأ أثناء معالجة طلب الموعد."
+            : "Something went wrong while processing the appointment."
+        );
+      } finally {
+        setProcessingAppointments(
+          (current) => ({
+            ...current,
+            [appointmentId]:
+              false,
+          })
+        );
+      }
+    };
+
+  // ============================================
+  // Helpers
+  // ============================================
+
+  const unreadCount =
+    notifications.length;
+
+  const formatDate = (
+    date: string
+  ) => {
+    return new Date(
+      date
+    ).toLocaleString(
+      isArabic
+        ? "ar-EG"
+        : "en-EG",
       {
         dateStyle: "medium",
         timeStyle: "short",
@@ -435,11 +715,15 @@ const DoctorNotifications = () => {
     );
   };
 
+  // ============================================
+  // Loading
+  // ============================================
+
   if (loading) {
     return (
       <div
         dir={isArabic ? "rtl" : "ltr"}
-        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center pt-28"
+        className="flex min-h-screen items-center justify-center bg-slate-50 pt-28 dark:bg-slate-950"
       >
         <p className="text-slate-600 dark:text-slate-300">
           {isArabic
@@ -450,22 +734,24 @@ const DoctorNotifications = () => {
     );
   }
 
+  // ============================================
+  // UI
+  // ============================================
+
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-28 pb-12"
+      className="min-h-screen bg-slate-50 pb-12 pt-28 dark:bg-slate-950"
     >
       <div className="mx-auto max-w-4xl px-6">
 
         {/* Header */}
 
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
           <div>
             <div className="flex items-center gap-3">
-
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-teal-100 dark:bg-teal-950/50">
-                <Bell className="h-6 w-6 text-teal-600 dark:text-teal-400" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/50">
+                <Bell className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
 
               <div>
@@ -475,18 +761,17 @@ const DoctorNotifications = () => {
 
                 <p className="mt-1 text-slate-600 dark:text-slate-300">
                   {isArabic
-                    ? "إشعارات مواعيد العيادة"
-                    : "Clinic appointment notifications"}
+                    ? "طلبات حجز المواعيد من المرضى"
+                    : "Appointment requests from patients"}
                 </p>
               </div>
-
             </div>
           </div>
 
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
             >
               <Check className="h-5 w-5" />
 
@@ -495,136 +780,152 @@ const DoctorNotifications = () => {
                 : "Mark All as Read"}
             </button>
           )}
-
         </div>
 
         {/* Error */}
 
         {error && (
-          <div
-            className={`mb-6 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 text-red-600 dark:text-red-400 ${
-              isArabic ? "text-right" : "text-left"
-            }`}
-          >
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400">
             {error}
           </div>
         )}
 
-        {/* No Notifications */}
+        {/* Empty State */}
 
-        {notifications.length === 0 && !error ? (
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-12 text-center shadow-sm">
-
+        {notifications.length === 0 &&
+        !error ? (
+          <div className="rounded-2xl bg-white p-12 text-center shadow-sm dark:bg-slate-900">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-              <Bell className="h-8 w-8 text-slate-400 dark:text-slate-500" />
+              <Bell className="h-8 w-8 text-slate-400" />
             </div>
 
             <h2 className="mt-5 text-xl font-semibold text-slate-800 dark:text-white">
               {isArabic
-                ? "لا توجد إشعارات"
-                : "No notifications"}
+                ? "لا توجد طلبات مواعيد"
+                : "No appointment requests"}
             </h2>
 
             <p className="mt-2 text-slate-500 dark:text-slate-400">
               {isArabic
-                ? "لا توجد إشعارات لعيادتك حتى الآن."
-                : "Your clinic has no notifications yet."}
+                ? "لا توجد طلبات حجز جديدة حاليًا."
+                : "There are no new appointment requests."}
             </p>
-
           </div>
         ) : (
           <div className="space-y-4">
 
-            {notifications.map((notification) => {
-              const isAppointmentRequest =
-                Boolean(notification.appointment_id);
+            {notifications.map(
+              (notification) => {
+                const isProcessing =
+                  notification.appointment_id
+                    ? Boolean(
+                        processingAppointments[
+                          notification
+                            .appointment_id
+                        ]
+                      )
+                    : false;
 
-              const isProcessing =
-                notification.appointment_id
-                  ? Boolean(
-                      processingAppointments[
-                        notification.appointment_id
-                      ]
-                    )
-                  : false;
+                const appointmentType =
+                  getAppointmentType(
+                    notification.message
+                  );
 
-              return (
-                <div
-                  key={notification.id}
-                  className={`rounded-2xl border p-5 shadow-sm ${
-                    notification.is_read
-                      ? "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-                      : "border-teal-200 dark:border-teal-800 bg-teal-50/40 dark:bg-teal-950/30"
-                  }`}
-                >
+                const appointmentTypeLabel =
+                  getAppointmentTypeLabel(
+                    appointmentType
+                  );
 
-                  <div className="flex items-start gap-4">
+                return (
+                  <div
+                    key={
+                      notification.id
+                    }
+                    className="rounded-2xl border border-blue-300 bg-blue-50 p-5 shadow-sm dark:border-blue-800 dark:bg-blue-950/30"
+                  >
+                    <div className="flex items-start gap-4">
 
-                    <div
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                        notification.is_read
-                          ? "bg-slate-100 dark:bg-slate-800"
-                          : "bg-teal-100 dark:bg-teal-950/60"
-                      }`}
-                    >
-                      <Bell
-                        className={`h-5 w-5 ${
-                          notification.is_read
-                            ? "text-slate-500 dark:text-slate-400"
-                            : "text-teal-600 dark:text-teal-400"
-                        }`}
-                      />
-                    </div>
+                      {/* Icon */}
 
-                    <div className="min-w-0 flex-1">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-900/50">
+                        <Calendar className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                      </div>
 
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
 
-                        <div>
-                          <h3 className="font-semibold text-slate-900 dark:text-white">
-                            {notification.title}
-                          </h3>
+                        {/* Header */}
 
-                          <p className="mt-1 text-slate-600 dark:text-slate-300">
-                            {notification.message}
-                          </p>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+
+                            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                              <Calendar className="h-3.5 w-3.5" />
+
+                              {isArabic
+                                ? "طلب موعد جديد"
+                                : "New Appointment Request"}
+                            </div>
+
+                            {/* Appointment Type */}
+
+                            <div className="mb-3">
+                              <span className="inline-flex items-center rounded-full bg-teal-100 px-3 py-1 text-xs font-bold text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
+                                {isArabic
+                                  ? "نوع الحجز: "
+                                  : "Type: "}
+
+                                {appointmentTypeLabel}
+                              </span>
+                            </div>
+
+                            <h3 className="font-semibold text-slate-900 dark:text-white">
+                              {
+                                notification.title
+                              }
+                            </h3>
+
+                            <p className="mt-1 text-slate-600 dark:text-slate-300">
+                              {
+                                notification.message
+                              }
+                            </p>
+                          </div>
+
+                          <span className="w-fit rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
+                            {isArabic
+                              ? "جديد"
+                              : "New"}
+                          </span>
                         </div>
 
-                        {!notification.is_read && (
-                          <span className="w-fit rounded-full bg-teal-600 px-3 py-1 text-xs font-semibold text-white">
-                            {isArabic ? "جديد" : "New"}
-                          </span>
-                        )}
+                        {/* Date + Patient */}
 
-                      </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
 
-                      <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
-
-                        <span className="inline-flex items-center gap-1.5">
-                          <Calendar className="h-4 w-4" />
-
-                          {formatDate(
-                            notification.created_at
-                          )}
-                        </span>
-
-                        {notification.patient_id && (
                           <span className="inline-flex items-center gap-1.5">
-                            <User className="h-4 w-4" />
+                            <Clock className="h-4 w-4" />
 
-                            {isArabic
-                              ? "طلب من مريض"
-                              : "Patient request"}
+                            {formatDate(
+                              notification.created_at
+                            )}
                           </span>
-                        )}
 
-                      </div>
+                          {notification.patient_id && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <User className="h-4 w-4" />
 
-                      {/* Appointment Actions */}
+                              {isArabic
+                                ? "طلب من مريض"
+                                : "Patient request"}
+                            </span>
+                          )}
 
-                      {isAppointmentRequest &&
-                        notification.is_read === false && (
-                          <div className="mt-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
+                        </div>
+
+                        {/* Accept / Reject */}
+
+                        {notification.appointment_id && (
+                          <div className="mt-5 rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-900 dark:bg-slate-900">
 
                             <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-200">
                               {isArabic
@@ -634,9 +935,13 @@ const DoctorNotifications = () => {
 
                             <div className="flex flex-wrap gap-3">
 
+                              {/* Accept */}
+
                               <button
                                 type="button"
-                                disabled={isProcessing}
+                                disabled={
+                                  isProcessing
+                                }
                                 onClick={() =>
                                   handleAppointmentAction(
                                     notification,
@@ -656,9 +961,13 @@ const DoctorNotifications = () => {
                                     : "Accept Appointment"}
                               </button>
 
+                              {/* Reject */}
+
                               <button
                                 type="button"
-                                disabled={isProcessing}
+                                disabled={
+                                  isProcessing
+                                }
                                 onClick={() =>
                                   handleAppointmentAction(
                                     notification,
@@ -679,31 +988,33 @@ const DoctorNotifications = () => {
                               </button>
 
                             </div>
-
                           </div>
                         )}
 
-                      <div className="mt-4 flex flex-wrap gap-3">
+                        {/* View Appointment */}
 
-                        {notification.appointment_id && (
-                          <Link
-                            to="/doctor/appointments"
-                            className="inline-flex items-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
-                          >
-                            {isArabic
-                              ? "عرض الموعد"
-                              : "View Appointment"}
-                          </Link>
-                        )}
+                        <div className="mt-4 flex flex-wrap gap-3">
 
-                        {!notification.is_read && !isAppointmentRequest && (
+                          {notification.appointment_id && (
+                            <Link
+                              to="/doctor/appointments"
+                              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                            >
+                              {isArabic
+                                ? "عرض المواعيد"
+                                : "View Appointments"}
+                            </Link>
+                          )}
+
+                          {/* Mark as Read */}
+
                           <button
                             onClick={() =>
                               markAsRead(
                                 notification.id
                               )
                             }
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                           >
                             <Check className="h-4 w-4" />
 
@@ -711,26 +1022,27 @@ const DoctorNotifications = () => {
                               ? "تحديد كمقروء"
                               : "Mark as Read"}
                           </button>
-                        )}
+
+                        </div>
 
                       </div>
-
                     </div>
-
                   </div>
-
-                </div>
-              );
-            })}
+                );
+              }
+            )}
 
           </div>
         )}
-
       </div>
     </div>
   );
 };
 
 export default DoctorNotifications;
+
+
+
+
 
 

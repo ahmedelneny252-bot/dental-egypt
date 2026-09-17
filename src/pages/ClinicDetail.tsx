@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -7,6 +8,8 @@ import {
   MessageCircle,
   Phone,
   Star,
+  Calendar,
+  Facebook,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
@@ -17,9 +20,12 @@ type Clinic = {
   logo_url: string | null;
   phone: string | null;
   whatsapp: string | null;
+  facebook: string | null;
   address: string | null;
   description: string | null;
   slug: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 const ClinicDetail = () => {
@@ -30,10 +36,7 @@ const ClinicDetail = () => {
   const [error, setError] = useState("");
 
   const [language, setLanguage] = useState<Language>(() => {
-    const savedLanguage = localStorage.getItem(
-      "dentalcare-language"
-    );
-
+    const savedLanguage = localStorage.getItem("dentalcare-language");
     return savedLanguage === "en" ? "en" : "ar";
   });
 
@@ -42,34 +45,19 @@ const ClinicDetail = () => {
 
   useEffect(() => {
     const handleLanguageChange = () => {
-      const savedLanguage =
-        localStorage.getItem("dentalcare-language");
-
-      setLanguage(
-        savedLanguage === "en" ? "en" : "ar"
-      );
+      const savedLanguage = localStorage.getItem("dentalcare-language");
+      setLanguage(savedLanguage === "en" ? "en" : "ar");
     };
 
-    window.addEventListener(
-      "dentalcare-language-change",
-      handleLanguageChange
-    );
-
-    window.addEventListener(
-      "storage",
-      handleLanguageChange
-    );
+    window.addEventListener("dentalcare-language-change", handleLanguageChange);
+    window.addEventListener("storage", handleLanguageChange);
 
     return () => {
       window.removeEventListener(
         "dentalcare-language-change",
         handleLanguageChange
       );
-
-      window.removeEventListener(
-        "storage",
-        handleLanguageChange
-      );
+      window.removeEventListener("storage", handleLanguageChange);
     };
   }, []);
 
@@ -77,9 +65,7 @@ const ClinicDetail = () => {
     const loadClinic = async () => {
       if (!id) {
         setError(
-          isArabic
-            ? "رقم العيادة غير موجود."
-            : "Clinic ID is missing."
+          isArabic ? "رقم العيادة غير موجود." : "Clinic ID is missing."
         );
         setLoading(false);
         return;
@@ -94,17 +80,13 @@ const ClinicDetail = () => {
         const { data, error } = await supabase
           .from("clinics")
           .select(
-            "id, name, logo_url, phone, whatsapp, address, description, slug"
+            "id, name, logo_url, phone, whatsapp, facebook, address, description, slug, latitude, longitude"
           )
           .eq("id", id)
           .maybeSingle();
 
         if (error) {
-          console.error(
-            "Clinic detail error:",
-            error
-          );
-
+          console.error("Clinic detail error:", error);
           setClinic(null);
           setError(error.message);
           return;
@@ -114,25 +96,18 @@ const ClinicDetail = () => {
 
         if (!data) {
           setClinic(null);
-
           setError(
             isArabic
               ? "لم يتم العثور على هذه العيادة."
               : "This clinic could not be found."
           );
-
           return;
         }
 
         setClinic(data);
       } catch (err) {
-        console.error(
-          "Unexpected clinic detail error:",
-          err
-        );
-
+        console.error("Unexpected clinic detail error:", err);
         setClinic(null);
-
         setError(
           isArabic
             ? "حدث خطأ أثناء تحميل بيانات العيادة."
@@ -201,9 +176,7 @@ const ClinicDetail = () => {
     );
   }
 
-  const phoneUrl = clinic.phone
-    ? `tel:${clinic.phone}`
-    : "";
+  const phoneUrl = clinic.phone ? `tel:${clinic.phone}` : "";
 
   const whatsappNumber = clinic.whatsapp
     ? clinic.whatsapp.replace(/\D/g, "")
@@ -213,11 +186,23 @@ const ClinicDetail = () => {
     ? `https://wa.me/${whatsappNumber}`
     : "";
 
-  const googleMapsUrl = clinic.address
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        clinic.address
-      )}`
-    : "";
+  const googleMapsUrl =
+    clinic.latitude !== null && clinic.longitude !== null
+      ? `https://www.google.com/maps/search/?api=1&query=${clinic.latitude},${clinic.longitude}`
+      : clinic.address
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            clinic.address
+          )}`
+        : "";
+
+  const googleMapsEmbedUrl =
+    clinic.latitude !== null && clinic.longitude !== null
+      ? `https://www.google.com/maps?q=${clinic.latitude},${clinic.longitude}&output=embed`
+      : clinic.address
+        ? `https://www.google.com/maps?q=${encodeURIComponent(
+            clinic.address
+          )}&output=embed`
+        : "";
 
   const imageUrl =
     clinic.logo_url ||
@@ -250,7 +235,7 @@ const ClinicDetail = () => {
         <div className="mx-auto max-w-7xl px-6 py-10">
           <div className="flex flex-col gap-8 md:flex-row md:items-center">
             {/* Image */}
-            <div className="h-40 w-40 shrink-0 overflow-hidden rounded-3xl bg-slate-100 dark:bg-slate-800">
+            <div className="h-48 w-48 shrink-0 overflow-hidden rounded-3xl bg-slate-100 dark:bg-slate-800">
               <img
                 src={imageUrl}
                 alt={clinic.name}
@@ -275,18 +260,10 @@ const ClinicDetail = () => {
                   <span>{clinic.address}</span>
                 </div>
               )}
-
-              <div className="mt-4 flex items-center gap-2">
-                <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
-
-                <span className="font-semibold text-slate-600 dark:text-slate-300">
-                  {t.common.noReviews}
-                </span>
-              </div>
             </div>
 
             {/* Contact Buttons */}
-            <div className="flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3 md:mt-0">
               {clinic.phone && (
                 <a
                   href={phoneUrl}
@@ -308,6 +285,18 @@ const ClinicDetail = () => {
                   {t.common.whatsapp}
                 </a>
               )}
+
+              {clinic.facebook && (
+                <a
+                  href={clinic.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700"
+                >
+                  <Facebook className="h-5 w-5" />
+                  Facebook
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -325,29 +314,141 @@ const ClinicDetail = () => {
               </h2>
 
               <p className="mt-4 leading-7 text-slate-600 dark:text-slate-300">
-                {clinic.description ||
-                  t.clinic.noDescription}
+                {clinic.description || t.clinic.noDescription}
               </p>
             </section>
 
-            {/* Services */}
+            {/* Clinic Information */}
             <section className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900">
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-                  {t.clinic.availableServices}
+                  {isArabic ? "معلومات العيادة" : "Clinic Information"}
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {t.clinic.servicesDescription}
+                  {isArabic
+                    ? "بيانات التواصل والمعلومات المتاحة عن العيادة."
+                    : "Available information and contact details for this clinic."}
                 </p>
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-8 text-center dark:bg-slate-800">
-                <p className="text-slate-500 dark:text-slate-400">
-                  {t.clinic.noServices}
-                </p>
+              <div className="space-y-3">
+                {clinic.phone && (
+                  <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800">
+                    <Phone className="h-5 w-5 text-teal-500 dark:text-teal-400" />
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {t.common.phone}
+                      </p>
+
+                      <p className="font-medium text-slate-700 dark:text-slate-200">
+                        {clinic.phone}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {clinic.whatsapp && (
+                  <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800">
+                    <MessageCircle className="h-5 w-5 text-green-500 dark:text-green-400" />
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {t.common.whatsapp}
+                      </p>
+
+                      <p className="font-medium text-slate-700 dark:text-slate-200">
+                        {clinic.whatsapp}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {clinic.facebook && (
+                  <a
+                    href={clinic.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-lg bg-slate-50 p-4 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  >
+                    <Facebook className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Facebook
+                      </p>
+
+                      <p className="font-medium text-blue-600 dark:text-blue-400">
+                        {isArabic
+                          ? "صفحة العيادة على Facebook"
+                          : "Clinic Facebook Page"}
+                      </p>
+                    </div>
+                  </a>
+                )}
+
+                {clinic.address && (
+                  <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800">
+                    <MapPin className="h-5 w-5 text-teal-500 dark:text-teal-400" />
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {t.common.address}
+                      </p>
+
+                      <p className="font-medium text-slate-700 dark:text-slate-200">
+                        {clinic.address}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
+
+            {/* Map */}
+            {(clinic.latitude !== null && clinic.longitude !== null) ||
+            clinic.address ? (
+              <section className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-900">
+                <div className="p-6">
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                    {isArabic ? "موقع العيادة" : "Clinic Location"}
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {isArabic
+                      ? "يمكنك مشاهدة موقع العيادة على الخريطة."
+                      : "View the clinic location on the map."}
+                  </p>
+                </div>
+
+                {googleMapsEmbedUrl && (
+                  <iframe
+                    src={googleMapsEmbedUrl}
+                    title={isArabic ? "موقع العيادة" : "Clinic location"}
+                    className="h-80 w-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                )}
+
+                {googleMapsUrl && (
+                  <div className="p-6">
+                    <a
+                      href={googleMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
+                    >
+                      <MapPin className="h-5 w-5" />
+                      {isArabic
+                        ? "فتح الموقع في Google Maps"
+                        : "Open in Google Maps"}
+                    </a>
+                  </div>
+                )}
+              </section>
+            ) : null}
           </div>
 
           {/* Sidebar */}
@@ -399,7 +500,30 @@ const ClinicDetail = () => {
                   </a>
                 )}
 
-                {clinic.address && (
+                {clinic.facebook && (
+                  <a
+                    href={clinic.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl bg-slate-50 p-4 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  >
+                    <Facebook className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Facebook
+                      </p>
+
+                      <p className="font-medium text-slate-900 dark:text-white">
+                        {isArabic
+                          ? "صفحة العيادة"
+                          : "Clinic Facebook Page"}
+                      </p>
+                    </div>
+                  </a>
+                )}
+
+                {clinic.address && googleMapsUrl && (
                   <a
                     href={googleMapsUrl}
                     target="_blank"
@@ -410,11 +534,13 @@ const ClinicDetail = () => {
 
                     <div>
                       <p className="text-sm text-slate-500 dark:text-slate-400">
-                        {t.common.address}
+                        {isArabic ? "الموقع" : "Location"}
                       </p>
 
                       <p className="font-medium text-slate-900 dark:text-white">
-                        {clinic.address}
+                        {isArabic
+                          ? "فتح في Google Maps"
+                          : "Open in Google Maps"}
                       </p>
                     </div>
                   </a>
@@ -424,9 +550,13 @@ const ClinicDetail = () => {
 
             {/* Booking */}
             <section className="rounded-2xl bg-teal-600 p-6 text-white shadow-sm">
-              <h2 className="text-xl font-bold">
-                {t.common.bookAppointmentNow}
-              </h2>
+              <div className="flex items-center gap-3">
+                <Calendar className="h-6 w-6" />
+
+                <h2 className="text-xl font-bold">
+                  {t.common.bookAppointmentNow}
+                </h2>
+              </div>
 
               <p className="mt-2 text-sm leading-6 text-teal-50">
                 {t.clinic.bookingDescription}
@@ -447,3 +577,5 @@ const ClinicDetail = () => {
 };
 
 export default ClinicDetail;
+
+

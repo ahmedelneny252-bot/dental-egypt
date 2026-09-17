@@ -89,6 +89,10 @@ const PatientAppointments = () => {
     setError("");
 
     try {
+      // ==========================================
+      // Get logged-in user
+      // ==========================================
+
       const {
         data: { user },
         error: userError,
@@ -111,6 +115,16 @@ const PatientAppointments = () => {
         return;
       }
 
+      // ==========================================
+      // Get ALL patient records for this user
+      // ==========================================
+      //
+      // IMPORTANT:
+      // Do NOT use .single() or .maybeSingle()
+      // because one user can have multiple patient
+      // records due to previous bookings.
+      //
+
       const {
         data: patientData,
         error: patientError,
@@ -118,7 +132,9 @@ const PatientAppointments = () => {
         .from("patients")
         .select("id, name")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .order("created_at", {
+          ascending: true,
+        });
 
       if (patientError) {
         console.error(patientError);
@@ -132,7 +148,11 @@ const PatientAppointments = () => {
         return;
       }
 
-      if (!patientData) {
+      // ==========================================
+      // No patient records
+      // ==========================================
+
+      if (!patientData || patientData.length === 0) {
         setError(
           isArabic
             ? "حساب المريض الخاص بك غير مرتبط بسجل مريض."
@@ -142,7 +162,23 @@ const PatientAppointments = () => {
         return;
       }
 
-      setPatient(patientData);
+      // ==========================================
+      // Keep the first patient as the displayed name
+      // ==========================================
+
+      setPatient(patientData[0]);
+
+      // ==========================================
+      // Get ALL patient IDs
+      // ==========================================
+
+      const patientIds = patientData.map(
+        (patient) => patient.id
+      );
+
+      // ==========================================
+      // Load ALL appointments for all patient records
+      // ==========================================
 
       const {
         data: appointmentData,
@@ -159,7 +195,7 @@ const PatientAppointments = () => {
             name
           )
         `)
-        .eq("patient_id", patientData.id)
+        .in("patient_id", patientIds)
         .order("appointment_date", {
           ascending: false,
         })
@@ -179,6 +215,10 @@ const PatientAppointments = () => {
         return;
       }
 
+      // ==========================================
+      // Format appointments
+      // ==========================================
+
       const formattedAppointments: Appointment[] =
         (appointmentData || []).map(
           (appointment: any) => ({
@@ -187,13 +227,16 @@ const PatientAppointments = () => {
               appointment.appointment_date,
             appointment_time:
               appointment.appointment_time,
-            status: appointment.status,
-            notes: appointment.notes,
-            clinics: Array.isArray(
-              appointment.clinics
-            )
-              ? appointment.clinics[0] || null
-              : appointment.clinics || null,
+            status:
+              appointment.status,
+            notes:
+              appointment.notes,
+            clinics:
+              Array.isArray(
+                appointment.clinics
+              )
+                ? appointment.clinics[0] || null
+                : appointment.clinics || null,
           })
         );
 
@@ -657,8 +700,6 @@ const PatientAppointments = () => {
               )}
             </div>
           ) : (
-            /* Appointments Table */
-
             <div className="overflow-x-auto">
               <table className="w-full min-w-[850px]">
                 <thead className="bg-slate-50 dark:bg-slate-800/60">

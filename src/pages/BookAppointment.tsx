@@ -1,6 +1,14 @@
+
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Calendar, Clock, Stethoscope, ScanLine, RotateCcw } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  Clock,
+  Stethoscope,
+  ScanLine,
+  RotateCcw,
+} from "lucide-react";
 import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
 
@@ -28,6 +36,7 @@ const BookAppointment = () => {
 
   const [clinic, setClinic] = useState<Clinic | null>(null);
 
+  // Patient data for THIS booking
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -50,12 +59,6 @@ const BookAppointment = () => {
 
   const [appointmentCount, setAppointmentCount] =
     useState(0);
-
-  const [loggedInPatient, setLoggedInPatient] =
-    useState(false);
-
-  const [patientId, setPatientId] =
-    useState<string | null>(null);
 
   // ============================================
   // Language
@@ -161,7 +164,7 @@ const BookAppointment = () => {
   };
 
   // ============================================
-  // Load Clinic + Patient
+  // Load Clinic
   // ============================================
 
   useEffect(() => {
@@ -237,49 +240,6 @@ const BookAppointment = () => {
         } else {
           setAppointmentCount(count || 0);
         }
-
-        // ======================================
-        // Logged-in Patient
-        // ======================================
-
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (user) {
-          const {
-            data: patientData,
-            error: patientError,
-          } = await supabase
-            .from("patients")
-            .select(
-              "id, name, phone"
-            )
-            .eq("user_id", user.id)
-            .eq("clinic_id", id)
-            .limit(1)
-            .maybeSingle();
-
-          if (patientError) {
-            console.error(
-              "Patient account error:",
-              patientError
-            );
-          }
-
-          if (patientData) {
-            setLoggedInPatient(true);
-            setPatientId(patientData.id);
-
-            setName(
-              patientData.name || ""
-            );
-
-            setPhone(
-              patientData.phone || ""
-            );
-          }
-        }
       } catch (err) {
         console.error(err);
 
@@ -330,15 +290,45 @@ const BookAppointment = () => {
       return;
     }
 
+    // ========================================
+    // Validate Patient Name + Phone
+    // ========================================
+
     if (!name.trim() || !phone.trim()) {
       setError(
         isArabic
-          ? "من فضلك أدخل اسمك ورقم هاتفك."
-          : "Please enter your name and phone number."
+          ? "من فضلك أدخل اسم المريض ورقم هاتفه."
+          : "Please enter the patient's name and phone number."
       );
 
       return;
     }
+
+    // ========================================
+    // Name must contain at least 3 names
+    // ========================================
+
+    const patientName = name
+      .trim()
+      .replace(/\s+/g, " ");
+
+    const nameParts = patientName
+      .split(" ")
+      .filter(Boolean);
+
+    if (nameParts.length < 3) {
+      setError(
+        isArabic
+          ? "يجب كتابة اسم المريض ثلاثيًا على الأقل."
+          : "The patient's name must contain at least three names."
+      );
+
+      return;
+    }
+
+    // ========================================
+    // Validate Appointment Type
+    // ========================================
 
     if (!appointmentType) {
       setError(
@@ -349,6 +339,10 @@ const BookAppointment = () => {
 
       return;
     }
+
+    // ========================================
+    // Validate Date + Time
+    // ========================================
 
     if (
       !appointmentDate ||
@@ -362,6 +356,10 @@ const BookAppointment = () => {
 
       return;
     }
+
+    // ========================================
+    // Free Plan Limit
+    // ========================================
 
     if (
       isFreePlan &&
@@ -387,124 +385,37 @@ const BookAppointment = () => {
         data: { user },
       } = await supabase.auth.getUser();
 
-      let patient: Patient | null = null;
-
       // ========================================
-      // Logged-in Patient
+      // Create NEW Patient for THIS booking
       // ========================================
+      //
+      // الحساب الواحد يمكنه الحجز لأكثر من شخص:
+      // نفسه، والدته، والده، أخوه... إلخ.
+      //
+      // لذلك لا نبحث عن Patient قديم.
+      // كل حجز جديد ينشئ Patient record مستقل.
+      //
 
-      if (user) {
-        let accountPatient: Patient | null = null;
+      const {
+        data: newPatient,
+        error: patientInsertError,
+      } = await supabase
+        .from("patients")
+        .insert({
+          clinic_id: id,
+          name: patientName,
+          phone: phone.trim(),
+          medical_notes: null,
+          user_id: user?.id || null,
+        })
+        .select("id, name, phone")
+        .single();
 
-        if (patientId) {
-          const {
-            data,
-            error: patientError,
-          } = await supabase
-            .from("patients")
-            .select(
-              "id, name, phone"
-            )
-            .eq("id", patientId)
-            .eq("user_id", user.id)
-            .eq("clinic_id", id)
-            .maybeSingle();
-
-          if (patientError) {
-            throw patientError;
-          }
-
-          accountPatient = data;
-        }
-
-        if (!accountPatient) {
-          const {
-            data,
-            error: patientError,
-          } = await supabase
-            .from("patients")
-            .select(
-              "id, name, phone"
-            )
-            .eq("user_id", user.id)
-            .eq("clinic_id", id)
-            .limit(1)
-            .maybeSingle();
-
-          if (patientError) {
-            throw patientError;
-          }
-
-          accountPatient = data;
-        }
-
-        if (accountPatient) {
-          patient = accountPatient;
-        }
+      if (patientInsertError) {
+        throw patientInsertError;
       }
 
-      // ========================================
-      // Guest Patient
-      // ========================================
-
-      if (!patient) {
-        const {
-          data: existingPatient,
-          error: patientSearchError,
-        } = await supabase
-          .from("patients")
-          .select(
-            "id, name, phone"
-          )
-          .eq("clinic_id", id)
-          .eq("phone", phone.trim())
-          .limit(1)
-          .maybeSingle();
-
-        if (patientSearchError) {
-          throw patientSearchError;
-        }
-
-        if (existingPatient) {
-          patient = existingPatient;
-        } else {
-          const {
-            data: newPatient,
-            error: patientInsertError,
-          } = await supabase
-            .from("patients")
-            .insert({
-              clinic_id: id,
-              name: name.trim(),
-              phone: phone.trim(),
-              medical_notes: null,
-              user_id: user?.id || null,
-            })
-            .select(
-              "id, name, phone"
-            )
-            .single();
-
-          if (patientInsertError) {
-            throw patientInsertError;
-          }
-
-          patient = newPatient;
-
-          if (user) {
-            setPatientId(newPatient.id);
-            setLoggedInPatient(true);
-          }
-        }
-      }
-
-      if (!patient) {
-        throw new Error(
-          isArabic
-            ? "تعذر العثور على سجل المريض."
-            : "Could not find the patient record."
-        );
-      }
+      const patient: Patient = newPatient;
 
       // ========================================
       // Create Appointment
@@ -524,10 +435,6 @@ const BookAppointment = () => {
 
           appointment_time:
             appointmentTime,
-
-          // ====================================
-          // APPOINTMENT TYPE
-          // ====================================
 
           appointment_type:
             appointmentType,
@@ -554,8 +461,15 @@ const BookAppointment = () => {
         );
 
       // ========================================
-      // Doctor Notification
+      // Doctor Notification ONLY
       // ========================================
+      //
+      // عند إنشاء الحجز:
+      // الطبيب فقط يحصل على إشعار.
+      //
+      // المريض لن يحصل على إشعار الآن.
+      // سيحصل على إشعار فقط بعد قبول/رفض الطبيب.
+      //
 
       const {
         error: doctorNotificationError,
@@ -602,49 +516,6 @@ const BookAppointment = () => {
       }
 
       // ========================================
-      // Patient Notification
-      // ========================================
-
-      if (user) {
-        const {
-          error: patientNotificationError,
-        } = await supabase
-          .from("notifications")
-          .insert({
-            clinic_id: id,
-
-            patient_id:
-              patient.id,
-
-            appointment_id:
-              newAppointment.id,
-
-            title: isArabic
-              ? "تم إرسال طلب الموعد"
-              : "Appointment Request Sent",
-
-            message: isArabic
-              ? `تم إرسال طلب ${appointmentTypeLabel} إلى العيادة بنجاح. التاريخ: ${appointmentDate} الساعة ${appointmentTime}.`
-              : `Your ${appointmentTypeLabel} appointment request has been sent successfully. Date: ${appointmentDate} at ${appointmentTime}.`,
-
-            is_read: false,
-
-            recipient_type:
-              "patient",
-
-            notification_type:
-              "appointment_request",
-          });
-
-        if (patientNotificationError) {
-          console.error(
-            "Patient notification error:",
-            patientNotificationError
-          );
-        }
-      }
-
-      // ========================================
       // Success
       // ========================================
 
@@ -654,12 +525,16 @@ const BookAppointment = () => {
           : `${appointmentTypeLabel} appointment request has been sent successfully!`
       );
 
-      if (!loggedInPatient) {
-        setName("");
-        setPhone("");
-      }
+      // ========================================
+      // Reset Patient Data
+      // ========================================
 
-      // Reset appointment fields
+      setName("");
+      setPhone("");
+
+      // ========================================
+      // Reset Appointment Fields
+      // ========================================
 
       setAppointmentType(
         "new_checkup"
@@ -792,23 +667,11 @@ const BookAppointment = () => {
               {clinic?.name}
             </p>
 
-            {loggedInPatient && (
-              <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-4 dark:border-teal-900 dark:bg-teal-950/30">
-
-                <p className="text-sm font-semibold text-teal-700 dark:text-teal-300">
-                  {isArabic
-                    ? "بيانات حساب المريض"
-                    : "Patient Account"}
-                </p>
-
-                <p className="mt-1 text-xs text-teal-600 dark:text-teal-400">
-                  {isArabic
-                    ? "سيتم استخدام اسمك وبيانات حسابك كما هي."
-                    : "Your account name and information will be used as stored."}
-                </p>
-
-              </div>
-            )}
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "أدخل بيانات الشخص الذي تريد حجز الموعد له."
+                : "Enter the information of the person you are booking the appointment for."}
+            </p>
 
             {isFreePlan ? (
               <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
@@ -921,8 +784,8 @@ const BookAppointment = () => {
 
               <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {isArabic
-                  ? "الاسم"
-                  : "Your Name"}
+                  ? "اسم المريض"
+                  : "Patient Name"}
               </label>
 
               <input
@@ -933,16 +796,21 @@ const BookAppointment = () => {
                 }
                 placeholder={
                   isArabic
-                    ? "أدخل اسمك"
-                    : "Enter your name"
+                    ? "أدخل الاسم ثلاثيًا على الأقل"
+                    : "Enter at least three names"
                 }
                 required
                 disabled={
-                  hasReachedAppointmentLimit ||
-                  loggedInPatient
+                  hasReachedAppointmentLimit
                 }
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-teal-400 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
               />
+
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "يجب كتابة 3 أسماء على الأقل، مثل: أحمد سلمان عبدالحميد"
+                  : "Enter at least three names, for example: Ahmed Salman Abdelhamid"}
+              </p>
 
             </div>
 
@@ -966,13 +834,12 @@ const BookAppointment = () => {
                 }
                 placeholder={
                   isArabic
-                    ? "أدخل رقم هاتفك"
-                    : "Enter your phone number"
+                    ? "أدخل رقم هاتف المريض"
+                    : "Enter the patient's phone number"
                 }
                 required
                 disabled={
-                  hasReachedAppointmentLimit ||
-                  loggedInPatient
+                  hasReachedAppointmentLimit
                 }
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-teal-400 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
               />
@@ -1304,4 +1171,6 @@ const BookAppointment = () => {
 };
 
 export default BookAppointment;
+
+
 

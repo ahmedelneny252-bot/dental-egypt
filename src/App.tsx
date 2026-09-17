@@ -38,6 +38,7 @@ import PatientRegister from "./PatientRegister";
 import PatientLogin from "./PatientLogin";
 import PatientAppointments from "./PatientAppointments";
 import PatientNotifications from "./PatientNotifications";
+import PatientPayments from "./PatientPayments";
 
 function App() {
   return (
@@ -175,6 +176,11 @@ function App() {
             <Route
               path="/patient/notifications"
               element={<PatientNotifications />}
+            />
+
+            <Route
+              path="/patient/payments"
+              element={<PatientPayments />}
             />
 
             {/* ==================== UNKNOWN ROUTE ==================== */}

@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
@@ -8,8 +9,11 @@ type Clinic = {
   logo_url: string | null;
   phone: string | null;
   whatsapp: string | null;
+  facebook: string | null;
   address: string | null;
   description: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export default function ClinicProfile() {
@@ -19,7 +23,6 @@ export default function ClinicProfile() {
   });
 
   const isArabic = language === "ar";
-  const t = translations[language];
 
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [clinic, setClinic] = useState<Clinic | null>(null);
@@ -27,8 +30,11 @@ export default function ClinicProfile() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [facebook, setFacebook] = useState("");
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -104,9 +110,16 @@ export default function ClinicProfile() {
         ar: "حدث خطأ أثناء الحفظ.",
         en: "Something went wrong while saving.",
       },
+      invalidCoordinates: {
+        ar: "خط العرض وخط الطول يجب أن يكونا أرقاماً صحيحة.",
+        en: "Latitude and longitude must be valid numbers.",
+      },
     };
 
-    return messages[messageKey as keyof typeof messages]?.[language] || messageKey;
+    return (
+      messages[messageKey as keyof typeof messages]?.[language] ||
+      messageKey
+    );
   };
 
   const loadClinic = async () => {
@@ -158,8 +171,21 @@ export default function ClinicProfile() {
       setName(clinicData.name || "");
       setPhone(clinicData.phone || "");
       setWhatsapp(clinicData.whatsapp || "");
+      setFacebook(clinicData.facebook || "");
       setAddress(clinicData.address || "");
       setDescription(clinicData.description || "");
+
+      setLatitude(
+        clinicData.latitude !== null && clinicData.latitude !== undefined
+          ? String(clinicData.latitude)
+          : ""
+      );
+
+      setLongitude(
+        clinicData.longitude !== null && clinicData.longitude !== undefined
+          ? String(clinicData.longitude)
+          : ""
+      );
 
       if (clinicData.logo_url) {
         setLogoPreview(clinicData.logo_url);
@@ -233,6 +259,22 @@ export default function ClinicProfile() {
       return;
     }
 
+    const parsedLatitude = latitude.trim()
+      ? Number(latitude.trim())
+      : null;
+
+    const parsedLongitude = longitude.trim()
+      ? Number(longitude.trim())
+      : null;
+
+    if (
+      (latitude.trim() && !Number.isFinite(parsedLatitude)) ||
+      (longitude.trim() && !Number.isFinite(parsedLongitude))
+    ) {
+      setMessage(getMessageText("invalidCoordinates"));
+      return;
+    }
+
     try {
       setSaving(true);
       setMessage("");
@@ -249,8 +291,11 @@ export default function ClinicProfile() {
           name: name.trim(),
           phone: phone.trim() || null,
           whatsapp: whatsapp.trim() || null,
+          facebook: facebook.trim() || null,
           address: address.trim() || null,
           description: description.trim() || null,
+          latitude: parsedLatitude,
+          longitude: parsedLongitude,
           logo_url: logoUrl,
         })
         .eq("id", clinicId);
@@ -268,8 +313,11 @@ export default function ClinicProfile() {
               name: name.trim(),
               phone: phone.trim() || null,
               whatsapp: whatsapp.trim() || null,
+              facebook: facebook.trim() || null,
               address: address.trim() || null,
               description: description.trim() || null,
+              latitude: parsedLatitude,
+              longitude: parsedLongitude,
               logo_url: logoUrl,
             }
           : prev
@@ -295,8 +343,7 @@ export default function ClinicProfile() {
     }
   };
 
-  const isSuccessMessage =
-    message === getMessageText("saved");
+  const isSuccessMessage = message === getMessageText("saved");
 
   if (loading) {
     return (
@@ -337,7 +384,6 @@ export default function ClinicProfile() {
             </h2>
 
             <div className="flex flex-col md:flex-row items-start gap-6">
-              {/* Logo Preview */}
               <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
                 {logoPreview ? (
                   <img
@@ -401,9 +447,7 @@ export default function ClinicProfile() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={
-                  isArabic
-                    ? "أدخل اسم العيادة"
-                    : "Enter clinic name"
+                  isArabic ? "أدخل اسم العيادة" : "Enter clinic name"
                 }
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
@@ -420,9 +464,7 @@ export default function ClinicProfile() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder={
-                  isArabic
-                    ? "أدخل رقم الهاتف"
-                    : "Enter phone number"
+                  isArabic ? "أدخل رقم الهاتف" : "Enter phone number"
                 }
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
@@ -447,6 +489,31 @@ export default function ClinicProfile() {
               />
             </div>
 
+            {/* Facebook */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Facebook
+              </label>
+
+              <input
+                type="url"
+                value={facebook}
+                onChange={(e) => setFacebook(e.target.value)}
+                placeholder={
+                  isArabic
+                    ? "ضع رابط صفحة العيادة على Facebook"
+                    : "Enter your clinic Facebook page URL"
+                }
+                className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              />
+
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {isArabic
+                  ? "مثال: https://www.facebook.com/YourClinic"
+                  : "Example: https://www.facebook.com/YourClinic"}
+              </p>
+            </div>
+
             {/* Address */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -458,12 +525,63 @@ export default function ClinicProfile() {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder={
-                  isArabic
-                    ? "أدخل عنوان العيادة"
-                    : "Enter clinic address"
+                  isArabic ? "أدخل عنوان العيادة" : "Enter clinic address"
                 }
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
+            </div>
+
+            {/* Location */}
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                {isArabic ? "موقع العيادة على الخريطة" : "Clinic Map Location"}
+              </h2>
+
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                {isArabic
+                  ? "أدخل Latitude و Longitude لموقع العيادة الدقيق."
+                  : "Enter the exact latitude and longitude of your clinic."}
+              </p>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                {/* Latitude */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Latitude
+                  </label>
+
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                    placeholder="Example: 30.0444"
+                    className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
+                </div>
+
+                {/* Longitude */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Longitude
+                  </label>
+
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                    placeholder="Example: 31.2357"
+                    className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  />
+                </div>
+              </div>
+
+              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                {isArabic
+                  ? "يمكنك الحصول على الإحداثيات من Google Maps."
+                  : "You can get the coordinates from Google Maps."}
+              </p>
             </div>
 
             {/* Description */}
@@ -520,3 +638,4 @@ export default function ClinicProfile() {
     </div>
   );
 }
+
