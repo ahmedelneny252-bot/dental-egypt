@@ -74,26 +74,68 @@ const Navbar = () => {
   }, []);
 
   const loadUnreadNotifications = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setUnreadCount(0);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+  
+        if (!user) {
+          setUnreadCount(0);
+          setIsDoctor(false);
+          setIsLoggedIn(false);
+          return;
+        }
+  
+        setIsLoggedIn(true);
+  
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("clinic_id")
+          .eq("id", user.id)
+          .maybeSingle();
+  
+        if (!profileError && profile?.clinic_id) {
+          setIsDoctor(true);
+  
+          const {
+            count,
+            error: notificationError,
+          } = await supabase
+            .from("notifications")
+            .select("id", {
+              count: "exact",
+              head: true,
+            })
+            .eq("clinic_id", profile.clinic_id)
+            .eq("is_read", false);
+  
+          if (notificationError) {
+            console.error(
+              "Clinic notification count error:",
+              notificationError
+            );
+  
+            setUnreadCount(0);
+            return;
+          }
+  
+          setUnreadCount(count || 0);
+          return;
+        }
+  
         setIsDoctor(false);
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("clinic_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (!profileError && profile?.clinic_id) {
-        setIsDoctor(true);
-
+  
+        const { data: patient, error: patientError } = await supabase
+          .from("patients")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+  
+        if (patientError || !patient) {
+          setUnreadCount(0);
+          return;
+        }
+  
         const {
           count,
           error: notificationError,
@@ -103,66 +145,28 @@ const Navbar = () => {
             count: "exact",
             head: true,
           })
-          .eq("clinic_id", profile.clinic_id)
+          .eq("patient_id", patient.id)
           .eq("is_read", false);
-
+  
         if (notificationError) {
           console.error(
-            "Clinic notification count error:",
+            "Patient notification count error:",
             notificationError
           );
-
+  
           setUnreadCount(0);
           return;
         }
-
+  
         setUnreadCount(count || 0);
-        return;
-      }
-
-      setIsDoctor(false);
-
-      const { data: patient, error: patientError } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (patientError || !patient) {
+      } catch (error) {
+        console.error("Load notifications error:", error);
+  
         setUnreadCount(0);
-        return;
+        setIsDoctor(false);
+        setIsLoggedIn(false);
       }
-
-      const {
-        count,
-        error: notificationError,
-      } = await supabase
-        .from("notifications")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq("patient_id", patient.id)
-        .eq("is_read", false);
-
-      if (notificationError) {
-        console.error(
-          "Patient notification count error:",
-          notificationError
-        );
-
-        setUnreadCount(0);
-        return;
-      }
-
-      setUnreadCount(count || 0);
-    } catch (error) {
-      console.error("Load notifications error:", error);
-
-      setUnreadCount(0);
-      setIsDoctor(false);
-    }
-  };
+    };
 
   useEffect(() => {
     loadUnreadNotifications();
