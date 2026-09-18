@@ -17,10 +17,11 @@ import { translations, type Language } from "../i18n";
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isDoctor, setIsDoctor] = useState(false);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isDoctor, setIsDoctor] = useState(false);
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [language, setLanguage] = useState<Language>(() => {
     const savedLanguage = localStorage.getItem("dentalcare-language");
