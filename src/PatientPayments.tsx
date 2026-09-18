@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabase";
 
@@ -30,9 +31,9 @@ type Patient = {
 
 export default function PatientPayments() {
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [medicalRecords, setMedicalRecords] = useState<
-    MedicalRecord[]
-  >([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(
+    []
+  );
   const [payments, setPayments] = useState<Payment[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -102,7 +103,6 @@ export default function PatientPayments() {
         );
       }
 
-      // Get all patient records connected to this account
       const {
         data: patientsData,
         error: patientsError,
@@ -130,7 +130,6 @@ export default function PatientPayments() {
 
       setPatient(patientsData[0]);
 
-      // Get all treatment sessions
       const {
         data: medicalRecordsData,
         error: medicalRecordsError,
@@ -156,7 +155,6 @@ export default function PatientPayments() {
         throw medicalRecordsError;
       }
 
-      // Get all payments entered by the doctor
       const {
         data: paymentsData,
         error: paymentsError,
@@ -402,7 +400,7 @@ export default function PatientPayments() {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6"
+      className="min-h-screen bg-gray-50 dark:bg-gray-900 pt-28 pb-6 px-4 md:px-6"
     >
       <div className="max-w-7xl mx-auto">
 
@@ -720,3 +718,5 @@ export default function PatientPayments() {
     </div>
   );
 }
+
+
