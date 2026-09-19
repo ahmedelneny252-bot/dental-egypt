@@ -10,18 +10,22 @@ import {
   Moon,
   Languages,
   LogOut,
+  LogIn,
   CreditCard,
+  LayoutDashboard,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
 
+// نوع الحساب الحالي: زائر لسه مسجلش / مريض / دكتور
+type UserRole = "guest" | "patient" | "doctor";
+
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [isDoctor, setIsDoctor] = useState(false);
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [role, setRole] = useState<UserRole>("guest");
 
   const [language, setLanguage] = useState<Language>(() => {
     const savedLanguage = localStorage.getItem("dentalcare-language");
@@ -38,6 +42,10 @@ const Navbar = () => {
 
   const isArabic = language === "ar";
   const t = translations[language];
+
+  const isLoggedIn = role !== "guest";
+  const isDoctor = role === "doctor";
+  const isPatient = role === "patient";
 
   useEffect(() => {
     localStorage.setItem("dentalcare-language", language);
@@ -74,68 +82,28 @@ const Navbar = () => {
   }, []);
 
   const loadUnreadNotifications = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-  
-        if (!user) {
-          setUnreadCount(0);
-          setIsDoctor(false);
-          setIsLoggedIn(false);
-          return;
-        }
-  
-        setIsLoggedIn(true);
-  
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("clinic_id")
-          .eq("id", user.id)
-          .maybeSingle();
-  
-        if (!profileError && profile?.clinic_id) {
-          setIsDoctor(true);
-  
-          const {
-            count,
-            error: notificationError,
-          } = await supabase
-            .from("notifications")
-            .select("id", {
-              count: "exact",
-              head: true,
-            })
-            .eq("clinic_id", profile.clinic_id)
-            .eq("is_read", false);
-  
-          if (notificationError) {
-            console.error(
-              "Clinic notification count error:",
-              notificationError
-            );
-  
-            setUnreadCount(0);
-            return;
-          }
-  
-          setUnreadCount(count || 0);
-          return;
-        }
-  
-        setIsDoctor(false);
-  
-        const { data: patient, error: patientError } = await supabase
-          .from("patients")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
-  
-        if (patientError || !patient) {
-          setUnreadCount(0);
-          return;
-        }
-  
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // مفيش حد مسجل دخول -> زائر
+      if (!user) {
+        setUnreadCount(0);
+        setRole("guest");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("clinic_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      // له عيادة -> دكتور
+      if (!profileError && profile?.clinic_id) {
+        setRole("doctor");
+
         const {
           count,
           error: notificationError,
@@ -145,28 +113,69 @@ const Navbar = () => {
             count: "exact",
             head: true,
           })
-          .eq("patient_id", patient.id)
+          .eq("clinic_id", profile.clinic_id)
           .eq("is_read", false);
-  
+
         if (notificationError) {
           console.error(
-            "Patient notification count error:",
+            "Clinic notification count error:",
             notificationError
           );
-  
+
           setUnreadCount(0);
           return;
         }
-  
+
         setUnreadCount(count || 0);
-      } catch (error) {
-        console.error("Load notifications error:", error);
-  
-        setUnreadCount(0);
-        setIsDoctor(false);
-        setIsLoggedIn(false);
+        return;
       }
-    };
+
+      const { data: patient, error: patientError } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // مفيش عيادة ومفيش سجل مريض -> نتعامل معاه كزائر لحد ما يكمل بياناته
+      if (patientError || !patient) {
+        setRole("guest");
+        setUnreadCount(0);
+        return;
+      }
+
+      // له سجل مريض -> مريض
+      setRole("patient");
+
+      const {
+        count,
+        error: notificationError,
+      } = await supabase
+        .from("notifications")
+        .select("id", {
+          count: "exact",
+          head: true,
+        })
+        .eq("patient_id", patient.id)
+        .eq("is_read", false);
+
+      if (notificationError) {
+        console.error(
+          "Patient notification count error:",
+          notificationError
+        );
+
+        setUnreadCount(0);
+        return;
+      }
+
+      setUnreadCount(count || 0);
+    } catch (error) {
+      console.error("Load notifications error:", error);
+
+      setUnreadCount(0);
+      setRole("guest");
+    }
+  };
 
   useEffect(() => {
     loadUnreadNotifications();
@@ -197,10 +206,10 @@ const Navbar = () => {
     }
 
     setUnreadCount(0);
-    setIsDoctor(false);
+    setRole("guest");
     setIsMobileMenuOpen(false);
 
-    navigate("/patient/login");
+    navigate("/");
   };
 
   const toggleLanguage = () => {
@@ -218,6 +227,8 @@ const Navbar = () => {
   const notificationPath = isDoctor
     ? "/doctor/notifications"
     : "/patient/notifications";
+
+  const loginPath = "/patient/login";
 
   const navLinks = [
     {
@@ -306,6 +317,25 @@ const Navbar = () => {
                 {link.label}
               </Link>
             ))}
+
+            {/* Doctor Dashboard - يظهر بس لما يكون داخل كدكتور */}
+
+            {isDoctor && (
+              <Link
+                to="/doctor/dashboard"
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 ${
+                  location.pathname === "/doctor/dashboard"
+                    ? theme === "dark"
+                      ? "bg-teal-950 text-teal-400"
+                      : "bg-teal-50 text-teal-600"
+                    : theme === "dark"
+                      ? "text-slate-300 hover:bg-slate-800 hover:text-teal-400"
+                      : "text-slate-600 hover:bg-teal-50/50 hover:text-teal-600"
+                }`}
+              >
+                {isArabic ? "لوحة التحكم" : "Dashboard"}
+              </Link>
+            )}
           </div>
 
           {/* Desktop Actions */}
@@ -358,9 +388,9 @@ const Navbar = () => {
               )}
             </button>
 
-            {/* Patient Payments */}
+            {/* Patient Payments - يظهر بس للمريض الداخل بحسابه */}
 
-            {!isDoctor && (
+            {isPatient && (
               <Link
                 to="/patient/payments"
                 className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-all ${
@@ -393,45 +423,64 @@ const Navbar = () => {
               </Link>
             )}
 
-            {/* Notifications */}
+            {/* Notifications - يظهر بس لو داخل بحساب (مريض أو دكتور) */}
 
-            <Link
-              to={notificationPath}
-              className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition-all ${
-                theme === "dark"
-                  ? "text-slate-300 hover:bg-slate-800 hover:text-teal-400"
-                  : "text-slate-600 hover:bg-teal-50 hover:text-teal-600"
-              }`}
-              aria-label={t.common.notifications}
-            >
-              <Bell className="h-5 w-5" />
+            {isLoggedIn && (
+              <Link
+                to={notificationPath}
+                className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition-all ${
+                  theme === "dark"
+                    ? "text-slate-300 hover:bg-slate-800 hover:text-teal-400"
+                    : "text-slate-600 hover:bg-teal-50 hover:text-teal-600"
+                }`}
+                aria-label={t.common.notifications}
+              >
+                <Bell className="h-5 w-5" />
 
-              {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-xs font-bold text-white dark:border-slate-950">
-                  {unreadCount > 99
-                    ? "99+"
-                    : unreadCount}
-                </span>
-              )}
-            </Link>
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-xs font-bold text-white dark:border-slate-950">
+                    {unreadCount > 99
+                      ? "99+"
+                      : unreadCount}
+                  </span>
+                )}
+              </Link>
+            )}
 
-            {/* Logout */}
+            {/* Logout / Login */}
 
-            <button
-              onClick={handleLogout}
-              type="button"
-              className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-all ${
-                theme === "dark"
-                  ? "text-slate-200 hover:bg-slate-800 hover:text-red-400"
-                  : "text-slate-600 hover:bg-red-50 hover:text-red-600"
-              }`}
-            >
-              <LogOut className="h-5 w-5" />
+            {isLoggedIn ? (
+              <button
+                onClick={handleLogout}
+                type="button"
+                className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-all ${
+                  theme === "dark"
+                    ? "text-slate-200 hover:bg-slate-800 hover:text-red-400"
+                    : "text-slate-600 hover:bg-red-50 hover:text-red-600"
+                }`}
+              >
+                <LogOut className="h-5 w-5" />
 
-              {isArabic
-                ? "تسجيل الخروج"
-                : "Logout"}
-            </button>
+                {isArabic
+                  ? "تسجيل الخروج"
+                  : "Logout"}
+              </button>
+            ) : (
+              <Link
+                to={loginPath}
+                className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition-all ${
+                  theme === "dark"
+                    ? "text-slate-200 hover:bg-slate-800 hover:text-teal-400"
+                    : "text-slate-600 hover:bg-teal-50 hover:text-teal-600"
+                }`}
+              >
+                <LogIn className="h-5 w-5" />
+
+                {isArabic
+                  ? "تسجيل الدخول"
+                  : "Login"}
+              </Link>
+            )}
 
             {/* Find Clinic */}
 
@@ -510,6 +559,31 @@ const Navbar = () => {
                 </Link>
               ))}
 
+              {/* Doctor Dashboard - موبايل */}
+
+              {isDoctor && (
+                <Link
+                  to="/doctor/dashboard"
+                  onClick={() =>
+                    setIsMobileMenuOpen(false)
+                  }
+                  className={`rounded-lg px-4 py-3 text-base font-medium transition-all duration-200 ${
+                    location.pathname === "/doctor/dashboard"
+                      ? theme === "dark"
+                        ? "bg-teal-950 text-teal-400"
+                        : "bg-teal-50 text-teal-600"
+                      : theme === "dark"
+                        ? "text-slate-200 hover:bg-slate-800 hover:text-teal-400"
+                        : "text-slate-600 hover:bg-teal-50/50 hover:text-teal-600"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <LayoutDashboard className="h-5 w-5" />
+                    {isArabic ? "لوحة التحكم" : "Dashboard"}
+                  </span>
+                </Link>
+              )}
+
               {/* Language + Theme */}
 
               <div className="mt-3 grid grid-cols-2 gap-2 px-4">
@@ -552,9 +626,9 @@ const Navbar = () => {
 
               </div>
 
-              {/* Patient Payments */}
+              {/* Patient Payments - موبايل */}
 
-              {!isDoctor && (
+              {isPatient && (
                 <Link
                   to="/patient/payments"
                   onClick={() =>
@@ -581,56 +655,78 @@ const Navbar = () => {
                 </Link>
               )}
 
-              {/* Notifications */}
+              {/* Notifications - موبايل، بس لو داخل بحساب */}
 
-              <Link
-                to={notificationPath}
-                onClick={() =>
-                  setIsMobileMenuOpen(false)
-                }
-                className={`relative mx-4 mt-2 flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition-all ${
-                  location.pathname ===
-                  notificationPath
-                    ? theme === "dark"
-                      ? "bg-teal-950 text-teal-400"
-                      : "bg-teal-100 text-teal-700"
-                    : theme === "dark"
+              {isLoggedIn && (
+                <Link
+                  to={notificationPath}
+                  onClick={() =>
+                    setIsMobileMenuOpen(false)
+                  }
+                  className={`relative mx-4 mt-2 flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition-all ${
+                    location.pathname ===
+                    notificationPath
+                      ? theme === "dark"
+                        ? "bg-teal-950 text-teal-400"
+                        : "bg-teal-100 text-teal-700"
+                      : theme === "dark"
+                        ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
+                        : "bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-700"
+                  }`}
+                >
+                  <Bell className="h-5 w-5" />
+
+                  <span>
+                    {t.common.notifications}
+                  </span>
+
+                  {unreadCount > 0 && (
+                    <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
+                      {unreadCount > 99
+                        ? "99+"
+                        : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              )}
+
+              {/* Logout / Login - موبايل */}
+
+              {isLoggedIn ? (
+                <button
+                  onClick={handleLogout}
+                  type="button"
+                  className={`mx-4 mt-2 flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition-all ${
+                    theme === "dark"
+                      ? "bg-slate-800 text-slate-200 hover:bg-red-950 hover:text-red-400"
+                      : "bg-slate-100 text-slate-700 hover:bg-red-50 hover:text-red-600"
+                  }`}
+                >
+                  <LogOut className="h-5 w-5" />
+
+                  {isArabic
+                    ? "تسجيل الخروج"
+                    : "Logout"}
+                </button>
+              ) : (
+                <Link
+                  to={loginPath}
+                  onClick={() =>
+                    setIsMobileMenuOpen(false)
+                  }
+                  className={`mx-4 mt-2 flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition-all ${
+                    theme === "dark"
                       ? "bg-slate-800 text-slate-200 hover:bg-slate-700"
                       : "bg-slate-100 text-slate-700 hover:bg-teal-50 hover:text-teal-700"
-                }`}
-              >
-                <Bell className="h-5 w-5" />
+                  }`}
+                >
+                  <LogIn className="h-5 w-5" />
 
-                <span>
-                  {t.common.notifications}
-                </span>
-
-                {unreadCount > 0 && (
-                  <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
-                    {unreadCount > 99
-                      ? "99+"
-                      : unreadCount}
-                  </span>
-                )}
-              </Link>
-
-              {/* Logout */}
-
-              <button
-                onClick={handleLogout}
-                type="button"
-                className={`mx-4 mt-2 flex items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition-all ${
-                  theme === "dark"
-                    ? "bg-slate-800 text-slate-200 hover:bg-red-950 hover:text-red-400"
-                    : "bg-slate-100 text-slate-700 hover:bg-red-50 hover:text-red-600"
-                }`}
-              >
-                <LogOut className="h-5 w-5" />
-
-                {isArabic
-                  ? "تسجيل الخروج"
-                  : "Logout"}
-              </button>
+                  {isArabic
+                    ? "تسجيل الدخول"
+                    : "Login"}
+                </Link>
+              )}
 
               {/* Find Clinic */}
 

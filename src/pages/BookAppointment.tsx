@@ -36,7 +36,6 @@ const BookAppointment = () => {
 
   const [clinic, setClinic] = useState<Clinic | null>(null);
 
-  // Patient data for THIS booking
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -385,6 +384,16 @@ const BookAppointment = () => {
         data: { user },
       } = await supabase.auth.getUser();
 
+      if (!user) {
+        setError(
+          isArabic
+            ? "يجب تسجيل الدخول أولًا لحجز موعد."
+            : "You must be logged in to book an appointment."
+        );
+
+        return;
+      }
+
       // ========================================
       // Create NEW Patient for THIS booking
       // ========================================
@@ -406,7 +415,7 @@ const BookAppointment = () => {
           name: patientName,
           phone: phone.trim(),
           medical_notes: null,
-          user_id: user?.id || null,
+          user_id: user.id,
         })
         .select("id, name, phone")
         .single();
@@ -443,6 +452,11 @@ const BookAppointment = () => {
 
           notes:
             notes.trim() || null,
+
+          created_by: "patient",
+
+          updated_at:
+            new Date().toISOString(),
         })
         .select("id")
         .single();
@@ -467,8 +481,10 @@ const BookAppointment = () => {
       // عند إنشاء الحجز:
       // الطبيب فقط يحصل على إشعار.
       //
-      // المريض لن يحصل على إشعار الآن.
-      // سيحصل على إشعار فقط بعد قبول/رفض الطبيب.
+      // المريض لا يحصل على إشعار هنا.
+      //
+      // المريض يحصل على إشعار فقط عندما
+      // يقوم الطبيب بالقبول أو الرفض.
       //
 
       const {
@@ -503,6 +519,7 @@ const BookAppointment = () => {
 
       if (doctorNotificationError) {
         console.error(
+          "Doctor notification error:",
           doctorNotificationError
         );
 
@@ -651,9 +668,7 @@ const BookAppointment = () => {
 
         <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
 
-          {/* ================================== */}
           {/* Header */}
-          {/* ================================== */}
 
           <div className="mb-8">
 
@@ -715,9 +730,7 @@ const BookAppointment = () => {
             )}
           </div>
 
-          {/* ================================== */}
           {/* Limit */}
-          {/* ================================== */}
 
           {hasReachedAppointmentLimit && (
             <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900 dark:bg-orange-950/40">
@@ -737,9 +750,7 @@ const BookAppointment = () => {
             </div>
           )}
 
-          {/* ================================== */}
           {/* Error */}
-          {/* ================================== */}
 
           {error && (
             <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
@@ -747,9 +758,7 @@ const BookAppointment = () => {
             </div>
           )}
 
-          {/* ================================== */}
           {/* Success */}
-          {/* ================================== */}
 
           {success && (
             <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300">
@@ -767,18 +776,14 @@ const BookAppointment = () => {
             </div>
           )}
 
-          {/* ================================== */}
           {/* Form */}
-          {/* ================================== */}
 
           <form
             onSubmit={handleBooking}
             className="space-y-6"
           >
 
-            {/* ================================= */}
             {/* Name */}
-            {/* ================================= */}
 
             <div>
 
@@ -814,9 +819,7 @@ const BookAppointment = () => {
 
             </div>
 
-            {/* ================================= */}
             {/* Phone */}
-            {/* ================================= */}
 
             <div>
 
@@ -846,9 +849,7 @@ const BookAppointment = () => {
 
             </div>
 
-            {/* ================================= */}
             {/* Appointment Type */}
-            {/* ================================= */}
 
             <div>
 
@@ -860,9 +861,7 @@ const BookAppointment = () => {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
-                {/* ============================= */}
                 {/* Checkup */}
-                {/* ============================= */}
 
                 <button
                   type="button"
@@ -902,9 +901,7 @@ const BookAppointment = () => {
 
                 </button>
 
-                {/* ============================= */}
                 {/* X-Ray */}
-                {/* ============================= */}
 
                 <button
                   type="button"
@@ -944,9 +941,7 @@ const BookAppointment = () => {
 
                 </button>
 
-                {/* ============================= */}
                 {/* Follow-up */}
-                {/* ============================= */}
 
                 <button
                   type="button"
@@ -1008,9 +1003,7 @@ const BookAppointment = () => {
 
             </div>
 
-            {/* ================================= */}
             {/* Date + Time */}
-            {/* ================================= */}
 
             <div className="grid gap-5 md:grid-cols-2">
 
@@ -1107,9 +1100,7 @@ const BookAppointment = () => {
 
             </div>
 
-            {/* ================================= */}
             {/* Notes */}
-            {/* ================================= */}
 
             <div>
 
@@ -1138,9 +1129,7 @@ const BookAppointment = () => {
 
             </div>
 
-            {/* ================================= */}
             {/* Submit */}
-            {/* ================================= */}
 
             <button
               type="submit"
@@ -1171,6 +1160,8 @@ const BookAppointment = () => {
 };
 
 export default BookAppointment;
+
+
 
 
 

@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "./supabase";
@@ -75,6 +76,22 @@ const PatientRegister = () => {
     return cleaned;
   };
 
+  // Generate an ID that works on older mobile/tablet browsers
+  const generateInternalId = () => {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return crypto.randomUUID();
+    }
+
+    return (
+      Date.now().toString(36) +
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15)
+    );
+  };
+
   const handleRegister = async (
     e: React.FormEvent
   ) => {
@@ -83,14 +100,25 @@ const PatientRegister = () => {
     setError("");
     setSuccess("");
 
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    const digitsOnlyPhone = phone.replace(/\D/g, "");
+
+    // =========================
+    // Name validation
+    // =========================
+
+    if (!trimmedName) {
       setError(
         isArabic
-          ? "من فضلك أدخل اسمك."
-          : "Please enter your name."
+          ? "من فضلك أدخل اسمك بالكامل."
+          : "Please enter your full name."
       );
       return;
     }
+
+    // =========================
+    // Phone validation
+    // =========================
 
     if (!phone.trim()) {
       setError(
@@ -100,6 +128,28 @@ const PatientRegister = () => {
       );
       return;
     }
+
+    if (!/^\d+$/.test(phone)) {
+      setError(
+        isArabic
+          ? "رقم الهاتف يجب أن يحتوي على أرقام فقط."
+          : "Phone number must contain digits only."
+      );
+      return;
+    }
+
+    if (!/^01[0125]\d{8}$/.test(digitsOnlyPhone)) {
+      setError(
+        isArabic
+          ? "من فضلك أدخل رقم هاتف مصري صحيح مكون من 11 رقمًا، مثل 01012345678."
+          : "Please enter a valid Egyptian mobile number with 11 digits, for example 01012345678."
+      );
+      return;
+    }
+
+    // =========================
+    // Password validation
+    // =========================
 
     if (password.length < 6) {
       setError(
@@ -111,79 +161,221 @@ const PatientRegister = () => {
     }
 
     const normalizedPhone =
-      normalizeEgyptianPhone(phone);
+      normalizeEgyptianPhone(digitsOnlyPhone);
 
     setLoading(true);
 
-    /*
-     * Create an internal email for Supabase Auth.
-     *
-     * The patient never sees or enters this email.
-     */
-    const internalEmail = `patient_${crypto.randomUUID()}@dentalcare.local`;
+    try {
+      // =========================
+      // Check duplicate name
+      // =========================
 
-    const {
-      data,
-      error: signUpError,
-    } = await supabase.auth.signUp({
-      email: internalEmail,
-      password,
-    });
+      const {
+        data: existingName,
+        error: nameCheckError,
+      } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("name", trimmedName)
+        .maybeSingle();
 
-    if (signUpError) {
-      console.error(signUpError);
-      setError(signUpError.message);
-      setLoading(false);
-      return;
-    }
+      if (nameCheckError) {
+        console.error(
+          "Name check error:",
+          nameCheckError
+        );
 
-    if (!data.user) {
-      setError(
-        isArabic
-          ? "تعذر إنشاء حسابك."
-          : "Could not create your account."
-      );
-      setLoading(false);
-      return;
-    }
+        setError(
+          isArabic
+            ? "حدث خطأ أثناء التحقق من الاسم. حاول مرة أخرى."
+            : "An error occurred while checking the name. Please try again."
+        );
 
-    /*
-     * Create patient record.
-     */
-    const { error: patientError } =
-      await supabase
+        return;
+      }
+
+      if (existingName) {
+        setError(
+          isArabic
+            ? "هذا الاسم مسجل بالفعل. من فضلك استخدم اسمًا آخر."
+            : "This name is already registered. Please use another name."
+        );
+
+        return;
+      }
+
+      // =========================
+      // Check duplicate phone
+      // =========================
+
+      const {
+        data: existingPhone,
+        error: phoneCheckError,
+      } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("phone", normalizedPhone)
+        .maybeSingle();
+
+      if (phoneCheckError) {
+        console.error(
+          "Phone check error:",
+          phoneCheckError
+        );
+
+        setError(
+          isArabic
+            ? "حدث خطأ أثناء التحقق من رقم الهاتف. حاول مرة أخرى."
+            : "An error occurred while checking the phone number. Please try again."
+        );
+
+        return;
+      }
+
+      if (existingPhone) {
+        setError(
+          isArabic
+            ? "رقم الهاتف هذا مسجل بالفعل. من فضلك استخدم رقمًا آخر."
+            : "This phone number is already registered. Please use another number."
+        );
+
+        return;
+      }
+
+      // =========================
+      // Create Supabase Auth user
+      // =========================
+
+      const internalEmail =
+        `patient_${generateInternalId()}@dentalcare.local`;
+
+      const {
+        data,
+        error: signUpError,
+      } = await supabase.auth.signUp({
+        email: internalEmail,
+        password,
+      });
+
+      if (signUpError) {
+        console.error(
+          "Patient signup error:",
+          signUpError
+        );
+
+        setError(
+          isArabic
+            ? `خطأ أثناء إنشاء الحساب: ${signUpError.message}`
+            : `Registration error: ${signUpError.message}`
+        );
+
+        return;
+      }
+
+      if (!data.user) {
+        setError(
+          isArabic
+            ? "تعذر إنشاء حسابك."
+            : "Could not create your account."
+        );
+
+        return;
+      }
+
+      // =========================
+      // Create patient profile
+      // =========================
+
+      const {
+        error: patientError,
+      } = await supabase
         .from("patients")
         .insert({
           user_id: data.user.id,
-          name: name.trim(),
+          name: trimmedName,
           phone: normalizedPhone,
           email: null,
           login_email: internalEmail,
           medical_notes: null,
         });
 
-    if (patientError) {
-      console.error(patientError);
+      if (patientError) {
+        console.error(
+          "Patient profile error:",
+          patientError
+        );
+
+        if (patientError.code === "23505") {
+          if (
+            patientError.message.includes(
+              "patients_name_unique"
+            )
+          ) {
+            setError(
+              isArabic
+                ? "هذا الاسم مسجل بالفعل."
+                : "This name is already registered."
+            );
+          } else if (
+            patientError.message.includes(
+              "patients_phone_unique"
+            )
+          ) {
+            setError(
+              isArabic
+                ? "رقم الهاتف هذا مسجل بالفعل."
+                : "This phone number is already registered."
+            );
+          } else {
+            setError(
+              isArabic
+                ? "هذا الحساب مسجل بالفعل."
+                : "This account is already registered."
+            );
+          }
+        } else {
+          setError(
+            isArabic
+              ? `حدث خطأ أثناء إنشاء ملف المريض: ${patientError.message}`
+              : `Patient profile error: ${patientError.message}`
+          );
+        }
+
+        return;
+      }
+
+      // =========================
+      // Success
+      // =========================
+
+      setSuccess(
+        isArabic
+          ? "تم إنشاء حساب المريض بنجاح!"
+          : "Patient account created successfully!"
+      );
+
+      setTimeout(() => {
+        navigate("/patient/login");
+      }, 1000);
+    } catch (error) {
+      console.error(
+        "Patient registration error:",
+        error
+      );
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : String(error);
 
       setError(
         isArabic
-          ? "تم إنشاء حسابك، ولكن تعذر إنشاء ملف المريض الخاص بك. يرجى التواصل مع الدعم."
-          : "Your account was created, but your patient profile could not be created. Please contact support."
+          ? `خطأ أثناء إنشاء الحساب: ${errorMessage}`
+          : `Registration error: ${errorMessage}`
       );
-
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setSuccess(
-      isArabic
-        ? "تم إنشاء حساب المريض بنجاح!"
-        : "Patient account created successfully!"
-    );
-
-    setTimeout(() => {
-      navigate("/patient/login");
-    }, 1000);
   };
 
   return (
@@ -195,7 +387,6 @@ const PatientRegister = () => {
 
         {/* Header */}
         <div className="mb-8 text-center">
-
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
             {isArabic
               ? "إنشاء حساب مريض"
@@ -207,7 +398,6 @@ const PatientRegister = () => {
               ? "أنشئ حسابك لإدارة مواعيدك."
               : "Create your account to manage your appointments."}
           </p>
-
         </div>
 
         {/* Registration Card */}
@@ -215,14 +405,20 @@ const PatientRegister = () => {
 
           {/* Error */}
           {error && (
-            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+            <div
+              role="alert"
+              className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+            >
               {error}
             </div>
           )}
 
           {/* Success */}
           {success && (
-            <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-400">
+            <div
+              role="status"
+              className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-green-700 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-400"
+            >
               {success}
             </div>
           )}
@@ -231,75 +427,91 @@ const PatientRegister = () => {
             onSubmit={handleRegister}
             className="space-y-4"
           >
-
             {/* Name */}
             <div>
-
-              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="patient-name"
+                className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
+              >
                 {isArabic
                   ? "الاسم بالكامل"
                   : "Full Name"}
               </label>
 
               <input
+                id="patient-name"
                 type="text"
                 value={name}
-                onChange={(e) =>
-                  setName(e.target.value)
-                }
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError("");
+                }}
                 placeholder={
                   isArabic
                     ? "أدخل اسمك بالكامل"
                     : "Enter your full name"
                 }
                 required
+                autoComplete="name"
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
               />
-
             </div>
 
             {/* Phone */}
             <div>
-
-              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="patient-phone"
+                className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
+              >
                 {isArabic
                   ? "رقم الهاتف"
                   : "Phone Number"}
               </label>
 
               <input
+                id="patient-phone"
                 type="tel"
                 value={phone}
-                onChange={(e) =>
-                  setPhone(e.target.value)
-                }
+                onChange={(e) => {
+                  const digitsOnly =
+                    e.target.value.replace(/\D/g, "");
+
+                  setPhone(digitsOnly);
+                  setError("");
+                }}
                 placeholder="01012345678"
                 required
+                maxLength={11}
+                inputMode="numeric"
+                autoComplete="tel"
                 dir="ltr"
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
               />
 
               <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                 {isArabic
-                  ? "يتم دعم أرقام الهواتف المصرية."
-                  : "Egyptian phone numbers are supported."}
+                  ? "أدخل رقم هاتف مصري مكون من 11 رقمًا."
+                  : "Enter an Egyptian mobile number with 11 digits."}
               </p>
-
             </div>
 
             {/* Password */}
             <div>
-
-              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <label
+                htmlFor="patient-password"
+                className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
+              >
                 {t.auth.password}
               </label>
 
               <input
+                id="patient-password"
                 type="password"
                 value={password}
-                onChange={(e) =>
-                  setPassword(e.target.value)
-                }
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
                 placeholder={
                   isArabic
                     ? "6 أحرف على الأقل"
@@ -307,9 +519,9 @@ const PatientRegister = () => {
                 }
                 required
                 minLength={6}
+                autoComplete="new-password"
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
               />
-
             </div>
 
             {/* Submit */}
@@ -326,12 +538,10 @@ const PatientRegister = () => {
                   ? "إنشاء حساب"
                   : "Create Account"}
             </button>
-
           </form>
 
           {/* Login */}
           <div className="mt-6 text-center">
-
             <p className="text-sm text-slate-600 dark:text-slate-400">
               {isArabic
                 ? "لديك حساب بالفعل؟"
@@ -346,17 +556,14 @@ const PatientRegister = () => {
                 ? "تسجيل دخول المريض"
                 : "Patient Login"}
             </Link>
-
           </div>
-
         </div>
-
       </div>
     </div>
   );
 };
 
 export default PatientRegister;
-
+ 
 
 

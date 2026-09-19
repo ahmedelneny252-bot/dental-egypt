@@ -9,6 +9,11 @@ import {
   Smile,
   Shield,
   Clock,
+  UserRound,
+  Stethoscope,
+  CalendarCheck,
+  Building2,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import SearchBar from "../components/SearchBar";
@@ -160,6 +165,74 @@ const Home = () => {
     ctaDescription: isArabic
       ? "ابدأ رحلتك الآن واعثر على أفضل عيادات الأسنان في مصر مع دنتال كير"
       : "Start your journey today and find the best dental clinics in Egypt with Dental Care",
+
+    // ============================================
+    // Patient / Doctor Section
+    // ============================================
+
+    chooseTitle: isArabic
+      ? "كيف تريد استخدام دنتال كير؟"
+      : "How would you like to use DentalCare?",
+
+    chooseDescription: isArabic
+      ? "اختر الطريقة المناسبة لك وابدأ استخدام المنصة بسهولة"
+      : "Choose the option that fits you and get started with DentalCare",
+
+    patientTitle: isArabic
+      ? "أنا مريض"
+      : "I'm a Patient",
+
+    patientDescription: isArabic
+      ? "ابحث عن عيادة، تعرّف على الخدمات، واحجز موعدك بسهولة."
+      : "Find a clinic, explore services, and book your appointment easily.",
+
+    patientFeature1: isArabic
+      ? "البحث عن أفضل العيادات"
+      : "Find dental clinics",
+
+    patientFeature2: isArabic
+      ? "حجز المواعيد بسهولة"
+      : "Book appointments easily",
+
+    patientFeature3: isArabic
+      ? "متابعة مواعيدك وحجوزاتك"
+      : "Manage your appointments",
+
+    patientButton: isArabic
+      ? "احجز كـ مريض"
+      : "Book as a Patient",
+
+    patientLogin: isArabic
+      ? "لديك حساب بالفعل؟ تسجيل الدخول"
+      : "Already have an account? Login",
+
+    doctorTitle: isArabic
+      ? "أنا طبيب"
+      : "I'm a Doctor",
+
+    doctorDescription: isArabic
+      ? "أنشئ حساب عيادتك، اختر خطة الاشتراك المناسبة، وأدر عيادتك بالكامل."
+      : "Create your clinic account, choose your subscription plan, and manage your clinic.",
+
+    doctorFeature1: isArabic
+      ? "إدارة المرضى"
+      : "Manage patients",
+
+    doctorFeature2: isArabic
+      ? "إدارة المواعيد والحجوزات"
+      : "Manage appointments",
+
+    doctorFeature3: isArabic
+      ? "المدفوعات والوصفات الطبية"
+      : "Payments & prescriptions",
+
+    doctorButton: isArabic
+      ? "اشترك كطبيب"
+      : "Subscribe as a Doctor",
+
+    doctorLogin: isArabic
+      ? "لديك حساب بالفعل؟ تسجيل الدخول"
+      : "Already have an account? Login",
   };
 
   // Show only the first 3 real clinics
@@ -240,7 +313,10 @@ const Home = () => {
       dir={isArabic ? "rtl" : "ltr"}
       className="bg-white pt-16 transition-colors duration-300 dark:bg-slate-950 lg:pt-20"
     >
-      {/* Hero Section */}
+      {/* ============================================
+          Hero Section
+      ============================================ */}
+
       <section className="relative overflow-hidden bg-gradient-to-br from-teal-50 via-white to-teal-50/30 dark:from-slate-900 dark:via-slate-950 dark:to-teal-950/20">
         <div className="absolute inset-0">
           <div className="absolute right-10 top-20 h-72 w-72 rounded-full bg-teal-200/20 blur-3xl dark:bg-teal-500/10" />
@@ -305,7 +381,172 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Stats Section */}
+      {/* ============================================
+          Patient / Doctor Choice Section
+      ============================================ */}
+
+      <section className="relative overflow-hidden bg-white py-16 transition-colors duration-300 dark:bg-slate-950 md:py-24">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute left-1/4 top-10 h-64 w-64 rounded-full bg-teal-100/40 blur-3xl dark:bg-teal-900/10" />
+          <div className="absolute right-1/4 bottom-10 h-64 w-64 rounded-full bg-slate-100/70 blur-3xl dark:bg-slate-900/40" />
+        </div>
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto mb-12 max-w-3xl text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+              <Sparkles className="h-4 w-4" />
+              {isArabic ? "ابدأ الآن" : "Get Started"}
+            </div>
+
+            <h2 className="mb-4 text-3xl font-bold text-slate-800 dark:text-white md:text-4xl">
+              {t.chooseTitle}
+            </h2>
+
+            <p className="text-lg text-slate-500 dark:text-slate-400">
+              {t.chooseDescription}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+            {/* Patient Card */}
+            <div className="group relative overflow-hidden rounded-3xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-white p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl dark:border-teal-900/50 dark:from-teal-950/40 dark:via-slate-900 dark:to-slate-900 md:p-10">
+              <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-teal-200/30 blur-2xl transition-transform duration-500 group-hover:scale-125 dark:bg-teal-500/10" />
+
+              <div className="relative">
+                <div className="mb-6 flex items-center gap-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-300">
+                    <UserRound className="h-8 w-8" />
+                  </div>
+
+                  <div>
+                    <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+                      {isArabic ? "للمرضى" : "For Patients"}
+                    </p>
+
+                    <h3 className="text-2xl font-bold text-slate-800 dark:text-white md:text-3xl">
+                      {t.patientTitle}
+                    </h3>
+                  </div>
+                </div>
+
+                <p className="mb-7 text-base leading-relaxed text-slate-600 dark:text-slate-300">
+                  {t.patientDescription}
+                </p>
+
+                <div className="mb-8 space-y-4">
+                  <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-300">
+                      <Search className="h-4 w-4" />
+                    </div>
+                    <span>{t.patientFeature1}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-300">
+                      <CalendarCheck className="h-4 w-4" />
+                    </div>
+                    <span>{t.patientFeature2}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-300">
+                      <CheckCircle className="h-4 w-4" />
+                    </div>
+                    <span>{t.patientFeature3}</span>
+                  </div>
+                </div>
+
+                <Link
+                  to="/patient/register"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 px-6 py-4 text-lg font-semibold text-white shadow-lg shadow-teal-500/20 transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-teal-500/30 active:scale-[0.99]"
+                >
+                  <UserRound className="h-5 w-5" />
+                  {t.patientButton}
+                  <ArrowIcon className="h-5 w-5" />
+                </Link>
+
+                <Link
+                  to="/patient/login"
+                  className="mt-4 flex items-center justify-center text-sm font-medium text-teal-600 transition-colors hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                >
+                  {t.patientLogin}
+                </Link>
+              </div>
+            </div>
+
+            {/* Doctor Card */}
+            <div className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-white p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 md:p-10">
+              <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full bg-slate-200/50 blur-2xl transition-transform duration-500 group-hover:scale-125 dark:bg-slate-700/20" />
+
+              <div className="relative">
+                <div className="mb-6 flex items-center gap-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-teal-300">
+                    <Stethoscope className="h-8 w-8" />
+                  </div>
+
+                  <div>
+                    <p className="mb-1 text-sm font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+                      {isArabic ? "للأطباء والعيادات" : "For Doctors & Clinics"}
+                    </p>
+
+                    <h3 className="text-2xl font-bold text-slate-800 dark:text-white md:text-3xl">
+                      {t.doctorTitle}
+                    </h3>
+                  </div>
+                </div>
+
+                <p className="mb-7 text-base leading-relaxed text-slate-600 dark:text-slate-300">
+                  {t.doctorDescription}
+                </p>
+
+                <div className="mb-8 space-y-4">
+                  <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-teal-300">
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <span>{t.doctorFeature1}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-teal-300">
+                      <CalendarCheck className="h-4 w-4" />
+                    </div>
+                    <span>{t.doctorFeature2}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-slate-700 dark:text-slate-200">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-teal-300">
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <span>{t.doctorFeature3}</span>
+                  </div>
+                </div>
+
+                <Link
+                  to="/doctor/subscription"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 px-6 py-4 text-lg font-semibold text-white shadow-lg transition-all duration-300 hover:scale-[1.01] hover:bg-slate-900 hover:shadow-xl active:scale-[0.99] dark:bg-teal-600 dark:hover:bg-teal-700"
+                >
+                  <Stethoscope className="h-5 w-5" />
+                  {t.doctorButton}
+                  <ArrowIcon className="h-5 w-5" />
+                </Link>
+
+                <Link
+                  to="/doctor/login"
+                  className="mt-4 flex items-center justify-center text-sm font-medium text-teal-600 transition-colors hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+                >
+                  {t.doctorLogin}
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================
+          Stats Section
+      ============================================ */}
+
       <section className="border-y border-slate-100 bg-white transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
@@ -328,7 +569,10 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Real Clinics Section */}
+      {/* ============================================
+          Real Clinics Section
+      ============================================ */}
+
       <section className="bg-slate-50/50 py-16 transition-colors duration-300 dark:bg-slate-950 md:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-12 text-center">
@@ -378,7 +622,10 @@ const Home = () => {
         </div>
       </section>
 
-      {/* Services Section */}
+      {/* ============================================
+          Services Section
+      ============================================ */}
+
       <section className="bg-white py-16 transition-colors duration-300 dark:bg-slate-900 md:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-12 text-center">
@@ -399,7 +646,10 @@ const Home = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* ============================================
+          CTA Section
+      ============================================ */}
+
       <section className="relative overflow-hidden bg-gradient-to-r from-teal-600 to-teal-700 py-16 md:py-24">
         <div className="absolute inset-0">
           <div className="absolute right-0 top-0 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
