@@ -1,26 +1,23 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Search,
-  ArrowRight,
-  ArrowLeft,
-  Users,
-  Smile,
-  Shield,
+  MapPin,
+  ChevronDown,
+  ShieldCheck,
   Clock,
-  UserRound,
+  Star,
+  Headset,
   Stethoscope,
+  UserRound,
+  Users2,
   CalendarCheck,
-  Building2,
-  Sparkles,
-  LogIn,
-  Edit,
-  CheckCircle,
+  CreditCard,
+  ShieldPlus,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import { supabase } from "../supabase";
-import SearchBar from "../components/SearchBar";
-import ClinicCard from "../components/ClinicCard";
-import ServiceCard from "../components/ServiceCard";
 
 type SupabaseClinic = {
   id: string;
@@ -31,42 +28,31 @@ type SupabaseClinic = {
   address: string | null;
   description: string | null;
   slug: string | null;
+  rating?: number | null;
+  doctors_count?: number | null;
+  services_count?: number | null;
 };
 
 const Home = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [region, setRegion] = useState("");
   const [isArabic, setIsArabic] = useState(
     localStorage.getItem("dentalcare-language") !== "en"
   );
   const [clinics, setClinics] = useState<SupabaseClinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
-  const [user, setUser] = useState<any>(null);
 
-  const navigate = useNavigate();
-
-  // Language & direction handling (same as before)
   useEffect(() => {
     const updateLanguage = () => {
-      setIsArabic(
-        localStorage.getItem("dentalcare-language") !== "en"
-      );
+      setIsArabic(localStorage.getItem("dentalcare-language") !== "en");
     };
 
-    window.addEventListener(
-      "dentalcare-language-change",
-      updateLanguage
-    );
-
+    window.addEventListener("dentalcare-language-change", updateLanguage);
     window.addEventListener("storage", updateLanguage);
-
     updateLanguage();
 
     return () => {
-      window.removeEventListener(
-        "dentalcare-language-change",
-        updateLanguage
-      );
-
+      window.removeEventListener("dentalcare-language-change", updateLanguage);
       window.removeEventListener("storage", updateLanguage);
     };
   }, []);
@@ -76,29 +62,6 @@ const Home = () => {
     document.documentElement.dir = isArabic ? "rtl" : "ltr";
   }, [isArabic]);
 
-  // Auth state for patient-only buttons
-  useEffect(() => {
-    const getSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-    };
-
-    getSession();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Load clinics from Supabase (same as before)
   useEffect(() => {
     const loadClinics = async () => {
       setLoadingClinics(true);
@@ -108,7 +71,8 @@ const Home = () => {
         .select(
           "id, name, logo_url, phone, whatsapp, address, description, slug"
         )
-        .order("name", { ascending: true });
+        .order("name", { ascending: true })
+        .limit(4);
 
       if (error) {
         console.error("Error loading clinics:", error);
@@ -124,168 +88,84 @@ const Home = () => {
     loadClinics();
   }, []);
 
-  const t = {
-    badge: isArabic
-      ? "منصة موثوقة لاختيار عيادات الأسنان"
-      : "A trusted platform for choosing dental clinics",
-
-    heroTitle: isArabic ? "ابحث عن أفضل" : "Find the best",
-    heroClinic: isArabic ? "عيادة أسنان" : "Dental Clinic",
-    heroDescription: isArabic
-      ? "اكتشف عيادات أسنان موثوقة في مصر، قارن الخدمات، واحجز موعدك بسهولة مع دنتال كير"
-      : "Discover trusted dental clinics in Egypt, compare services, and book your appointment easily with Dental Care",
-
-    searchClinic: isArabic ? "ابحث عن عيادة" : "Find a Clinic",
-    allClinics: isArabic
-      ? "عرض جميع العيادات"
-      : "View All Clinics",
-
-    trustedClinics: isArabic ? "عيادة موثوقة" : "Trusted Clinics",
-    happyPatients: isArabic ? "مرضى راضين" : "Happy Patients",
-    patientSatisfaction: isArabic ? "رضا المرضى" : "Patient Satisfaction",
-    availableService: isArabic ? "خدمة متاحة" : "Service Available",
-
-    topClinicsTitle: isArabic ? "عيادات الأسنان" : "Dental Clinics",
-    topClinicsDescription: isArabic
-      ? "اكتشف عيادات الأسنان المتاحة على منصة دنتال كير"
-      : "Discover the dental clinics available on DentalCare",
-
-    noClinics: isArabic
-      ? "لا توجد عيادات مضافة حاليًا"
-      : "No clinics have been added yet",
-
-    servicesTitle: isArabic ? "خدماتنا المتكاملة" : "Our Comprehensive Services",
-    servicesDescription: isArabic
-      ? "نقدم مجموعة واسعة من خدمات طب الأسنان باستخدام أحدث التقنيات"
-      : "We offer a wide range of dental services using the latest technologies",
-
-    ctaTitle: isArabic
-      ? "هل تبحث عن عيادة أسنان موثوقة؟"
-      : "Looking for a trusted dental clinic?",
-    ctaDescription: isArabic
-      ? "ابدأ رحلتك الآن واعثر على أفضل عيادات الأسنان في مصر مع دنتال كير"
-      : "Start your journey today and find the best dental clinics in Egypt with Dental Care",
-
-    // Patient / Doctor Section (kept for compatibility, but we may not use)
-    chooseTitle: isArabic
-      ? "كيف تريد استخدام دنتال كير؟"
-      : "How would you like to use DentalCare?",
-    chooseDescription: isArabic
-      ? "اختر الطريقة المناسبة لك وابدأ استخدام المنصة بسهولة"
-      : "Choose the option that fits you and get started with DentalCare",
-
-    patientTitle: isArabic ? "أنا مريض" : "I'm a Patient",
-    patientDescription: isArabic
-      ? "ابحث عن عيادة، تعرّف على الخدمات، واحجز موعدك بسهولة."
-      : "Find a clinic, explore services, and book your appointment easily.",
-    patientFeature1: isArabic
-      ? "البحث عن أفضل العيادات"
-      : "Find dental clinics",
-    patientFeature2: isArabic
-      ? "حجز المواعيد بسهولة"
-      : "Book appointments easily",
-    patientFeature3: isArabic
-      ? "متابعة مواعيدك وحجوزاتك"
-      : "Manage your appointments",
-    patientButton: isArabic
-      ? "احجز كـ مريض"
-      : "Book as a Patient",
-    patientLogin: isArabic
-      ? "لديك حساب بالفعل؟ تسجيل الدخول"
-      : "Already have an account? Login",
-
-    doctorTitle: isArabic ? "أنا طبيب" : "I'm a Doctor",
-    doctorDescription: isArabic
-      ? "أنشئ حساب عيادتك، اختر خطة الاشتراك المناسبة، وأدر عيادتك بالكامل."
-      : "Create your clinic account, choose your subscription plan, and manage your clinic.",
-    doctorFeature1: isArabic
-      ? "إدارة المرضى"
-      : "Manage patients",
-    doctorFeature2: isArabic
-      ? "إدارة المواعيد والحجوزات"
-      : "Manage appointments",
-    doctorFeature3: isArabic
-      ? "المدفوعات والوصفات الطبية"
-      : "Payments & prescriptions",
-    doctorButton: isArabic
-      ? "اشترك كطبيب"
-      : "Subscribe as a Doctor",
-    doctorLogin: isArabic
-      ? "لديك حساب بالفعل؟ تسجيل الدخول"
-      : "Already have an account? Login",
-  };
-
   const ArrowIcon = isArabic ? ArrowLeft : ArrowRight;
 
-  // Show only the first 3 real clinics
-  const topClinics = clinics.slice(0, 3);
-
-  const stats = [
+  const trustPoints = [
     {
-      icon: Users,
-      value: `${clinics.length}+`,
-      label: t.trustedClinics,
-    },
-    {
-      icon: Smile,
-      value: "10K+",
-      label: t.happyPatients,
-    },
-    {
-      icon: Shield,
-      value: "99%",
-      label: t.patientSatisfaction,
+      icon: ShieldCheck,
+      title: isArabic ? "عيادات موثوقة" : "Trusted Clinics",
+      subtitle: isArabic ? "مراجعات حقيقية" : "Real reviews",
     },
     {
       icon: Clock,
-      value: "24/7",
-      label: t.availableService,
+      title: isArabic ? "مواعيد مرنة" : "Flexible Times",
+      subtitle: isArabic ? "تناسب جدولك" : "Fits your schedule",
+    },
+    {
+      icon: Star,
+      title: isArabic ? "تقييمات المرضى" : "Patient Ratings",
+      subtitle: isArabic ? "تساعدك في الاختيار" : "Helps you choose",
+    },
+    {
+      icon: Headset,
+      title: isArabic ? "دعم دائم" : "Ongoing Support",
+      subtitle: isArabic ? "لإجابة استفساراتك" : "For your questions",
     },
   ];
 
-  const services = [
+  // بيانات تجريبية تظهر لحد ما العيادات الحقيقية تتحمل من قاعدة البيانات
+  const fallbackClinics = [
     {
-      icon: "sparkles",
-      title: isArabic ? "تبييض الأسنان" : "Teeth Whitening",
-      description: isArabic
-        ? "تبييض احترافي بآخر التقنيات لابتسامة مشرقة وواثقة."
-        : "Professional whitening using the latest techniques for a brighter, more confident smile.",
+      id: "demo-1",
+      name: isArabic ? "عيادة سمايل لطب الأسنان" : "Smile Dental Clinic",
+      address: isArabic ? "الشيخ زايد - الجيزة" : "Sheikh Zayed - Giza",
+      rating: 4.8,
+      doctors: 5,
+      services: 12,
     },
     {
-      icon: "shield",
-      title: isArabic ? "وقاية من التسوس" : "Cavity Prevention",
-      description: isArabic
-        ? "علاجات وقائية شاملة لحماية أسنانك من التسوس والأمراض."
-        : "Comprehensive preventive treatments to protect your teeth from cavities and dental diseases.",
+      id: "demo-2",
+      name: isArabic ? "عيادة د. أحمد عادل" : "Dr. Ahmed Adel Clinic",
+      address: isArabic ? "مدينة نصر - القاهرة" : "Nasr City - Cairo",
+      rating: 4.6,
+      doctors: 3,
+      services: 8,
     },
     {
-      icon: "heart",
-      title: isArabic ? "زراعة الأسنان" : "Dental Implants",
-      description: isArabic
-        ? "زراعة أسنان متقدمة باستخدام أحدث التقنيات الطبية."
-        : "Advanced dental implants using the latest medical technologies.",
+      id: "demo-3",
+      name: isArabic ? "عيادة د. مروة مصطفى" : "Dr. Marwa Mostafa Clinic",
+      address: isArabic ? "التجمع الخامس - القاهرة" : "Fifth Settlement - Cairo",
+      rating: 4.7,
+      doctors: 4,
+      services: 10,
     },
     {
-      icon: "smile",
-      title: isArabic ? "تقويم الأسنان" : "Orthodontics",
-      description: isArabic
-        ? "حلول تقويمية متنوعة تشمل التقويم الشفاف والمعدني."
-        : "Various orthodontic solutions including clear and traditional braces.",
+      id: "demo-4",
+      name: isArabic ? "عيادة إيليت لطب الأسنان" : "Elite Dental Clinic",
+      address: isArabic ? "6 أكتوبر - الجيزة" : "6 October - Giza",
+      rating: 4.5,
+      doctors: 3,
+      services: 7,
     },
-    {
-      icon: "clock",
-      title: isArabic ? "طوارئ الأسنان" : "Dental Emergencies",
-      description: isArabic
-        ? "خدمة طوارئ على مدار الساعة لحالات الألم والإصابات."
-        : "24/7 emergency dental care for pain, injuries, and urgent cases.",
-    },
-    {
-      icon: "award",
-      title: isArabic ? "تجميل الأسنان" : "Cosmetic Dentistry",
-      description: isArabic
-        ? "خدمات تجميلية متقدمة لابتسامة هوليوود مثالية."
-        : "Advanced cosmetic dental services for a beautiful Hollywood smile.",
-    },
+  ];
+
+  const clinicsToShow =
+    clinics.length > 0
+      ? clinics.map((c) => ({
+          id: c.id,
+          name: c.name,
+          address: c.address || "",
+          rating: c.rating ?? 4.7,
+          doctors: c.doctors_count ?? 3,
+          services: c.services_count ?? 8,
+        }))
+      : fallbackClinics;
+
+  const doctorFeatures = [
+    { icon: CalendarCheck, label: isArabic ? "إدارة المواعيد بسهولة" : "Easy appointment management" },
+    { icon: Users2, label: isArabic ? "وصول لعدد أكبر من المرضى" : "Reach more patients" },
+    { icon: Headset, label: isArabic ? "دعم فني مستمر" : "Ongoing technical support" },
+    { icon: ShieldCheck, label: isArabic ? "بدون عمولات عالية" : "No high commissions" },
   ];
 
   return (
@@ -294,214 +174,293 @@ const Home = () => {
       className="bg-white pt-16 transition-colors duration-300 dark:bg-slate-950 lg:pt-20"
     >
       {/* ============================================
-          Top Patient Auth Bar (Login / Sign Up)
-          ============================================ */}
-      {!user && (
-        <div className="bg-teal-50 dark:bg-teal-950/20">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <Link
-                to="/patient/login"
-                className="flex items-center gap-2 rounded-xl bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:bg-teal-700 dark:hover:bg-teal-600"
-              >
-                <LogIn className="h-4 w-4" />
-                {isArabic ? "تسجيل الدخول" : "Login"}
-              </Link>
-
-              <Link
-                to="/patient/register"
-                className="flex items-center gap-2 rounded-xl border border-teal-200 bg-white px-6 py-3 text-sm font-semibold text-teal-600 transition-all duration-300 hover:border-teal-300 hover:bg-teal-50 dark:border-teal-800 dark:hover:bg-teal-900/20"
-              >
-                <Edit className="h-4 w-4" />
-                {isArabic ? "إنشاء حساب" : "Sign Up"}
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================
           Hero Section
           ============================================ */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-teal-50 via-white to-teal-50/30 dark:from-slate-900 dark:via-slate-950 dark:to-teal-950/20">
-        <div className="absolute inset-0">
-          <div className="absolute right-10 top-20 h-72 w-72 rounded-full bg-teal-200/20 blur-3xl dark:bg-teal-500/10" />
-          <div className="absolute bottom-20 left-10 h-96 w-96 rounded-full bg-teal-300/10 blur-3xl dark:bg-teal-500/10" />
-        </div>
+      <section className="relative overflow-hidden bg-gradient-to-b from-blue-50/60 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-slate-950">
+        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
+          <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
 
-        <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 md:py-24 lg:px-8 lg:py-32">
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-teal-100 px-4 py-2 text-sm font-medium text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
-              <CheckCircle className="h-4 w-4" />
-              {t.badge}
-            </div>
+            {/* Text side */}
+            <div>
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                <Stethoscope className="h-4 w-4" />
+                {isArabic ? "منصة متكاملة لعيادات الأسنان" : "A complete platform for dental clinics"}
+              </div>
 
-            <h1 className="mb-6 text-4xl font-bold leading-tight text-slate-800 dark:text-white md:text-5xl lg:text-6xl">
-              {t.heroTitle}{" "}
-              <span className="bg-gradient-to-r from-teal-500 to-teal-600 bg-clip-text text-transparent">
-                {t.heroClinic}
-              </span>
-            </h1>
+              <h1 className="mb-5 text-4xl font-bold leading-tight text-slate-800 dark:text-white md:text-5xl">
+                {isArabic ? (
+                  <>
+                    احجز موعدك بسهولة
+                    <br />
+                    واكتشف{" "}
+                    <span className="text-blue-600 dark:text-blue-400">
+                      أفضل عيادات الأسنان
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Book your appointment easily
+                    <br />
+                    and discover the{" "}
+                    <span className="text-blue-600 dark:text-blue-400">
+                      best dental clinics
+                    </span>
+                  </>
+                )}
+              </h1>
 
-            <p className="mb-10 text-lg leading-relaxed text-slate-500 dark:text-slate-300 md:text-xl">
-              {t.heroDescription}
-            </p>
+              <p className="mb-8 max-w-xl text-lg leading-relaxed text-slate-500 dark:text-slate-300">
+                {isArabic
+                  ? "نوفر لك منصة تجمع أفضل أطباء الأسنان والعيادات الموثوقة، مع حجز المواعيد ومراجعات حقيقية من المرضى."
+                  : "We bring together the best dentists and trusted clinics, with easy booking and real patient reviews."}
+              </p>
 
-            {/* Search Bar */}
-            <div className="mb-8">
-              <SearchBar
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-              />
-            </div>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col items-center gap-4 sm:flex-row">
-              <Link
-                to="/clinics"
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 px-8 py-4 text-lg font-semibold text-white shadow-xl shadow-teal-500/25 transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98]"
-              >
-                <Search className="h-5 w-5" />
-                {t.searchClinic}
-              </Link>
-
-              <Link
-                to="/clinics"
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-8 py-4 text-lg font-semibold text-slate-700 transition-all duration-300 hover:border-teal-300 hover:bg-teal-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-teal-500 dark:hover:bg-slate-800"
-              >
-                {t.allClinics}
-                <ArrowIcon className="h-5 w-5" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================
-          Stats Section
-          ============================================ */}
-      <section className="border-y border-slate-100 bg-white transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-            {stats.map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-50 to-teal-100 text-teal-600 dark:from-teal-900/30 dark:to-teal-800/30 dark:text-teal-400">
-                  <stat.icon className="h-7 w-7" />
+              {/* Search bar: input | region dropdown | button */}
+              <div className="mb-6 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900 sm:flex-row">
+                <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5">
+                  <Search className="h-5 w-5 shrink-0 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={
+                      isArabic
+                        ? "ابحث بالعيادة، الطبيب، أو الخدمة..."
+                        : "Search clinic, doctor, or service..."
+                    }
+                    className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
+                  />
                 </div>
 
-                <p className="text-2xl font-bold text-slate-800 dark:text-white md:text-3xl">
-                  {stat.value}
-                </p>
+                <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2.5 dark:border-slate-800 sm:border-t-0 sm:border-r sm:pr-4 dark:sm:border-slate-800">
+                  <MapPin className="h-5 w-5 shrink-0 text-slate-400" />
+                  <select
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value)}
+                    className="w-full appearance-none bg-transparent text-sm text-slate-600 focus:outline-none dark:text-slate-300 sm:w-40"
+                  >
+                    <option value="">{isArabic ? "اختر المنطقة" : "Choose region"}</option>
+                    <option value="cairo">{isArabic ? "القاهرة" : "Cairo"}</option>
+                    <option value="giza">{isArabic ? "الجيزة" : "Giza"}</option>
+                    <option value="alex">{isArabic ? "الإسكندرية" : "Alexandria"}</option>
+                  </select>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                </div>
 
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {stat.label}
-                </p>
+                <Link
+                  to="/clinics"
+                  className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
+                >
+                  <Search className="h-4 w-4" />
+                  {isArabic ? "ابحث عن عيادة" : "Find a Clinic"}
+                </Link>
               </div>
-            ))}
+
+              {/* Trust points row */}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {trustPoints.map((point, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                      <point.icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        {point.title}
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        {point.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Illustration side - placeholder, استبدلها بصورة عيادتك الحقيقية */}
+            <div className="relative hidden lg:block">
+              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 shadow-2xl shadow-blue-600/20">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
+                  <Stethoscope className="h-20 w-20 opacity-90" />
+                  <p className="text-xl font-bold">Healthy Teeth, Happy Life</p>
+                </div>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.15),_transparent_50%)]" />
+              </div>
+
+              <div className="absolute -bottom-6 -right-6 flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl dark:bg-slate-900">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-white">
+                    +400 {isArabic ? "عيادة" : "clinics"}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {isArabic ? "على المنصة" : "on the platform"}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ============================================
-          Real Clinics Section
+          Featured Clinics
           ============================================ */}
-      <section className="bg-slate-50/50 py-16 transition-colors duration-300 dark:bg-slate-950 md:py-24">
+      <section className="bg-slate-50/60 py-16 transition-colors duration-300 dark:bg-slate-950 md:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-12 text-center">
-            <h2 className="mb-4 text-3xl font-bold text-slate-800 dark:text-white md:text-4xl">
-              {t.topClinicsTitle}
-            </h2>
+          <div className="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+            <div>
+              <span className="mb-2 inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                {isArabic ? "أشهر العيادات" : "Popular Clinics"}
+              </span>
+              <h2 className="text-3xl font-bold text-slate-800 dark:text-white">
+                {isArabic
+                  ? "اكتشف عيادات الأسنان القريبة منك"
+                  : "Discover dental clinics near you"}
+              </h2>
+              <p className="mt-2 max-w-xl text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "مجموعة من أفضل العيادات والأطباء الموثوقين في مختلف المناطق."
+                  : "A selection of the best trusted clinics and doctors across regions."}
+              </p>
+            </div>
 
-            <p className="mx-auto max-w-2xl text-slate-500 dark:text-slate-400">
-              {t.topClinicsDescription}
-            </p>
+            <Link
+              to="/clinics"
+              className="flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+            >
+              {isArabic ? "عرض الكل" : "View all"}
+              <ArrowIcon className="h-4 w-4" />
+            </Link>
           </div>
 
           {loadingClinics ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map((item) => (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {[1, 2, 3, 4].map((item) => (
                 <div
                   key={item}
-                  className="h-[430px] animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800"
+                  className="h-64 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800"
                 />
               ))}
             </div>
-          ) : topClinics.length > 0 ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {topClinics.map((clinic) => (
-                <ClinicCard key={clinic.id} clinic={clinic} />
+          ) : (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {clinicsToShow.map((clinic) => (
+                <div
+                  key={clinic.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
+                >
+                  <div className="flex h-24 items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-500 dark:from-slate-800 dark:to-slate-800 dark:text-blue-400">
+                    <Stethoscope className="h-8 w-8" />
+                  </div>
+
+                  <div className="p-4">
+                    <div className="mb-2 flex items-center gap-1 text-sm font-bold text-amber-500">
+                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                      {clinic.rating}
+                    </div>
+
+                    <h3 className="mb-1 truncate text-base font-bold text-slate-800 dark:text-white">
+                      {clinic.name}
+                    </h3>
+
+                    <p className="mb-3 flex items-center gap-1 truncate text-xs text-slate-400">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      {clinic.address}
+                    </p>
+
+                    <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Users2 className="h-3.5 w-3.5" />
+                        {clinic.doctors} {isArabic ? "أطباء" : "doctors"}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <ShieldPlus className="h-3.5 w-3.5" />
+                        {clinic.services} {isArabic ? "خدمة" : "services"}
+                      </span>
+                    </div>
+
+                    <Link
+                      to="/clinics"
+                      className="flex w-full items-center justify-center gap-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {isArabic ? "عرض التفاصيل" : "View details"}
+                      <ArrowIcon className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
-                {t.noClinics}
-              </p>
-            </div>
-          )}
-
-          {clinics.length > 0 && (
-            <div className="mt-12 text-center">
-              <Link
-                to="/clinics"
-                className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-6 py-3 font-semibold text-white transition-all duration-300 hover:bg-teal-600"
-              >
-                {t.allClinics}
-                <ArrowIcon className="h-4 w-4" />
-              </Link>
-            </div>
           )}
         </div>
       </section>
 
       {/* ============================================
-          Services Section
+          For Doctors Section
           ============================================ */}
-      <section className="bg-white py-16 transition-colors duration-300 dark:bg-slate-900 md:py-24">
+      <section className="bg-white py-16 transition-colors duration-300 dark:bg-slate-900 md:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-12 text-center">
-            <h2 className="mb-4 text-3xl font-bold text-slate-800 dark:text-white md:text-4xl">
-              {t.servicesTitle}
-            </h2>
+          <div className="grid grid-cols-1 items-center gap-10 rounded-3xl bg-blue-50/60 p-8 dark:bg-slate-800/40 lg:grid-cols-[220px_1fr_240px] lg:gap-8 lg:p-12">
 
-            <p className="mx-auto max-w-2xl text-slate-500 dark:text-slate-400">
-              {t.servicesDescription}
-            </p>
+            {/* العمود الأيمن: قائمة المميزات الجانبية */}
+            <div className="order-3 flex flex-col gap-4 lg:order-1">
+              <span className="hidden self-end rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 lg:inline-block">
+                {isArabic ? "لأطباء الأسنان" : "For Dentists"}
+              </span>
+
+              {doctorFeatures.map((feature, index) => (
+                <div key={index} className="flex items-center justify-end gap-3 lg:justify-start">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 lg:order-2">
+                    {feature.label}
+                  </span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 lg:order-1">
+                    <feature.icon className="h-4 w-4" />
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* العمود الأوسط: العنوان والوصف والأزرار */}
+            <div className="order-2 text-center lg:text-right">
+              <span className="mb-3 inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 lg:hidden">
+                {isArabic ? "لأطباء الأسنان" : "For Dentists"}
+              </span>
+
+              <h2 className="mb-3 text-3xl font-bold text-slate-800 dark:text-white">
+                {isArabic ? "انضم إلى منصتنا كطبيب" : "Join our platform as a doctor"}
+              </h2>
+
+              <p className="mb-6 text-slate-500 dark:text-slate-300">
+                {isArabic
+                  ? "وفّر وقتك وابدأ في استقبال مرضاك بسهولة مع أدواتنا الذكية."
+                  : "Save your time and start welcoming your patients easily with our smart tools."}
+              </p>
+
+              <div className="flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+                <Link
+                  to="/doctor/register"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
+                >
+                  <Stethoscope className="h-4 w-4" />
+                  {isArabic ? "اشترك كطبيب" : "Subscribe as a Doctor"}
+                </Link>
+
+                <Link
+                  to="/about"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-600 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  {isArabic ? "معرفة المزيد" : "Learn more"}
+                  <ArrowIcon className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+
+            {/* العمود الأيسر: صورة الطبيب (بديل - استبدلها بصورتك) */}
+            <div className="order-1 mx-auto flex aspect-[3/4] w-40 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-xl shadow-blue-600/20 sm:w-48 lg:order-3 lg:mx-0">
+              <UserRound className="h-20 w-20 text-white/90" />
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((service, index) => (
-              <ServiceCard key={index} {...service} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================
-          CTA Section
-          ============================================ */}
-      <section className="relative overflow-hidden bg-gradient-to-r from-teal-600 to-teal-700 py-16 md:py-24">
-        <div className="absolute inset-0">
-          <div className="absolute right-0 top-0 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
-          <div className="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-white/5 blur-3xl" />
-        </div>
-
-        <div className="relative mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="mb-6 text-3xl font-bold text-white md:text-4xl">
-            {t.ctaTitle}
-          </h2>
-
-          <p className="mx-auto mb-8 max-w-2xl text-lg text-teal-100">
-            {t.ctaDescription}
-          </p>
-
-          <Link
-            to="/clinics"
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-lg font-semibold text-teal-700 shadow-xl shadow-teal-900/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98]"
-          >
-            {t.searchClinic}
-            <ArrowIcon className="h-5 w-5" />
-          </Link>
         </div>
       </section>
     </div>
