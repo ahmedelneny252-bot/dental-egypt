@@ -586,7 +586,8 @@ const DoctorDashboard = () => {
     return map;
   }, [allAppointments, weekDays]);
 
-  const selectedDayAppointments = weekAppointmentsByDay.get(selectedWeekDay) || [];
+  const selectedDayAppointments =
+    weekAppointmentsByDay.get(selectedWeekDay) || [];
 
   // ============================================
   // Derived — patient status donut (تقديري بناءً على آخر موعد لكل مريض)
@@ -649,15 +650,43 @@ const DoctorDashboard = () => {
   // ============================================
 
   const navItems = [
-    { icon: HomeIcon, label: isArabic ? "الرئيسية" : "Home", to: "/doctor/dashboard" },
-    { icon: Building2, label: isArabic ? "معلومات العيادة" : "Clinic Info", to: "/doctor/clinic-profile" },
+    {
+      icon: HomeIcon,
+      label: isArabic ? "الرئيسية" : "Home",
+      to: "/doctor/dashboard",
+    },
+    {
+      icon: Building2,
+      label: isArabic ? "معلومات العيادة" : "Clinic Info",
+      to: "/doctor/clinic-profile",
+    },
     { icon: Users, label: t.dashboard.patients, to: "/doctor/patients" },
-    { icon: Calendar, label: t.dashboard.appointments, to: "/doctor/appointments" },
-    { icon: ClipboardList, label: isArabic ? "السجلات الطبية" : "Medical Records", to: "/doctor/medical-records" },
+    {
+      icon: Calendar,
+      label: t.dashboard.appointments,
+      to: "/doctor/appointments",
+    },
+    {
+      icon: ClipboardList,
+      label: isArabic ? "السجلات الطبية" : "Medical Records",
+      to: "/doctor/medical-records",
+    },
     { icon: Wallet, label: t.dashboard.payments, to: "/doctor/payments" },
-    { icon: BarChart3, label: isArabic ? "التقارير" : "Reports", to: "/doctor/reports" },
-    { icon: PackageSearch, label: isArabic ? "المخزون" : "Inventory", to: "/doctor/inventory" },
-    { icon: SettingsIcon, label: isArabic ? "الإعدادات" : "Settings", to: "/doctor/settings" },
+    {
+      icon: BarChart3,
+      label: isArabic ? "التقارير" : "Reports",
+      to: "/doctor/reports",
+    },
+    {
+      icon: PackageSearch,
+      label: isArabic ? "المخزون" : "Inventory",
+      to: "/doctor/inventory",
+    },
+    {
+      icon: SettingsIcon,
+      label: isArabic ? "الإعدادات" : "Settings",
+      to: "/doctor/settings",
+    },
   ];
 
   // ============================================
@@ -673,12 +702,32 @@ const DoctorDashboard = () => {
   };
 
   const quickTools: QuickTool[] = [
-    { icon: BarChart3, label: isArabic ? "التقارير" : "Reports", to: "/doctor/reports" },
-    { icon: Search, label: isArabic ? "بحث عن مريض" : "Find patient", to: "/doctor/patients" },
-    { icon: CalendarPlus, label: isArabic ? "إضافة موعد" : "Add appointment", to: "/doctor/appointments" },
-    { icon: Activity, label: isArabic ? "متابعة حالة مريض" : "Track patient status", to: "/doctor/patients" },
+    {
+      icon: BarChart3,
+      label: isArabic ? "التقارير" : "Reports",
+      to: "/doctor/reports",
+    },
+    {
+      icon: Search,
+      label: isArabic ? "بحث عن مريض" : "Find patient",
+      to: "/doctor/patients",
+    },
+    {
+      icon: CalendarPlus,
+      label: isArabic ? "إضافة موعد" : "Add appointment",
+      to: "/doctor/appointments",
+    },
+    {
+      icon: Activity,
+      label: isArabic ? "متابعة حالة مريض" : "Track patient status",
+      to: "/doctor/patients",
+    },
     { icon: Wallet, label: t.dashboard.payments, to: "/doctor/payments" },
-    { icon: CalendarCheck, label: isArabic ? "ملخص اليوم" : "Today's Summary", action: "todaySummary" },
+    {
+      icon: CalendarCheck,
+      label: isArabic ? "ملخص اليوم" : "Today's Summary",
+      action: "todaySummary",
+    },
   ];
 
   if (loading) {
@@ -692,7 +741,10 @@ const DoctorDashboard = () => {
   }
 
   return (
-    <div dir={isArabic ? "rtl" : "ltr"} className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 dark:bg-slate-950"
+    >
       {/* ====================================================
           Sidebar (بقى Overlay/Drawer مخفي افتراضيًا)
           - مش جزء ثابت من الصفحة تاني، ده بيبان زي صفحة
@@ -713,7 +765,9 @@ const DoctorDashboard = () => {
               <ToothIcon className="h-5 w-5" />
             </span>
             <div>
-              <p className="text-sm font-bold leading-tight text-white">DentalCare</p>
+              <p className="text-sm font-bold leading-tight text-white">
+                DentalCare
+              </p>
               <p className="text-[11px] leading-tight text-slate-400">
                 {isArabic ? "نظام إدارة العيادة" : "Clinic System"}
               </p>
@@ -798,19 +852,25 @@ const DoctorDashboard = () => {
                   <span className="text-slate-300">
                     {isArabic ? "عدد الكشوفات اليوم" : "Checkups today"}
                   </span>
-                  <span className="font-bold text-white">{todayCheckupsCount}</span>
+                  <span className="font-bold text-white">
+                    {todayCheckupsCount}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-300">
                     {isArabic ? "عدد الإعادات اليوم" : "Follow-ups today"}
                   </span>
-                  <span className="font-bold text-white">{todayFollowUpCount}</span>
+                  <span className="font-bold text-white">
+                    {todayFollowUpCount}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-300">
                     {isArabic ? "إجمالي مدفوعات اليوم" : "Payments today"}
                   </span>
-                  <span className="font-bold text-white">{formatMoney(paidToday)}</span>
+                  <span className="font-bold text-white">
+                    {formatMoney(paidToday)}
+                  </span>
                 </div>
               </div>
             )}
@@ -957,7 +1017,9 @@ const DoctorDashboard = () => {
                 <Sun className="h-3.5 w-3.5 shrink-0 text-white/80" />
                 <span
                   className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
-                    theme === "dark" ? "translate-x-[26px]" : "translate-x-[2px]"
+                    theme === "dark"
+                      ? "translate-x-[26px]"
+                      : "translate-x-[2px]"
                   }`}
                 />
                 <Moon className="mr-0 ml-auto h-3.5 w-3.5 shrink-0 text-white/80" />
@@ -1058,36 +1120,38 @@ const DoctorDashboard = () => {
                   (جراديانت sky/blue فاتح) بدل التيل الغامق.
                 - النص بقى غامق (slate) عشان يبان واضح فوق الخلفية
                   الفاتحة، مع نسخة dark mode بتفضل غامقة زي الأول.
-                - ضفنا <img> بدل أيقونة السن الشفافة: حط صورتك في
-                  public/images/dashboard-banner.png (أو غيّر
-                  المسار في src هنا لأي صورة تانية عندك).
+                - الصورة موجودة في public/doctor.jpeg
                ==================================================== */}
             <div className="relative overflow-hidden rounded-2xl p-6 text-white sm:p-8">
-                          <div className="absolute inset-0 z-0">
-                            <img
-                              src="/dashboard-doctor.jpeg"
-                              alt={isArabic ? "صورة ترحيبية" : "Welcome illustration"}
-                              className="h-full w-full object-cover"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/40" />
-                          </div>
-            
-                          <div className="relative z-10 max-w-md">
-                            <h1 className="flex items-center gap-2 text-2xl font-bold sm:text-3xl">
-                              {isArabic ? `مرحباً بك د. ${doctor?.name}` : `Welcome, Dr. ${doctor?.name}`}{" "}
-                              👋
-                            </h1>
-                            <p className="mt-2 text-white/90">
-                              {isArabic
-                                ? "نتمنى لك يومًا مليئًا بالنجاحات والابتسامات."
-                                : "We wish you a day full of success and smiles."}
-                            </p>
-                            <p className="mt-4 flex items-center gap-2 text-sm text-white/80">
-                              <Calendar className="h-4 w-4" />
-                              {todayLongLabel}
-                            </p>
-                          </div>
-                        </div>
+              <div className="absolute inset-0 z-0">
+                <img
+                  src="/doctor.jpeg"
+                  alt={
+                    isArabic ? "صورة ترحيبية" : "Welcome illustration"
+                  }
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-slate-900/40" />
+              </div>
+
+              <div className="relative z-10 max-w-md">
+                <h1 className="flex items-center gap-2 text-2xl font-bold sm:text-3xl">
+                  {isArabic
+                    ? `مرحباً بك د. ${doctor?.name}`
+                    : `Welcome, Dr. ${doctor?.name}`}{" "}
+                  👋
+                </h1>
+                <p className="mt-2 text-white/90">
+                  {isArabic
+                    ? "نتمنى لك يومًا مليئًا بالنجاحات والابتسامات."
+                    : "We wish you a day full of success and smiles."}
+                </p>
+                <p className="mt-4 flex items-center gap-2 text-sm text-white/80">
+                  <Calendar className="h-4 w-4" />
+                  {todayLongLabel}
+                </p>
+              </div>
+            </div>
 
             {/* Stat cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -1099,7 +1163,9 @@ const DoctorDashboard = () => {
                   {formatMoney(paidThisMonth)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic ? "إجمالي المدفوعات هذا الشهر" : "Payments this month"}
+                  {isArabic
+                    ? "إجمالي المدفوعات هذا الشهر"
+                    : "Payments this month"}
                 </p>
               </div>
 
@@ -1135,7 +1201,9 @@ const DoctorDashboard = () => {
                   {newPatientsThisMonth}
                 </p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic ? "المرضى الجدد هذا الشهر" : "New patients this month"}
+                  {isArabic
+                    ? "المرضى الجدد هذا الشهر"
+                    : "New patients this month"}
                 </p>
               </div>
             </div>
@@ -1158,7 +1226,9 @@ const DoctorDashboard = () => {
 
                 {todayAppointments.length === 0 ? (
                   <p className="py-10 text-center text-sm text-slate-400">
-                    {isArabic ? "لا توجد مواعيد اليوم." : "No appointments today."}
+                    {isArabic
+                      ? "لا توجد مواعيد اليوم."
+                      : "No appointments today."}
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1181,7 +1251,10 @@ const DoctorDashboard = () => {
                       </thead>
                       <tbody>
                         {todayAppointments.map((a) => (
-                          <tr key={a.id} className="border-t border-slate-100 dark:border-slate-800">
+                          <tr
+                            key={a.id}
+                            className="border-t border-slate-100 dark:border-slate-800"
+                          >
                             <td className="py-2.5">
                               <span
                                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -1209,7 +1282,8 @@ const DoctorDashboard = () => {
                               {formatAppointmentType(a.appointment_type)}
                             </td>
                             <td className="py-2.5 font-semibold text-slate-800 dark:text-white">
-                              {a.patients?.name || (isArabic ? "مريض" : "Patient")}
+                              {a.patients?.name ||
+                                (isArabic ? "مريض" : "Patient")}
                             </td>
                             <td className="py-2.5 text-slate-500 dark:text-slate-400">
                               {formatTime(a.appointment_time)}
@@ -1226,7 +1300,9 @@ const DoctorDashboard = () => {
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "مواعيد هذا الأسبوع" : "This Week's Appointments"}
+                    {isArabic
+                      ? "مواعيد هذا الأسبوع"
+                      : "This Week's Appointments"}
                   </h2>
                   <Link
                     to="/doctor/appointments"
@@ -1257,7 +1333,9 @@ const DoctorDashboard = () => {
                 <div className="space-y-2">
                   {selectedDayAppointments.length === 0 ? (
                     <p className="py-6 text-center text-sm text-slate-400">
-                      {isArabic ? "لا توجد مواعيد في هذا اليوم." : "No appointments this day."}
+                      {isArabic
+                        ? "لا توجد مواعيد في هذا اليوم."
+                        : "No appointments this day."}
                     </p>
                   ) : (
                     selectedDayAppointments.map((a) => (
@@ -1269,7 +1347,8 @@ const DoctorDashboard = () => {
                       >
                         <div>
                           <p className="text-sm font-semibold">
-                            {a.patients?.name || (isArabic ? "مريض" : "Patient")}
+                            {a.patients?.name ||
+                              (isArabic ? "مريض" : "Patient")}
                           </p>
                           <p className="text-xs opacity-80">
                             {formatAppointmentType(a.appointment_type)}
@@ -1337,7 +1416,9 @@ const DoctorDashboard = () => {
                       {isArabic ? "متبقي" : "Remaining"}
                     </span>
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
-                      {formatMoney(Math.max(totalTreatmentValue - totalPaid, 0))}
+                      {formatMoney(
+                        Math.max(totalTreatmentValue - totalPaid, 0)
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1377,7 +1458,9 @@ const DoctorDashboard = () => {
                             <p className="text-sm font-semibold text-slate-800 dark:text-white">
                               {p.name}
                             </p>
-                            <p className="text-xs text-slate-400">{p.phone || "-"}</p>
+                            <p className="text-xs text-slate-400">
+                              {p.phone || "-"}
+                            </p>
                           </div>
                         </div>
 
@@ -1427,19 +1510,23 @@ const DoctorDashboard = () => {
                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-                    {isArabic ? "قيد العلاج" : "In progress"} ({patientStatusBreakdown.in_progress})
+                    {isArabic ? "قيد العلاج" : "In progress"} (
+                    {patientStatusBreakdown.in_progress})
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                    {isArabic ? "في المتابعة" : "Follow-up"} ({patientStatusBreakdown.follow_up})
+                    {isArabic ? "في المتابعة" : "Follow-up"} (
+                    {patientStatusBreakdown.follow_up})
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
-                    {isArabic ? "مكتمل العلاج" : "Completed"} ({patientStatusBreakdown.completed})
+                    {isArabic ? "مكتمل العلاج" : "Completed"} (
+                    {patientStatusBreakdown.completed})
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                    {isArabic ? "لم يحضر" : "No show"} ({patientStatusBreakdown.no_show})
+                    {isArabic ? "لم يحضر" : "No show"} (
+                    {patientStatusBreakdown.no_show})
                   </span>
                 </div>
               </div>
