@@ -1062,31 +1062,32 @@ const DoctorDashboard = () => {
                   public/images/dashboard-banner.png (أو غيّر
                   المسار في src هنا لأي صورة تانية عندك).
                ==================================================== */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-l from-blue-50 via-sky-100 to-blue-200 p-6 text-slate-800 dark:from-slate-800 dark:via-slate-800 dark:to-slate-900 dark:text-white sm:p-8">
-              <div className="relative z-10 max-w-md">
-                <h1 className="flex items-center gap-2 text-2xl font-bold sm:text-3xl">
-                  {isArabic ? `مرحباً د. ${doctor?.name}` : `Welcome, Dr. ${doctor?.name}`}{" "}
-                  👋
-                </h1>
-                <p className="mt-2 text-slate-600 dark:text-slate-300">
-                  {isArabic
-                    ? "نتمنى لك يومًا مليئًا بالنجاحات والابتسامات."
-                    : "We wish you a day full of success and smiles."}
-                </p>
-                <p className="mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                  <Calendar className="h-4 w-4" />
-                  {todayLongLabel}
-                </p>
-              </div>
-
-              {/* عدّل المسار ده لصورتك — لو الصورة مش موجودة الـ img
-                  مش هتظهر لكن مش هتكسر الصفحة */}
-              <img
-                src="/images/dashboard-banner.png"
-                alt={isArabic ? "صورة ترحيبية" : "Welcome illustration"}
-                className="pointer-events-none absolute bottom-0 end-2 hidden h-full max-h-44 w-auto object-contain sm:block"
-              />
-            </div>
+            <div className="relative overflow-hidden rounded-2xl p-6 text-white sm:p-8">
+                          <div className="absolute inset-0 z-0">
+                            <img
+                              src="/dashboard-doctor.jpeg"
+                              alt={isArabic ? "صورة ترحيبية" : "Welcome illustration"}
+                              className="h-full w-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-slate-900/40" />
+                          </div>
+            
+                          <div className="relative z-10 max-w-md">
+                            <h1 className="flex items-center gap-2 text-2xl font-bold sm:text-3xl">
+                              {isArabic ? `مرحباً بك د. ${doctor?.name}` : `Welcome, Dr. ${doctor?.name}`}{" "}
+                              👋
+                            </h1>
+                            <p className="mt-2 text-white/90">
+                              {isArabic
+                                ? "نتمنى لك يومًا مليئًا بالنجاحات والابتسامات."
+                                : "We wish you a day full of success and smiles."}
+                            </p>
+                            <p className="mt-4 flex items-center gap-2 text-sm text-white/80">
+                              <Calendar className="h-4 w-4" />
+                              {todayLongLabel}
+                            </p>
+                          </div>
+                        </div>
 
             {/* Stat cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
