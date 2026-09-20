@@ -177,10 +177,43 @@ const Home = () => {
           Hero Section
           ============================================ */}
       <section className="relative overflow-hidden bg-gradient-to-b from-blue-50/60 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-slate-950">
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
-          <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
+        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:min-h-[560px] lg:px-8 lg:py-0">
 
-            {/* Text side */}
+          {/* الصورة — absolute على الشمال، بتملا نص عرض القسم بارتفاعه بالكامل (ديسكتوب بس، زي التصميم الأصلي) */}
+          <div className="absolute inset-y-0 left-0 hidden w-1/2 lg:block">
+            <img
+              src="/dental-care.jpg"
+              alt={isArabic ? "عيادة الأسنان" : "Dental clinic"}
+              className="h-full w-full object-cover"
+            />
+            {/* تدرّج تحت */}
+            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white to-transparent dark:from-slate-950" />
+            {/* تدرّج على الشمال */}
+            <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white to-transparent dark:from-slate-950" />
+            {/* تدرّج على اليمين */}
+            <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-white to-transparent dark:from-slate-950" />
+            {/* تدرّج فوق */}
+            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-blue-50 to-transparent dark:from-slate-900" />
+
+            <div className="absolute bottom-8 right-8 flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl dark:bg-slate-900">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800 dark:text-white">
+                  +400 {isArabic ? "عيادة" : "clinics"}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {isArabic ? "على المنصة" : "on the platform"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* الكلام — relative على اليمين، بياخد نص عرض القسم على الديسكتوب عشان الصورة ماتغطيش عليه.
+              lg:ml-auto بتثبته على اليمين فعليًا في اللغتين (عربي وإنجليزي)، عشان لما اللغة
+              تتغير لإنجليزي (dir يبقى ltr) الكلام ميرجعش يتحط على الشمال فوق الصورة. */}
+          <div className="relative z-10 lg:ml-auto lg:flex lg:min-h-[560px] lg:w-1/2 lg:flex-col lg:justify-center lg:py-16">
             <div>
               <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                 <Stethoscope className="h-4 w-4" />
@@ -273,31 +306,6 @@ const Home = () => {
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Illustration side - placeholder, استبدلها بصورة عيادتك الحقيقية */}
-            <div className="relative hidden lg:block">
-              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 shadow-2xl shadow-blue-600/20">
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white">
-                  <Stethoscope className="h-20 w-20 opacity-90" />
-                  <p className="text-xl font-bold">Healthy Teeth, Happy Life</p>
-                </div>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.15),_transparent_50%)]" />
-              </div>
-
-              <div className="absolute -bottom-6 -right-6 flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl dark:bg-slate-900">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800 dark:text-white">
-                    +400 {isArabic ? "عيادة" : "clinics"}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {isArabic ? "على المنصة" : "on the platform"}
-                  </p>
-                </div>
               </div>
             </div>
           </div>

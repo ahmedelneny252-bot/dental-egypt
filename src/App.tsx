@@ -38,22 +38,27 @@ import Payments from "./Payments";
 // Patient Pages
 import PatientRegister from "./PatientRegister";
 import PatientLogin from "./PatientLogin";
-import PatientAppointments from "./PatientAppointments";
+import PatientDashboard from "./PatientDashboard";
+//import PatientAppointments from "./PatientAppointments";
 import PatientNotifications from "./PatientNotifications";
 import PatientPayments from "./PatientPayments";
 
 // ============================================================
 // مسارات الداشبورد بتاعت الدكتور (كل مسارات /doctor/* ما عدا
-// صفحات تسجيل الدخول/إنشاء الحساب) عندها هيدر وSidebar خاص
-// بيها. الـ Navbar العام مايترندرش خالص في الـ DOM في الصفحات
-// دي (مش بس بيرجع null من جواه) عشان نضمن إنه مايغطيش أي حاجة
-// زي السايدبار الثابت (fixed) اللي فوقه في الـ z-index.
+// صفحات تسجيل الدخول/إنشاء الحساب)، وكمان صفحة داشبورد المريض
+// الجديدة (/patient/dashboard) عندهم هيدر وSidebar خاص بيهم.
+// الـ Navbar العام مايترندرش خالص في الـ DOM في الصفحات دي (مش
+// بس بيرجع null من جواه) عشان نضمن إنه مايغطيش أي حاجة زي
+// السايدبار الثابت (fixed) اللي فوقه في الـ z-index.
 // ============================================================
 const DOCTOR_STANDALONE_LAYOUT_PATHS = ["/doctor/register", "/doctor/login"];
 
-const isDoctorDashboardPath = (pathname: string) =>
-  pathname.startsWith("/doctor/") &&
-  !DOCTOR_STANDALONE_LAYOUT_PATHS.includes(pathname);
+const STANDALONE_DASHBOARD_PATHS = ["/patient/dashboard"];
+
+const isStandaloneDashboardPath = (pathname: string) =>
+  (pathname.startsWith("/doctor/") &&
+    !DOCTOR_STANDALONE_LAYOUT_PATHS.includes(pathname)) ||
+  STANDALONE_DASHBOARD_PATHS.includes(pathname);
 
 // ============================================================
 // AppLayout: بيقرر يعرض الـ Navbar والـ Footer العامين ولا لأ
@@ -62,7 +67,7 @@ const isDoctorDashboardPath = (pathname: string) =>
 // ============================================================
 const AppLayout = () => {
   const location = useLocation();
-  const hideGlobalChrome = isDoctorDashboardPath(location.pathname);
+  const hideGlobalChrome = isStandaloneDashboardPath(location.pathname);
 
   return (
     <div className="min-h-screen bg-white">
@@ -205,8 +210,13 @@ const AppLayout = () => {
           />
 
           <Route
-            path="/patient/appointments"
-            element={<PatientAppointments />}
+            path="/patient/dashboard"
+            element={<PatientDashboard />}
+          />
+
+         // <Route
+           // path="/patient/appointments"
+           // element={<PatientAppointments />}
           />
 
           <Route

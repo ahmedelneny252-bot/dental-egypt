@@ -35,6 +35,15 @@ const HIDDEN_AUTH_BUTTONS_PATHS = [
   "/patient/login",
 ];
 
+// ============================================================
+// مسارات الداشبورد بتاعت الدكتور عندها هيدر وSidebar خاص بيها
+// (فيها تسجيل خروج/لغة/وضع داكن جواها دلوقتي في صفحة
+// /doctor/settings)، فمش محتاجة الـ Navbar العام يظهر فيها
+// خالص. صفحات تسجيل الدخول/إنشاء الحساب لسه بتستخدم الـ
+// Navbar العام عشان كده مستثناة من هنا.
+// ============================================================
+const DOCTOR_STANDALONE_LAYOUT_PATHS = ["/doctor/register", "/doctor/login"];
+
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -196,9 +205,8 @@ const Navbar = () => {
 
   const notificationPath = isDoctor ? "/doctor/notifications" : "/patient/notifications";
 
-  // مسارات المريض والدكتور - عدّل هنا لو أسامي المسارات مختلفة عندك
+  // مسار تسجيل المريض - عدّل هنا لو اسم المسار مختلف عندك
   const patientRegisterPath = "/patient/register";
-  const doctorRegisterPath = "/doctor/register";
 
   const navLinks = [
     { to: "/", label: t.common.home },
@@ -215,12 +223,23 @@ const Navbar = () => {
     }`;
 
   // ============================================================
-  // هنا التعديل: بدل ما نخفي الـ Navbar كله، بنحسب فلاج بيتحقق
-  // منه بس عند رندر قسم أزرار "إنشاء حساب / تسجيل الدخول / للأطباء"
-  // تحت. باقي الشريط (اللوجو، روابط التنقل، اللغة، الوضع الداكن)
-  // بيفضل ظاهر زي ما هو في كل الصفحات.
+  // بدل ما نخفي الـ Navbar كله، بنحسب فلاج بيتحقق منه بس عند
+  // رندر قسم أزرار "إنشاء حساب / تسجيل الدخول" تحت.
   // ============================================================
   const hideAuthButtons = HIDDEN_AUTH_BUTTONS_PATHS.includes(location.pathname);
+
+  // ============================================================
+  // الداشبورد بتاعت الدكتور (كل مسارات /doctor/* ما عدا صفحات
+  // تسجيل الدخول/إنشاء الحساب) عندها هيدر وSidebar خاص بيها،
+  // فبنخفي الـ Navbar العام تمامًا هناك بدل ما يترندر فوقها.
+  // ============================================================
+  const isDoctorDashboardArea =
+    location.pathname.startsWith("/doctor/") &&
+    !DOCTOR_STANDALONE_LAYOUT_PATHS.includes(location.pathname);
+
+  if (isDoctorDashboardArea) {
+    return null;
+  }
 
   return (
     <nav
@@ -238,7 +257,7 @@ const Navbar = () => {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-3 lg:h-20">
 
-          {/* ============ 1) أقصى اليمين: تسجيل الدخول / إنشاء حساب / للأطباء ============ */}
+          {/* ============ 1) أقصى اليمين: تسجيل الدخول / إنشاء حساب ============ */}
 
           <div className="hidden items-center gap-2 lg:flex">
             {!hideAuthButtons && (
@@ -289,23 +308,13 @@ const Navbar = () => {
                   </button>
                 </>
               ) : (
-                <>
-                  <Link
-                    to={patientRegisterPath}
-                    className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    {isArabic ? "إنشاء حساب كمريض" : "Sign Up as Patient"}
-                  </Link>
-
-                  <Link
-                    to={doctorRegisterPath}
-                    className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                  >
-                    <Stethoscope className="h-4 w-4" />
-                    {isArabic ? "للأطباء - اشترك كطبيب" : "For Doctors"}
-                  </Link>
-                </>
+                <Link
+                  to={patientRegisterPath}
+                  className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  {isArabic ? "إنشاء حساب كمريض" : "Sign Up as Patient"}
+                </Link>
               )
             )}
           </div>
@@ -504,15 +513,6 @@ const Navbar = () => {
                     >
                       <UserPlus className="h-5 w-5" />
                       {isArabic ? "إنشاء حساب كمريض" : "Sign Up as Patient"}
-                    </Link>
-
-                    <Link
-                      to={doctorRegisterPath}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                    >
-                      <Stethoscope className="h-5 w-5" />
-                      {isArabic ? "للأطباء - اشترك كطبيب" : "For Doctors"}
                     </Link>
                   </div>
                 )

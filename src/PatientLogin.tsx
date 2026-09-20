@@ -1,14 +1,14 @@
-
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, LogIn, Phone } from "lucide-react";
+import { Eye, EyeOff, LogIn, User } from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
 
 const PatientLogin = () => {
   const navigate = useNavigate();
 
-  const [phone, setPhone] = useState("");
+  // Can hold either a phone number or an email — we detect which one it is
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -83,41 +83,65 @@ const PatientLogin = () => {
 
     setError("");
 
-    if (!phone.trim() || !password) {
+    const trimmedIdentifier = identifier.trim();
+
+    if (!trimmedIdentifier || !password) {
       setError(
         isArabic
-          ? "من فضلك أدخل رقم الهاتف وكلمة المرور."
-          : "Please enter your phone number and password."
+          ? "من فضلك أدخل رقم الهاتف أو البريد الإلكتروني وكلمة المرور."
+          : "Please enter your phone number or email, and your password."
       );
       return;
     }
 
+    // Anything with an "@" is treated as an email, everything else as a phone number
+    const isEmailInput = trimmedIdentifier.includes("@");
+
     setLoading(true);
 
     try {
-      const normalizedPhone =
-        normalizeEgyptianPhone(phone.trim());
+      let loginEmail: string | null = null;
+      let lookupError: { message: string } | null = null;
 
-      /*
-       * Get the patient's internal login email
-       * using a secure Supabase RPC function.
-       *
-       * The patient never sees or enters this email.
-       */
-      const {
-        data: loginEmail,
-        error: patientError,
-      } = await supabase.rpc(
-        "get_patient_login_email",
-        {
-          patient_phone: normalizedPhone,
-        }
-      );
+      if (isEmailInput) {
+        /*
+         * Look up the patient's internal login email using their
+         * real email address, via a secure Supabase RPC function.
+         */
+        const result = await supabase.rpc(
+          "get_patient_login_email_by_email",
+          {
+            patient_email: trimmedIdentifier.toLowerCase(),
+          }
+        );
 
-      if (patientError) {
+        loginEmail = result.data;
+        lookupError = result.error;
+      } else {
+        const normalizedPhone =
+          normalizeEgyptianPhone(trimmedIdentifier);
+
+        /*
+         * Get the patient's internal login email
+         * using a secure Supabase RPC function.
+         *
+         * The patient never sees or enters this email.
+         */
+        const result = await supabase.rpc(
+          "get_patient_login_email",
+          {
+            patient_phone: normalizedPhone,
+          }
+        );
+
+        loginEmail = result.data;
+        lookupError = result.error;
+      }
+
+      if (lookupError) {
         console.error(
           "Patient lookup error:",
-          patientError
+          lookupError
         );
 
         setError(
@@ -131,9 +155,13 @@ const PatientLogin = () => {
 
       if (!loginEmail) {
         setError(
-          isArabic
-            ? "لم يتم العثور على حساب مريض مرتبط برقم الهاتف هذا."
-            : "No patient account was found with this phone number."
+          isEmailInput
+            ? isArabic
+              ? "لم يتم العثور على حساب مريض مرتبط بهذا البريد الإلكتروني."
+              : "No patient account was found with this email."
+            : isArabic
+              ? "لم يتم العثور على حساب مريض مرتبط برقم الهاتف هذا."
+              : "No patient account was found with this phone number."
         );
 
         return;
@@ -172,7 +200,9 @@ const PatientLogin = () => {
         return;
       }
 
-      navigate("/patient/appointments");
+      // بعد تسجيل الدخول بنجاح، بنوجه المريض للداشبورد الجديدة
+      // (/patient/dashboard) بدل صفحة "مواعيدي" القديمة
+      navigate("/patient/dashboard");
     } catch (error) {
       console.error(
         "Patient login error:",
@@ -210,8 +240,8 @@ const PatientLogin = () => {
 
           <p className="mt-3 text-slate-600 dark:text-slate-400">
             {isArabic
-              ? "سجل الدخول إلى حساب المريض باستخدام رقم هاتفك وكلمة المرور."
-              : "Log in to your patient account using your phone number and password."}
+              ? "سجل الدخول إلى حساب المريض باستخدام رقم هاتفك أو بريدك الإلكتروني."
+              : "Log in to your patient account using your phone number or email."}
           </p>
 
         </div>
@@ -236,22 +266,22 @@ const PatientLogin = () => {
             className="space-y-5"
           >
 
-            {/* Phone */}
+            {/* Phone or Email */}
 
             <div>
 
               <label
-                htmlFor="patient-phone"
+                htmlFor="patient-identifier"
                 className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
               >
                 {isArabic
-                  ? "رقم الهاتف"
-                  : "Phone Number"}
+                  ? "رقم الهاتف أو البريد الإلكتروني"
+                  : "Phone Number or Email"}
               </label>
 
               <div className="relative">
 
-                <Phone
+                <User
                   className={`pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500 ${
                     isArabic
                       ? "right-4"
@@ -260,17 +290,20 @@ const PatientLogin = () => {
                 />
 
                 <input
-                  id="patient-phone"
-                  type="tel"
-                  value={phone}
+                  id="patient-identifier"
+                  type="text"
+                  value={identifier}
                   onChange={(e) => {
-                    setPhone(e.target.value);
+                    setIdentifier(e.target.value);
                     setError("");
                   }}
-                  placeholder="01012345678"
+                  placeholder={
+                    isArabic
+                      ? "01012345678 أو example@email.com"
+                      : "01012345678 or example@email.com"
+                  }
                   required
-                  autoComplete="tel"
-                  inputMode="tel"
+                  autoComplete="username"
                   dir="ltr"
                   className={`w-full rounded-xl border border-slate-300 bg-white py-3 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 ${
                     isArabic
@@ -280,6 +313,12 @@ const PatientLogin = () => {
                 />
 
               </div>
+
+              <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
+                {isArabic
+                  ? "يمكنك تسجيل الدخول برقم هاتفك، أو ببريدك الإلكتروني لو كنت سجلته عند إنشاء الحساب."
+                  : "You can log in with your phone number, or with your email if you added one when you registered."}
+              </p>
 
             </div>
 
