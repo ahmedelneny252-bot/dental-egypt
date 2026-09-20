@@ -58,21 +58,28 @@ const Footer = () => {
   return (
     <footer
       dir={isArabic ? "rtl" : "ltr"}
-      className="bg-slate-900 text-slate-400 py-12 md:py-16"
+      className="
+        bg-white text-slate-600
+        dark:bg-slate-950 dark:text-slate-400
+        py-5
+        border-t border-slate-200 dark:border-slate-800
+      "
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 mb-12">
+
+        <div className="grid grid-cols-2 gap-5 md:grid-cols-4 mb-5">
+
           {/* Platform Info */}
           <div>
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center mb-4 shadow-lg shadow-teal-500/20">
-              <Heart className="w-6 h-6 text-white fill-white" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center mb-2 shadow-sm">
+              <Heart className="w-4 h-4 text-white fill-white" />
             </div>
 
-            <h3 className="text-xl font-bold text-white mb-3">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">
               DentalCare
             </h3>
 
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs">
               {isArabic
                 ? "نربطك بأفضل عيادات الأسنان في مصر. اكتشف، قارن، واحجز موعدك بسهولة."
                 : "We connect you with dental clinics across Egypt. Discover, compare, and book your appointment with ease."}
@@ -81,15 +88,15 @@ const Footer = () => {
 
           {/* Quick Links */}
           <div>
-            <h4 className="text-sm font-medium text-white mb-4">
+            <h4 className="text-xs font-semibold text-slate-900 dark:text-white mb-2">
               {isArabic ? "روابط سريعة" : "Quick Links"}
             </h4>
 
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-1 text-[11px]">
               <li>
                 <Link
                   to="/"
-                  className="hover:text-teal-400 transition-colors"
+                  className="hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   {t.common.home}
                 </Link>
@@ -98,7 +105,7 @@ const Footer = () => {
               <li>
                 <Link
                   to="/clinics"
-                  className="hover:text-teal-400 transition-colors"
+                  className="hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   {t.common.clinics}
                 </Link>
@@ -107,7 +114,7 @@ const Footer = () => {
               <li>
                 <Link
                   to="/services"
-                  className="hover:text-teal-400 transition-colors"
+                  className="hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   {t.common.services}
                 </Link>
@@ -116,7 +123,7 @@ const Footer = () => {
               <li>
                 <Link
                   to="/about"
-                  className="hover:text-teal-400 transition-colors"
+                  className="hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   {t.common.about}
                 </Link>
@@ -125,7 +132,7 @@ const Footer = () => {
               <li>
                 <Link
                   to="/contact"
-                  className="hover:text-teal-400 transition-colors"
+                  className="hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   {t.common.contact}
                 </Link>
@@ -135,16 +142,16 @@ const Footer = () => {
 
           {/* Services */}
           <div>
-            <h4 className="text-sm font-medium text-white mb-4">
+            <h4 className="text-xs font-semibold text-slate-900 dark:text-white mb-2">
               {isArabic ? "خدماتنا" : "Our Services"}
             </h4>
 
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-1 text-[11px]">
               {services.map((service) => (
                 <li key={service}>
                   <Link
                     to="/services"
-                    className="hover:text-teal-400 transition-colors"
+                    className="hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                   >
                     {service}
                   </Link>
@@ -155,41 +162,44 @@ const Footer = () => {
 
           {/* Contact Info */}
           <div>
-            <h4 className="text-sm font-medium text-white mb-4">
+            <h4 className="text-xs font-semibold text-slate-900 dark:text-white mb-2">
               {isArabic ? "تواصل معنا" : "Contact Us"}
             </h4>
 
-            <ul className="space-y-3 text-sm">
-              <li className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-teal-400 shrink-0" />
+            <ul className="space-y-1.5 text-[11px]">
+              <li className="flex items-center gap-2">
+                <Phone className="w-3 h-3 text-teal-500 dark:text-teal-400 shrink-0" />
 
                 <a
                   href="tel:08001234567"
                   dir="ltr"
-                  className="text-slate-400 hover:text-teal-400 transition-colors"
+                  className="text-slate-500 dark:text-slate-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   0800 123 4567
                 </a>
               </li>
 
-              <li className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-teal-400 shrink-0" />
+              <li className="flex items-center gap-2">
+                <Mail className="w-3 h-3 text-teal-500 dark:text-teal-400 shrink-0" />
 
                 <a
                   href="mailto:info@dentalcare-eg.com"
                   dir="ltr"
-                  className="text-slate-400 hover:text-teal-400 transition-colors"
+                  className="text-slate-500 dark:text-slate-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
                 >
                   info@dentalcare-eg.com
                 </a>
               </li>
 
-              <li className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded-full bg-teal-500 flex items-center justify-center shrink-0">
-                  <Instagram className="w-3 h-3 text-white" />
+              <li className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 rounded-full bg-teal-500 flex items-center justify-center shrink-0">
+                  <Instagram className="w-2 h-2 text-white" />
                 </div>
 
-                <span dir="ltr" className="text-slate-400">
+                <span
+                  dir="ltr"
+                  className="text-slate-500 dark:text-slate-400"
+                >
                   @dentalcare_eg
                 </span>
               </li>
@@ -198,8 +208,8 @@ const Footer = () => {
         </div>
 
         {/* Bottom Footer */}
-        <div className="pt-8 border-t border-teal-900/30 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-slate-500 text-center">
+        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-2">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
             © {new Date().getFullYear()}{" "}
             {isArabic
               ? "دنتال كير. جميع الحقوق محفوظة."
@@ -207,37 +217,37 @@ const Footer = () => {
           </p>
 
           {/* Social Media */}
-          <div className="flex gap-4">
+          <div className="flex gap-2.5">
             <a
               href="#"
               aria-label="Facebook"
-              className="hover:text-teal-400 transition-colors"
+              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
             >
-              <Facebook className="w-5 h-5" />
+              <Facebook className="w-3.5 h-3.5" />
             </a>
 
             <a
               href="#"
               aria-label="Instagram"
-              className="hover:text-teal-400 transition-colors"
+              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
             >
-              <Instagram className="w-5 h-5" />
+              <Instagram className="w-3.5 h-3.5" />
             </a>
 
             <a
               href="#"
               aria-label="Twitter"
-              className="hover:text-teal-400 transition-colors"
+              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
             >
-              <Twitter className="w-5 h-5" />
+              <Twitter className="w-3.5 h-3.5" />
             </a>
 
             <a
               href="#"
               aria-label="LinkedIn"
-              className="hover:text-teal-400 transition-colors"
+              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
             >
-              <Linkedin className="w-5 h-5" />
+              <Linkedin className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>
@@ -247,3 +257,5 @@ const Footer = () => {
 };
 
 export default Footer;
+
+
