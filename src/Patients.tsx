@@ -1,5 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  AlertCircle,
+  Bell,
+  Calendar,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Eye,
+  Globe,
+  MoreVertical,
+  Moon,
+  RefreshCcw,
+  Search,
+  Sun,
+} from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
 
@@ -14,16 +30,42 @@ type Patient = {
   created_at: string;
 };
 
+type LatestAppointmentInfo = {
+  status: string;
+  appointment_date: string;
+};
+
+type PatientStatusCategory =
+  | "completed"
+  | "upcoming"
+  | "in_treatment"
+  | "needs_followup"
+  | "no_data";
+
+type PatientWithStatus = Patient & {
+  latestAppointment: LatestAppointmentInfo | null;
+  upcomingCount: number;
+  statusCategory: PatientStatusCategory;
+  totalTreatment: number;
+  totalPaid: number;
+  remaining: number;
+};
+
 const FREE_PATIENT_LIMIT = 20;
+const PAGE_SIZE = 6;
+
+type StatusFilter = "all" | PatientStatusCategory;
+type PeriodFilter = "all" | "week" | "month";
 
 const Patients = () => {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<PatientWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
   const [clinicId, setClinicId] = useState("");
-  const [subscriptionPlan, setSubscriptionPlan] =
-    useState("Free");
+  const [subscriptionPlan, setSubscriptionPlan] = useState("Free");
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -35,51 +77,221 @@ const Patients = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [language, setLanguage] = useState<Language>(() => {
-    const savedLanguage =
-      localStorage.getItem("dentalcare-language");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
+  const [page, setPage] = useState(1);
 
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem("dentalcare-language");
     return savedLanguage === "en" ? "en" : "ar";
   });
+
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return document.documentElement.classList.contains("dark");
+  });
+
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const isArabic = language === "ar";
   const t = translations[language];
 
-  // Listen for language changes
   useEffect(() => {
     const handleLanguageChange = () => {
-      const savedLanguage =
-        localStorage.getItem("dentalcare-language");
-
-      setLanguage(
-        savedLanguage === "en" ? "en" : "ar"
-      );
+      const savedLanguage = localStorage.getItem("dentalcare-language");
+      setLanguage(savedLanguage === "en" ? "en" : "ar");
     };
 
-    window.addEventListener(
-      "dentalcare-language-change",
-      handleLanguageChange
-    );
-
-    window.addEventListener(
-      "storage",
-      handleLanguageChange
-    );
+    window.addEventListener("dentalcare-language-change", handleLanguageChange);
+    window.addEventListener("storage", handleLanguageChange);
 
     return () => {
       window.removeEventListener(
         "dentalcare-language-change",
         handleLanguageChange
       );
+      window.removeEventListener("storage", handleLanguageChange);
+    };
+  }, []);
 
+  useEffect(() => {
+    const handleThemeChange = () => {
+      setIsDarkMode(document.documentElement.classList.contains("dark"));
+    };
+
+    window.addEventListener("dentalcare-theme-change", handleThemeChange);
+
+    return () => {
       window.removeEventListener(
-        "storage",
-        handleLanguageChange
+        "dentalcare-theme-change",
+        handleThemeChange
       );
     };
   }, []);
 
-  // Get doctor's clinic and subscription
+  const toggleLanguage = () => {
+    const nextLanguage: Language = isArabic ? "en" : "ar";
+
+    localStorage.setItem("dentalcare-language", nextLanguage);
+    setLanguage(nextLanguage);
+
+    window.dispatchEvent(new Event("dentalcare-language-change"));
+  };
+
+  const toggleTheme = () => {
+    const nextDarkMode = !isDarkMode;
+
+    document.documentElement.classList.toggle("dark", nextDarkMode);
+    localStorage.setItem("dentalcare-theme", nextDarkMode ? "dark" : "light");
+    setIsDarkMode(nextDarkMode);
+
+    window.dispatchEvent(new Event("dentalcare-theme-change"));
+  };
+
+  const loadNotificationsCount = async (clinicIdValue: string) => {
+    const { count, error: notificationsError } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("clinic_id", clinicIdValue)
+      .eq("recipient_type", "doctor")
+      .eq("is_read", false);
+
+    if (notificationsError) {
+      console.error(notificationsError);
+      return;
+    }
+
+    setUnreadNotifications(count || 0);
+  };
+
+  const loadPatients = async (clinicIdValue: string) => {
+    const { data, error: patientsError } = await supabase
+      .from("patients")
+      .select(
+        "id, name, phone, age, gender, address, medical_notes, created_at"
+      )
+      .eq("clinic_id", clinicIdValue)
+      .order("created_at", { ascending: false });
+
+    if (patientsError) {
+      console.error(patientsError);
+      setError(patientsError.message);
+      setLoading(false);
+      return;
+    }
+
+    const patientRows = data || [];
+    const patientIds = patientRows.map((p) => p.id);
+
+    const { data: appointmentsData, error: appointmentsError } =
+      await supabase
+        .from("appointments")
+        .select("patient_id, appointment_date, status")
+        .in("patient_id", patientIds.length ? patientIds : [""])
+        .order("appointment_date", { ascending: false });
+
+    if (appointmentsError) {
+      console.error(appointmentsError);
+    }
+
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Cairo",
+    }).format(new Date());
+
+    const latestByPatient = new Map<string, LatestAppointmentInfo>();
+    const upcomingCountByPatient = new Map<string, number>();
+
+    (appointmentsData || []).forEach((a: any) => {
+      if (!latestByPatient.has(a.patient_id)) {
+        latestByPatient.set(a.patient_id, {
+          status: a.status,
+          appointment_date: a.appointment_date,
+        });
+      }
+
+      if (a.appointment_date >= today && a.status !== "cancelled") {
+        upcomingCountByPatient.set(
+          a.patient_id,
+          (upcomingCountByPatient.get(a.patient_id) || 0) + 1
+        );
+      }
+    });
+
+    const { data: recordsData, error: recordsError } = await supabase
+      .from("medical_records")
+      .select("patient_id, cost")
+      .in("patient_id", patientIds.length ? patientIds : [""]);
+
+    if (recordsError) {
+      console.error(recordsError);
+    }
+
+    const { data: paymentsData, error: paymentsError } = await supabase
+      .from("payments")
+      .select("patient_id, amount")
+      .in("patient_id", patientIds.length ? patientIds : [""]);
+
+    if (paymentsError) {
+      console.error(paymentsError);
+    }
+
+    const treatmentByPatient = new Map<string, number>();
+
+    (recordsData || []).forEach((r: any) => {
+      treatmentByPatient.set(
+        r.patient_id,
+        (treatmentByPatient.get(r.patient_id) || 0) +
+          Number(r.cost || 0)
+      );
+    });
+
+    const paidByPatient = new Map<string, number>();
+
+    (paymentsData || []).forEach((p: any) => {
+      paidByPatient.set(
+        p.patient_id,
+        (paidByPatient.get(p.patient_id) || 0) +
+          Number(p.amount || 0)
+      );
+    });
+
+    const patientsWithStatus: PatientWithStatus[] = patientRows.map((p) => {
+      const latestAppointment = latestByPatient.get(p.id) || null;
+      const upcomingCount = upcomingCountByPatient.get(p.id) || 0;
+
+      let statusCategory: PatientStatusCategory;
+
+      if (!latestAppointment) {
+        statusCategory = "no_data";
+      } else if (latestAppointment.status === "cancelled") {
+        statusCategory = "needs_followup";
+      } else if (upcomingCount > 0) {
+        statusCategory = "upcoming";
+      } else if (latestAppointment.status === "completed") {
+        statusCategory = "completed";
+      } else {
+        statusCategory = "in_treatment";
+      }
+
+      const totalTreatment = treatmentByPatient.get(p.id) || 0;
+      const totalPaid = paidByPatient.get(p.id) || 0;
+      const remaining = Math.max(totalTreatment - totalPaid, 0);
+
+      return {
+        ...p,
+        latestAppointment,
+        upcomingCount,
+        statusCategory,
+        totalTreatment,
+        totalPaid,
+        remaining,
+      };
+    });
+
+    setPatients(patientsWithStatus);
+    setLoading(false);
+  };
+
   const getClinic = async () => {
     const {
       data: { user },
@@ -90,10 +302,7 @@ const Patients = () => {
       return;
     }
 
-    const {
-      data: profile,
-      error: profileError,
-    } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("clinic_id")
       .eq("id", user.id)
@@ -101,13 +310,11 @@ const Patients = () => {
 
     if (profileError) {
       console.error(profileError);
-
       setError(
         isArabic
           ? "تعذر تحميل معلومات العيادة."
           : "Could not load clinic information."
       );
-
       setLoading(false);
       return;
     }
@@ -118,18 +325,13 @@ const Patients = () => {
           ? "لا توجد عيادة مرتبطة بهذا الطبيب."
           : "No clinic is connected to this doctor."
       );
-
       setLoading(false);
       return;
     }
 
     setClinicId(profile.clinic_id);
 
-    // Get subscription plan
-    const {
-      data: clinic,
-      error: clinicError,
-    } = await supabase
+    const { data: clinic, error: clinicError } = await supabase
       .from("clinics")
       .select("subscription_plan")
       .eq("id", profile.clinic_id)
@@ -137,82 +339,93 @@ const Patients = () => {
 
     if (clinicError) {
       console.error(clinicError);
-
       setError(
         isArabic
           ? "تعذر تحميل معلومات الاشتراك."
           : "Could not load subscription information."
       );
-
       setLoading(false);
       return;
     }
 
-    setSubscriptionPlan(
-      clinic?.subscription_plan || "Free"
-    );
+    setSubscriptionPlan(clinic?.subscription_plan || "Free");
 
-    await loadPatients(profile.clinic_id);
-  };
-
-  // Load patients
-  const loadPatients = async (
-    clinicIdValue: string
-  ) => {
-    const {
-      data,
-      error: patientsError,
-    } = await supabase
-      .from("patients")
-      .select(
-        "id, name, phone, age, gender, address, medical_notes, created_at"
-      )
-      .eq("clinic_id", clinicIdValue)
-      .order("created_at", {
-        ascending: false,
-      });
-
-    if (patientsError) {
-      console.error(patientsError);
-
-      setError(patientsError.message);
-      setLoading(false);
-      return;
-    }
-
-    setPatients(data || []);
-    setLoading(false);
+    await Promise.all([
+      loadPatients(profile.clinic_id),
+      loadNotificationsCount(profile.clinic_id),
+    ]);
   };
 
   useEffect(() => {
     getClinic();
   }, []);
 
-  // Check if the clinic reached its patient limit
+  const resetForm = () => {
+    setName("");
+    setPhone("");
+    setAge("");
+    setGender("");
+    setAddress("");
+    setMedicalNotes("");
+    setEditingPatientId(null);
+  };
+
   const hasReachedPatientLimit =
-    subscriptionPlan === "Free" &&
-    patients.length >= FREE_PATIENT_LIMIT;
+    subscriptionPlan === "Free" && patients.length >= FREE_PATIENT_LIMIT;
 
-  // Add patient
-  const handleAddPatient = async (
-    e: React.FormEvent
-  ) => {
+  const startEditPatient = (patient: PatientWithStatus) => {
+    setEditingPatientId(patient.id);
+    setName(patient.name);
+    setPhone(patient.phone || "");
+    setAge(patient.age !== null ? String(patient.age) : "");
+    setGender(patient.gender || "");
+    setAddress(patient.address || "");
+    setMedicalNotes(patient.medical_notes || "");
+    setShowForm(true);
+    setOpenActionMenuId(null);
+    setError("");
+    setSuccess("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDeletePatient = async (patient: PatientWithStatus) => {
+    setOpenActionMenuId(null);
+
+    const confirmed = window.confirm(
+      isArabic
+        ? `متأكد إنك عايز تحذف "${patient.name}"؟ الإجراء ده لا يمكن التراجع عنه.`
+        : `Are you sure you want to delete "${patient.name}"? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    const { error: deleteError } = await supabase
+      .from("patients")
+      .delete()
+      .eq("id", patient.id);
+
+    if (deleteError) {
+      console.error(deleteError);
+      setError(deleteError.message);
+      return;
+    }
+
+    setSuccess(isArabic ? "تم حذف المريض." : "Patient deleted.");
+    await loadPatients(clinicId);
+  };
+
+  const handleSubmitPatient = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setError("");
     setSuccess("");
 
     if (!clinicId) {
-      setError(
-        isArabic
-          ? "لم يتم العثور على العيادة."
-          : "Clinic not found."
-      );
+      setError(isArabic ? "لم يتم العثور على العيادة." : "Clinic not found.");
       return;
     }
 
-    // Free plan limit
     if (
+      !editingPatientId &&
       subscriptionPlan === "Free" &&
       patients.length >= FREE_PATIENT_LIMIT
     ) {
@@ -221,82 +434,209 @@ const Patients = () => {
           ? "الباقة المجانية تسمح بحد أقصى 20 مريضًا. يرجى ترقية اشتراكك لإضافة المزيد من المرضى."
           : "Your Free plan allows up to 20 patients. Please upgrade your subscription to add more patients."
       );
-
       setShowForm(false);
-
       return;
     }
 
-    const {
-      error: insertError,
-    } = await supabase
-      .from("patients")
-      .insert({
-        clinic_id: clinicId,
-        name,
-        phone: phone || null,
-        age: age ? Number(age) : null,
-        gender: gender || null,
-        address: address || null,
-        medical_notes:
-          medicalNotes || null,
-      });
+    const payload = {
+      clinic_id: clinicId,
+      name,
+      phone: phone || null,
+      age: age ? Number(age) : null,
+      gender: gender || null,
+      address: address || null,
+      medical_notes: medicalNotes || null,
+    };
 
-    if (insertError) {
-      console.error(insertError);
+    const { error: submitError } = editingPatientId
+      ? await supabase
+          .from("patients")
+          .update(payload)
+          .eq("id", editingPatientId)
+      : await supabase.from("patients").insert(payload);
 
-      setError(insertError.message);
+    if (submitError) {
+      console.error(submitError);
+      setError(submitError.message);
       return;
     }
 
     setSuccess(
-      isArabic
+      editingPatientId
+        ? isArabic
+          ? "تم تحديث بيانات المريض بنجاح!"
+          : "Patient updated successfully!"
+        : isArabic
         ? "تمت إضافة المريض بنجاح!"
         : "Patient added successfully!"
     );
 
-    // Clear form
-    setName("");
-    setPhone("");
-    setAge("");
-    setGender("");
-    setAddress("");
-    setMedicalNotes("");
-
+    resetForm();
     setShowForm(false);
-
-    // Reload patients
     await loadPatients(clinicId);
   };
 
-  const getGenderLabel = (
-    patientGender: string | null
-  ) => {
-    if (!patientGender) {
-      return "-";
+  const statusMeta: Record<
+    PatientStatusCategory,
+    {
+      label: string;
+      icon: typeof CheckCircle2;
+      badgeClass: string;
+      dotClass: string;
     }
-
-    if (patientGender === "Male") {
-      return isArabic ? "ذكر" : "Male";
-    }
-
-    if (patientGender === "Female") {
-      return isArabic ? "أنثى" : "Female";
-    }
-
-    return patientGender;
+  > = {
+    completed: {
+      label: isArabic ? "مكتمل" : "Completed",
+      icon: CheckCircle2,
+      badgeClass:
+        "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300",
+      dotClass: "bg-green-500",
+    },
+    upcoming: {
+      label: isArabic ? "لديه مواعيد قادمة" : "Upcoming appointments",
+      icon: Clock,
+      badgeClass:
+        "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+      dotClass: "bg-blue-500",
+    },
+    in_treatment: {
+      label: isArabic ? "قيد العلاج" : "In treatment",
+      icon: RefreshCcw,
+      badgeClass:
+        "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300",
+      dotClass: "bg-orange-500",
+    },
+    needs_followup: {
+      label: isArabic ? "متابعة مطلوبة" : "Follow-up needed",
+      icon: AlertCircle,
+      badgeClass:
+        "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
+      dotClass: "bg-red-500",
+    },
+    no_data: {
+      label: isArabic ? "لا يوجد بيانات" : "No data",
+      icon: Clock,
+      badgeClass:
+        "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+      dotClass: "bg-slate-400",
+    },
   };
+
+  const statusFilterOptions: { value: StatusFilter; label: string }[] = [
+    { value: "all", label: isArabic ? "جميع الحالات" : "All statuses" },
+    { value: "completed", label: statusMeta.completed.label },
+    { value: "upcoming", label: statusMeta.upcoming.label },
+    { value: "in_treatment", label: statusMeta.in_treatment.label },
+    { value: "needs_followup", label: statusMeta.needs_followup.label },
+  ];
+
+  const periodFilterOptions: { value: PeriodFilter; label: string }[] = [
+    { value: "all", label: isArabic ? "كل المرضى" : "All patients" },
+    {
+      value: "week",
+      label: isArabic ? "سجلوا هذا الأسبوع" : "Registered this week",
+    },
+    {
+      value: "month",
+      label: isArabic ? "سجلوا هذا الشهر" : "Registered this month",
+    },
+  ];
+
+  const filteredPatients = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const now = new Date();
+
+    const weekAgo = new Date(now);
+    weekAgo.setDate(now.getDate() - 7);
+
+    const monthAgo = new Date(now);
+    monthAgo.setMonth(now.getMonth() - 1);
+
+    return patients.filter((p) => {
+      if (
+        query &&
+        !p.name.toLowerCase().includes(query) &&
+        !(p.phone || "").toLowerCase().includes(query)
+      ) {
+        return false;
+      }
+
+      if (statusFilter !== "all" && p.statusCategory !== statusFilter) {
+        return false;
+      }
+
+      if (periodFilter !== "all") {
+        const createdAt = new Date(p.created_at);
+
+        if (periodFilter === "week" && createdAt < weekAgo) return false;
+        if (periodFilter === "month" && createdAt < monthAgo) return false;
+      }
+
+      return true;
+    });
+  }, [patients, searchQuery, statusFilter, periodFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, periodFilter]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredPatients.length / PAGE_SIZE)
+  );
+
+  const currentPage = Math.min(page, totalPages);
+
+  const paginatedPatients = filteredPatients.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxButtons = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+    const end = Math.min(totalPages, start + maxButtons - 1);
+
+    start = Math.max(1, end - maxButtons + 1);
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+
+    return pages;
+  }, [currentPage, totalPages]);
+
+  const formatMoney = (amount: number) =>
+    `${amount.toLocaleString(isArabic ? "ar-EG" : "en-US")} ${
+      isArabic ? "ج.م" : "EGP"
+    }`;
+
+  const formatDate = (date: string | null) => {
+    if (!date) return "-";
+
+    const parsed = new Date(`${date}T00:00:00`);
+
+    if (Number.isNaN(parsed.getTime())) return date;
+
+    return parsed.toLocaleDateString(isArabic ? "ar-EG" : "en-GB", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  };
+
+  const PrevIcon = isArabic ? ChevronRight : ChevronLeft;
+  const NextIcon = isArabic ? ChevronLeft : ChevronRight;
 
   if (loading) {
     return (
       <div
         dir={isArabic ? "rtl" : "ltr"}
-        className="flex min-h-screen items-center justify-center bg-slate-50 px-6 pt-28 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+        className="flex min-h-screen items-center justify-center bg-slate-50 px-6 pt-16 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
       >
         <p className="text-slate-600 dark:text-slate-300">
-          {isArabic
-            ? "جاري تحميل المرضى..."
-            : "Loading patients..."}
+          {isArabic ? "جاري تحميل المرضى..." : "Loading patients..."}
         </p>
       </div>
     );
@@ -305,104 +645,86 @@ const Patients = () => {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-slate-50 px-6 pb-12 pt-32 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+      className="min-h-screen bg-slate-50 px-4 pb-12 pt-4 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100 sm:px-6"
     >
       <div className="mx-auto max-w-7xl">
-
-        {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-
-          <div>
-
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-              {isArabic ? "المرضى" : "Patients"}
-            </h1>
-
-            <p className="mt-2 text-slate-600 dark:text-slate-300">
-              {isArabic
-                ? "إدارة مرضى عيادتك."
-                : "Manage your clinic patients."}
-            </p>
-
-            {/* Patient Limit */}
-            <div className="mt-3">
-
-              {subscriptionPlan === "Free" ? (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-
-                  {isArabic
-                    ? "الباقة المجانية: "
-                    : "Free plan: "}
-
-                  <span className="font-semibold text-teal-600 dark:text-teal-400">
-                    {patients.length}/
-                    {FREE_PATIENT_LIMIT}
-                  </span>
-
-                  {isArabic
-                    ? " مريضًا"
-                    : " patients"}
-
-                </p>
-              ) : (
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-
-                  {isArabic
-                    ? `${subscriptionPlan} - الباقة: `
-                    : `${subscriptionPlan} plan: `}
-
-                  <span className="font-semibold text-teal-600 dark:text-teal-400">
-                    {isArabic
-                      ? "عدد غير محدود من المرضى"
-                      : "Unlimited patients"}
-                  </span>
-
-                </p>
-              )}
-
-            </div>
-
-          </div>
-
-          <button
-            onClick={() => {
-              if (hasReachedPatientLimit) {
-                setError(
-                  isArabic
-                    ? "الباقة المجانية تسمح بحد أقصى 20 مريضًا. يرجى ترقية اشتراكك لإضافة المزيد من المرضى."
-                    : "Your Free plan allows up to 20 patients. Please upgrade your subscription to add more patients."
-                );
-
-                setSuccess("");
-
-                return;
-              }
-
-              setShowForm(!showForm);
-              setError("");
-              setSuccess("");
-            }}
-            className={`rounded-xl px-5 py-3 font-semibold text-white transition ${
-              hasReachedPatientLimit
-                ? "bg-slate-400 hover:bg-slate-500 dark:bg-slate-700 dark:hover:bg-slate-600"
-                : "bg-teal-600 hover:bg-teal-700"
-            }`}
+        {/* الشريط العلوي */}
+        <div className="mb-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <Link
+            to="/doctor/dashboard"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
           >
-            {showForm
-              ? isArabic
-                ? "إلغاء"
-                : "Cancel"
-              : isArabic
-                ? "+ إضافة مريض"
-                : "+ Add Patient"}
-          </button>
+            <NextIcon className="h-4 w-4 rotate-180" />
+            {isArabic ? "العودة للوحة التحكم" : "Back to dashboard"}
+          </Link>
 
+          <div className="flex items-center gap-2">
+            {/* تغيير اللغة */}
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              title={isArabic ? "تغيير اللغة" : "Change language"}
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <Globe className="h-4 w-4" />
+              <span>{isArabic ? "EN" : "عربي"}</span>
+            </button>
+
+            {/* الوضع الليلي / النهاري */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={
+                isDarkMode
+                  ? isArabic
+                    ? "الوضع النهاري"
+                    : "Light mode"
+                  : isArabic
+                  ? "الوضع الليلي"
+                  : "Dark mode"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              {isDarkMode ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+
+            {/* إشعارات الدكتور */}
+            <Link
+              to="/doctor/notifications"
+              title={isArabic ? "إشعارات الدكتور" : "Doctor notifications"}
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <Bell className="h-4 w-4" />
+
+              {unreadNotifications > 0 && (
+                <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {unreadNotifications > 99
+                    ? "99+"
+                    : unreadNotifications}
+                </span>
+              )}
+            </Link>
+          </div>
         </div>
 
-        {/* Limit Warning */}
+        {error && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-green-600 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400">
+            {success}
+          </div>
+        )}
+
         {hasReachedPatientLimit && (
           <div className="mb-5 rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900 dark:bg-orange-950/40">
-
             <p className="font-semibold text-orange-800 dark:text-orange-300">
               {isArabic
                 ? "تم الوصول إلى الحد الأقصى للباقة المجانية"
@@ -418,368 +740,543 @@ const Patients = () => {
             <button
               type="button"
               onClick={() => {
-                window.location.href =
-                  "/doctor/subscription";
+                window.location.href = "/doctor/subscription";
               }}
-              className="mt-4 rounded-xl bg-teal-600 px-4 py-2 font-semibold text-white transition hover:bg-teal-700"
+              className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white transition hover:bg-blue-700"
             >
-              {isArabic
-                ? "ترقية الاشتراك"
-                : "Upgrade Subscription"}
+              {isArabic ? "ترقية الاشتراك" : "Upgrade Subscription"}
             </button>
-
           </div>
         )}
 
-        {/* Messages */}
-        {error && (
-          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4 text-green-600 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400">
-            {success}
-          </div>
-        )}
-
-        {/* Add Patient Form */}
         {showForm && (
-          <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <h2 className="mb-6 text-2xl font-semibold text-slate-900 dark:text-white">
-              {isArabic
+              {editingPatientId
+                ? isArabic
+                  ? "تعديل بيانات المريض"
+                  : "Edit Patient"
+                : isArabic
                 ? "إضافة مريض جديد"
                 : "Add New Patient"}
             </h2>
 
             <form
-              onSubmit={handleAddPatient}
+              onSubmit={handleSubmitPatient}
               className="grid gap-4 md:grid-cols-2"
             >
-
-              {/* Name */}
               <input
                 type="text"
-                placeholder={
-                  isArabic
-                    ? "اسم المريض"
-                    : "Patient Name"
-                }
+                placeholder={isArabic ? "اسم المريض" : "Patient Name"}
                 value={name}
-                onChange={(e) =>
-                  setName(e.target.value)
-                }
+                onChange={(e) => setName(e.target.value)}
                 required
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
               />
 
-              {/* Phone */}
               <input
                 type="tel"
-                placeholder={
-                  isArabic
-                    ? "رقم الهاتف"
-                    : "Phone"
-                }
+                placeholder={isArabic ? "رقم الهاتف" : "Phone"}
                 value={phone}
-                onChange={(e) =>
-                  setPhone(e.target.value)
-                }
+                onChange={(e) => setPhone(e.target.value)}
                 dir="ltr"
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
               />
 
-              {/* Age */}
               <input
                 type="number"
-                placeholder={
-                  isArabic ? "العمر" : "Age"
-                }
+                placeholder={isArabic ? "العمر" : "Age"}
                 min="0"
                 value={age}
-                onChange={(e) =>
-                  setAge(e.target.value)
-                }
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                onChange={(e) => setAge(e.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
               />
 
-              {/* Gender */}
               <select
                 value={gender}
-                onChange={(e) =>
-                  setGender(e.target.value)
-                }
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                onChange={(e) => setGender(e.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
                 <option value="">
-                  {isArabic
-                    ? "اختر النوع"
-                    : "Select Gender"}
+                  {isArabic ? "اختر النوع" : "Select Gender"}
                 </option>
-
-                <option value="Male">
-                  {isArabic ? "ذكر" : "Male"}
-                </option>
-
+                <option value="Male">{isArabic ? "ذكر" : "Male"}</option>
                 <option value="Female">
                   {isArabic ? "أنثى" : "Female"}
                 </option>
               </select>
 
-              {/* Address */}
               <input
                 type="text"
-                placeholder={
-                  isArabic
-                    ? "العنوان"
-                    : "Address"
-                }
+                placeholder={isArabic ? "العنوان" : "Address"}
                 value={address}
-                onChange={(e) =>
-                  setAddress(e.target.value)
-                }
-                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                onChange={(e) => setAddress(e.target.value)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
               />
 
-              {/* Medical Notes */}
               <textarea
-                placeholder={
-                  isArabic
-                    ? "الملاحظات الطبية"
-                    : "Medical Notes"
-                }
+                placeholder={isArabic ? "الملاحظات الطبية" : "Medical Notes"}
                 value={medicalNotes}
-                onChange={(e) =>
-                  setMedicalNotes(
-                    e.target.value
-                  )
-                }
-                className="min-h-32 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 md:col-span-2"
+                onChange={(e) => setMedicalNotes(e.target.value)}
+                className="min-h-32 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 md:col-span-2"
               />
 
-              {/* Submit */}
-              <button
-                type="submit"
-                className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white transition hover:bg-teal-700 md:col-span-2"
-              >
-                {isArabic
-                  ? "إضافة المريض"
-                  : "Add Patient"}
-              </button>
+              <div className="flex gap-3 md:col-span-2">
+                <button
+                  type="submit"
+                  className="flex-1 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+                >
+                  {editingPatientId
+                    ? isArabic
+                      ? "حفظ التعديلات"
+                      : "Save changes"
+                    : isArabic
+                    ? "إضافة المريض"
+                    : "Add Patient"}
+                </button>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    setShowForm(false);
+                  }}
+                  className="rounded-xl border border-slate-200 px-5 py-3 font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  {isArabic ? "إلغاء" : "Cancel"}
+                </button>
+              </div>
             </form>
-
           </div>
         )}
 
-        {/* Patients List */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-
-          <div className="border-b border-slate-200 p-6 dark:border-slate-700">
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                {isArabic
-                  ? "قائمة المرضى"
-                  : "Patient List"}
-              </h2>
+        {/* قائمة المرضى */}
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-900">
+          <div className="border-b border-slate-100 p-5 dark:border-slate-800">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+                {isArabic ? "قائمة المرضى" : "Patient List"}
+              </h1>
 
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {patients.length}{" "}
+                {filteredPatients.length}{" "}
                 {isArabic
-                  ? patients.length === 1
+                  ? filteredPatients.length === 1
                     ? "مريض"
                     : "مرضى"
-                  : patients.length === 1
-                    ? "patient"
-                    : "patients"}
+                  : filteredPatients.length === 1
+                  ? "patient"
+                  : "patients"}
               </p>
-
             </div>
 
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search
+                  className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 ${
+                    isArabic ? "right-3" : "left-3"
+                  }`}
+                />
+
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={
+                    isArabic
+                      ? "ابحث عن مريض بالاسم أو رقم الهاتف..."
+                      : "Search patient by name or phone..."
+                  }
+                  className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white ${
+                    isArabic ? "pr-9 pl-3" : "pl-9 pr-3"
+                  }`}
+                />
+              </div>
+
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as StatusFilter)
+                }
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                {statusFilterOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={periodFilter}
+                onChange={(e) =>
+                  setPeriodFilter(e.target.value as PeriodFilter)
+                }
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                {periodFilterOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasReachedPatientLimit) {
+                    setError(
+                      isArabic
+                        ? "الباقة المجانية تسمح بحد أقصى 20 مريضًا. يرجى ترقية اشتراكك لإضافة المزيد من المرضى."
+                        : "Your Free plan allows up to 20 patients. Please upgrade your subscription to add more patients."
+                    );
+                    setSuccess("");
+                    return;
+                  }
+
+                  resetForm();
+                  setShowForm((v) => !v);
+                  setError("");
+                  setSuccess("");
+                }}
+                className={`shrink-0 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition ${
+                  hasReachedPatientLimit
+                    ? "bg-slate-400 hover:bg-slate-500 dark:bg-slate-700 dark:hover:bg-slate-600"
+                    : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                {showForm && !editingPatientId
+                  ? isArabic
+                    ? "إلغاء"
+                    : "Cancel"
+                  : isArabic
+                  ? "+ إضافة مريض جديد"
+                  : "+ Add New Patient"}
+              </button>
+            </div>
           </div>
 
-          {patients.length === 0 ? (
-
+          {paginatedPatients.length === 0 ? (
             <div className="p-10 text-center">
-
               <p className="text-slate-500 dark:text-slate-400">
                 {isArabic
-                  ? "لا يوجد مرضى حتى الآن."
-                  : "No patients yet."}
+                  ? "لا يوجد مرضى مطابقين."
+                  : "No matching patients."}
               </p>
-
-              <p className="mt-2 text-sm text-slate-400 dark:text-slate-500">
-                {isArabic
-                  ? 'اضغط على "إضافة مريض" لإضافة أول مريض.'
-                  : 'Click "Add Patient" to add your first patient.'}
-              </p>
-
             </div>
-
           ) : (
-
             <div className="overflow-x-auto">
-
               <table className="w-full">
-
-                <thead className="bg-slate-50 dark:bg-slate-800">
-
+                <thead className="bg-slate-50 dark:bg-slate-800/60">
                   <tr>
-
+                    {/* المريض */}
                     <th
                       className={`px-6 py-4 ${
-                        isArabic
-                          ? "text-right"
-                          : "text-left"
+                        isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
-                      {isArabic
-                        ? "الاسم"
-                        : "Name"}
+                      {isArabic ? "المريض" : "Patient"}
                     </th>
 
+                    {/* العمر */}
                     <th
                       className={`px-6 py-4 ${
-                        isArabic
-                          ? "text-right"
-                          : "text-left"
+                        isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
-                      {isArabic
-                        ? "الهاتف"
-                        : "Phone"}
+                      {isArabic ? "العمر" : "Age"}
                     </th>
 
+                    {/* رقم الهاتف */}
                     <th
                       className={`px-6 py-4 ${
-                        isArabic
-                          ? "text-right"
-                          : "text-left"
+                        isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
-                      {isArabic
-                        ? "العمر"
-                        : "Age"}
+                      {isArabic ? "رقم الهاتف" : "Phone"}
                     </th>
 
+                    {/* الحالة */}
                     <th
                       className={`px-6 py-4 ${
-                        isArabic
-                          ? "text-right"
-                          : "text-left"
+                        isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
-                      {isArabic
-                        ? "النوع"
-                        : "Gender"}
+                      {isArabic ? "الحالة" : "Status"}
                     </th>
 
+                    {/* آخر موعد */}
                     <th
                       className={`px-6 py-4 ${
-                        isArabic
-                          ? "text-right"
-                          : "text-left"
+                        isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
-                      {isArabic
-                        ? "العنوان"
-                        : "Address"}
+                      {isArabic ? "آخر موعد" : "Last visit"}
                     </th>
 
+                    {/* إجمالي العلاج */}
                     <th
                       className={`px-6 py-4 ${
-                        isArabic
-                          ? "text-right"
-                          : "text-left"
+                        isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
-                      {isArabic
-                        ? "الملاحظات الطبية"
-                        : "Medical Notes"}
+                      {isArabic ? "إجمالي العلاج" : "Total treatment"}
                     </th>
 
+                    {/* المدفوع */}
+                    <th
+                      className={`px-6 py-4 ${
+                        isArabic ? "text-right" : "text-left"
+                      } text-sm font-semibold text-slate-600 dark:text-slate-300`}
+                    >
+                      {isArabic ? "المدفوع" : "Paid"}
+                    </th>
+
+                    {/* الباقي */}
+                    <th
+                      className={`px-6 py-4 ${
+                        isArabic ? "text-right" : "text-left"
+                      } text-sm font-semibold text-slate-600 dark:text-slate-300`}
+                    >
+                      {isArabic ? "الباقي" : "Remaining"}
+                    </th>
+
+                    {/* المواعيد القادمة */}
+                    <th
+                      className={`px-6 py-4 ${
+                        isArabic ? "text-right" : "text-left"
+                      } text-sm font-semibold text-slate-600 dark:text-slate-300`}
+                    >
+                      {isArabic ? "المواعيد القادمة" : "Upcoming"}
+                    </th>
+
+                    {/* الإجراءات */}
+                    <th
+                      className={`px-6 py-4 ${
+                        isArabic ? "text-right" : "text-left"
+                      } text-sm font-semibold text-slate-600 dark:text-slate-300`}
+                    >
+                      {isArabic ? "الإجراءات" : "Actions"}
+                    </th>
                   </tr>
-
                 </thead>
 
                 <tbody>
+                  {paginatedPatients.map((patient) => {
+                    const meta = statusMeta[patient.statusCategory];
 
-                  {patients.map(
-                    (patient) => (
-
+                    return (
                       <tr
                         key={patient.id}
                         className="border-t border-slate-100 dark:border-slate-800"
                       >
-
-                        {/* Patient Name */}
+                        {/* المريض */}
                         <td className="px-6 py-4">
-
                           <Link
                             to={`/doctor/patients/${patient.id}`}
-                            className="font-semibold text-teal-600 transition hover:text-teal-700 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
+                            className="flex items-center gap-3"
                           >
-                            {patient.name}
-                          </Link>
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                              {patient.name.charAt(0)}
+                            </span>
 
+                            <span className="font-semibold text-slate-800 hover:text-blue-600 hover:underline dark:text-white dark:hover:text-blue-400">
+                              {patient.name}
+                            </span>
+                          </Link>
                         </td>
 
-                        {/* Phone */}
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                        {/* العمر */}
+                        <td className="whitespace-nowrap px-6 py-4 text-slate-600 dark:text-slate-300">
+                          {patient.age !== null ? patient.age : "-"}
+                        </td>
+
+                        {/* رقم الهاتف */}
+                        <td
+                          className="whitespace-nowrap px-6 py-4 text-slate-600 dark:text-slate-300"
+                          dir="ltr"
+                        >
                           {patient.phone || "-"}
                         </td>
 
-                        {/* Age */}
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                          {patient.age !== null
-                            ? patient.age
-                            : "-"}
+                        {/* الحالة */}
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
+                          >
+                            <meta.icon className="h-3.5 w-3.5" />
+                            {meta.label}
+                          </span>
                         </td>
 
-                        {/* Gender */}
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                          {getGenderLabel(
-                            patient.gender
+                        {/* آخر موعد */}
+                        <td className="whitespace-nowrap px-6 py-4 text-slate-600 dark:text-slate-300">
+                          {formatDate(
+                            patient.latestAppointment?.appointment_date || null
                           )}
                         </td>
 
-                        {/* Address */}
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                          {patient.address || "-"}
+                        {/* إجمالي العلاج */}
+                        <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">
+                          {formatMoney(patient.totalTreatment)}
                         </td>
 
-                        {/* Medical Notes */}
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                          {patient.medical_notes ||
-                            "-"}
+                        {/* المدفوع */}
+                        <td className="whitespace-nowrap px-6 py-4 font-semibold text-green-600 dark:text-green-400">
+                          {formatMoney(patient.totalPaid)}
                         </td>
 
+                        {/* الباقي */}
+                        <td className="whitespace-nowrap px-6 py-4 font-semibold text-orange-600 dark:text-orange-400">
+                          {patient.remaining > 0
+                            ? formatMoney(patient.remaining)
+                            : isArabic
+                            ? "مدفوع بالكامل"
+                            : "Paid in full"}
+                        </td>
+
+                        {/* المواعيد القادمة */}
+                        <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">
+                          {patient.upcomingCount}
+                        </td>
+
+                        {/* الإجراءات */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              to={`/doctor/patients/${patient.id}`}
+                              title={isArabic ? "عرض الملف" : "View file"}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Link>
+
+                            <Link
+                              to="/doctor/appointments"
+                              title={
+                                isArabic ? "حجز موعد" : "Book appointment"
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                            >
+                              <Calendar className="h-4 w-4" />
+                            </Link>
+
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenActionMenuId((current) =>
+                                    current === patient.id
+                                      ? null
+                                      : patient.id
+                                  )
+                                }
+                                title={isArabic ? "خيارات" : "More"}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 dark:text-slate-500 dark:hover:bg-slate-800"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
+
+                              {openActionMenuId === patient.id && (
+                                <div className="absolute end-0 z-10 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      startEditPatient(patient)
+                                    }
+                                    className="w-full rounded-lg px-3 py-2 text-start text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                                  >
+                                    {isArabic
+                                      ? "تعديل البيانات"
+                                      : "Edit"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeletePatient(patient)
+                                    }
+                                    className="w-full rounded-lg px-3 py-2 text-start text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                                  >
+                                    {isArabic
+                                      ? "حذف المريض"
+                                      : "Delete"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
                       </tr>
-
-                    )
-                  )}
-
+                    );
+                  })}
                 </tbody>
-
               </table>
-
             </div>
-
           )}
 
-        </div>
+          {filteredPatients.length > 0 && (
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? `عرض ${(currentPage - 1) * PAGE_SIZE + 1} - ${Math.min(
+                      currentPage * PAGE_SIZE,
+                      filteredPatients.length
+                    )} من ${filteredPatients.length} مريض`
+                  : `Showing ${
+                      (currentPage - 1) * PAGE_SIZE + 1
+                    } - ${Math.min(
+                      currentPage * PAGE_SIZE,
+                      filteredPatients.length
+                    )} of ${filteredPatients.length} patients`}
+              </p>
 
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() =>
+                    setPage((p) => Math.max(1, p - 1))
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  <PrevIcon className="h-4 w-4" />
+                </button>
+
+                {pageNumbers.map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setPage(num)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-semibold transition ${
+                      num === currentPage
+                        ? "bg-blue-600 text-white"
+                        : "border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    {num}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  <NextIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
 export default Patients;
-
-
 
 
