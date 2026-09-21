@@ -1,5 +1,7 @@
+
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Bell, Globe, Moon, Sun } from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
 
@@ -12,6 +14,7 @@ type Patient = {
   address: string | null;
   medical_notes: string | null;
   created_at: string;
+  case_status: string | null;
 };
 
 type Appointment = {
@@ -25,10 +28,7 @@ type Appointment = {
 type MedicalRecord = {
   id: string;
   treatment_date: string;
-  tooth_number: string | null;
   diagnosis: string | null;
-  treatment_type: string | null;
-  treatment_details: string | null;
   cost: number | null;
   doctor_notes: string | null;
 };
@@ -44,13 +44,6 @@ type Prescription = {
   doctor_notes: string | null;
 };
 
-type DentalChartItem = {
-  id: string;
-  tooth_number: string;
-  tooth_status: string;
-  notes: string | null;
-};
-
 type Payment = {
   id: string;
   medical_record_id: string | null;
@@ -61,51 +54,6 @@ type Payment = {
   notes: string | null;
 };
 
-const toothNumbers = [
-  "18",
-  "17",
-  "16",
-  "15",
-  "14",
-  "13",
-  "12",
-  "11",
-  "21",
-  "22",
-  "23",
-  "24",
-  "25",
-  "26",
-  "27",
-  "28",
-  "48",
-  "47",
-  "46",
-  "45",
-  "44",
-  "43",
-  "42",
-  "41",
-  "31",
-  "32",
-  "33",
-  "34",
-  "35",
-  "36",
-  "37",
-  "38",
-];
-
-const toothStatuses = [
-  "Healthy",
-  "Cavity",
-  "Filled",
-  "Missing",
-  "Root Canal",
-  "Crown",
-  "Extraction Needed",
-];
-
 const PatientDetails = () => {
   const { id } = useParams();
 
@@ -114,76 +62,60 @@ const PatientDetails = () => {
     return savedLanguage === "en" ? "en" : "ar";
   });
 
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("dentalcare-theme") === "dark";
+  });
+
   const isArabic = language === "ar";
   const t = translations[language];
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(
-    []
-  );
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-
-  const [dentalChart, setDentalChart] = useState<DentalChartItem[]>([]);
-  const [selectedTooth, setSelectedTooth] = useState("");
-  const [toothStatus, setToothStatus] = useState("Healthy");
-  const [toothNotes, setToothNotes] = useState("");
-  const [savingTooth, setSavingTooth] = useState(false);
-
   const [clinicId, setClinicId] = useState("");
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Medical record form
-  const [showRecordForm, setShowRecordForm] = useState(false);
-  const [editingRecordId, setEditingRecordId] =
-    useState<string | null>(null);
+  const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("");
+  const [followUpNotes, setFollowUpNotes] = useState("");
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [updatingCaseStatus, setUpdatingCaseStatus] = useState(false);
 
+  const [showRecordForm, setShowRecordForm] = useState(false);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [treatmentDate, setTreatmentDate] = useState("");
-  const [toothNumber, setToothNumber] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
-  const [treatmentType, setTreatmentType] = useState("");
-  const [treatmentDetails, setTreatmentDetails] = useState("");
   const [cost, setCost] = useState("");
   const [doctorNotes, setDoctorNotes] = useState("");
 
-  // Payment form
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [selectedPaymentRecordId, setSelectedPaymentRecordId] =
     useState<string | null>(null);
-
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [paymentDate, setPaymentDate] = useState("");
   const [paymentDescription, setPaymentDescription] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
-
   const [savingPayment, setSavingPayment] = useState(false);
 
-  // Prescription form
-  const [showPrescriptionForm, setShowPrescriptionForm] =
-    useState(false);
-
+  const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [editingPrescriptionId, setEditingPrescriptionId] =
     useState<string | null>(null);
-
   const [prescriptionDate, setPrescriptionDate] = useState("");
   const [medicineName, setMedicineName] = useState("");
   const [dosage, setDosage] = useState("");
   const [frequency, setFrequency] = useState("");
   const [duration, setDuration] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [prescriptionDoctorNotes, setPrescriptionDoctorNotes] =
-    useState("");
+  const [prescriptionDoctorNotes, setPrescriptionDoctorNotes] = useState("");
 
   useEffect(() => {
     const handleLanguageChange = () => {
-      const savedLanguage = localStorage.getItem(
-        "dentalcare-language"
-      );
-
+      const savedLanguage = localStorage.getItem("dentalcare-language");
       setLanguage(savedLanguage === "en" ? "en" : "ar");
     };
 
@@ -191,7 +123,6 @@ const PatientDetails = () => {
       "dentalcare-language-change",
       handleLanguageChange
     );
-
     window.addEventListener("storage", handleLanguageChange);
 
     return () => {
@@ -199,10 +130,23 @@ const PatientDetails = () => {
         "dentalcare-language-change",
         handleLanguageChange
       );
-
       window.removeEventListener("storage", handleLanguageChange);
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem(
+      "dentalcare-theme",
+      darkMode ? "dark" : "light"
+    );
+  }, [darkMode]);
+
+  const handleLanguageToggle = (nextLanguage: Language) => {
+    setLanguage(nextLanguage);
+    localStorage.setItem("dentalcare-language", nextLanguage);
+    window.dispatchEvent(new Event("dentalcare-language-change"));
+  };
 
   useEffect(() => {
     if (!id) {
@@ -232,12 +176,11 @@ const PatientDetails = () => {
         return;
       }
 
-      const { data: profile, error: profileError } =
-        await supabase
-          .from("profiles")
-          .select("clinic_id")
-          .eq("id", user.id)
-          .single();
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("clinic_id")
+        .eq("id", user.id)
+        .single();
 
       if (profileError) {
         throw new Error(profileError.message);
@@ -253,13 +196,12 @@ const PatientDetails = () => {
 
       setClinicId(profile.clinic_id);
 
-      const { data: patientData, error: patientError } =
-        await supabase
-          .from("patients")
-          .select("*")
-          .eq("id", id)
-          .eq("clinic_id", profile.clinic_id)
-          .single();
+      const { data: patientData, error: patientError } = await supabase
+        .from("patients")
+        .select("*")
+        .eq("id", id)
+        .eq("clinic_id", profile.clinic_id)
+        .single();
 
       if (patientError) {
         throw new Error(patientError.message);
@@ -285,54 +227,52 @@ const PatientDetails = () => {
 
       setAppointments(appointmentsData || []);
 
-      const { data: recordsData, error: recordsError } =
-        await supabase
-          .from("medical_records")
-          .select(
-            "id, treatment_date, tooth_number, diagnosis, treatment_type, treatment_details, cost, doctor_notes"
-          )
-          .eq("patient_id", id)
-          .eq("clinic_id", profile.clinic_id)
-          .order("treatment_date", { ascending: false });
+      const { data: recordsData, error: recordsError } = await supabase
+        .from("medical_records")
+        .select(
+          "id, treatment_date, diagnosis, cost, doctor_notes"
+        )
+        .eq("patient_id", id)
+        .eq("clinic_id", profile.clinic_id)
+        .order("treatment_date", { ascending: false });
 
       if (recordsError) {
         throw new Error(recordsError.message);
       }
 
-      const formattedRecords: MedicalRecord[] = (
-        recordsData || []
-      ).map((record) => ({
-        ...record,
-        cost: Number(record.cost || 0),
-      }));
+      const formattedRecords: MedicalRecord[] = (recordsData || []).map(
+        (record) => ({
+          ...record,
+          cost: Number(record.cost || 0),
+        })
+      );
 
       setMedicalRecords(formattedRecords);
 
-      const { data: paymentsData, error: paymentsError } =
-        await supabase
-          .from("payments")
-          .select(
-            "id, medical_record_id, amount, payment_method, payment_date, description, notes"
-          )
-          .eq("patient_id", id)
-          .eq("clinic_id", profile.clinic_id)
-          .order("payment_date", { ascending: false });
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from("payments")
+        .select(
+          "id, medical_record_id, amount, payment_method, payment_date, description, notes"
+        )
+        .eq("patient_id", id)
+        .eq("clinic_id", profile.clinic_id)
+        .order("payment_date", { ascending: false });
 
       if (paymentsError) {
         throw new Error(paymentsError.message);
       }
 
-      const formattedPayments: Payment[] = (
-        paymentsData || []
-      ).map((payment) => ({
-        id: payment.id,
-        medical_record_id: payment.medical_record_id,
-        amount: Number(payment.amount || 0),
-        payment_method: payment.payment_method || "Cash",
-        payment_date: payment.payment_date,
-        description: payment.description || null,
-        notes: payment.notes || null,
-      }));
+      const formattedPayments: Payment[] = (paymentsData || []).map(
+        (payment) => ({
+          id: payment.id,
+          medical_record_id: payment.medical_record_id,
+          amount: Number(payment.amount || 0),
+          payment_method: payment.payment_method || "Cash",
+          payment_date: payment.payment_date,
+          description: payment.description || null,
+          notes: payment.notes || null,
+        })
+      );
 
       setPayments(formattedPayments);
 
@@ -353,24 +293,6 @@ const PatientDetails = () => {
       }
 
       setPrescriptions(prescriptionsData || []);
-
-      const {
-        data: dentalChartData,
-        error: dentalChartError,
-      } = await supabase
-        .from("dental_chart")
-        .select(
-          "id, tooth_number, tooth_status, notes"
-        )
-        .eq("patient_id", id)
-        .eq("clinic_id", profile.clinic_id)
-        .order("tooth_number", { ascending: true });
-
-      if (dentalChartError) {
-        throw new Error(dentalChartError.message);
-      }
-
-      setDentalChart(dentalChartData || []);
     } catch (err) {
       console.error(err);
 
@@ -388,10 +310,6 @@ const PatientDetails = () => {
     }
   };
 
-  // =========================
-  // PAYMENT HELPERS
-  // =========================
-
   const getRecordPayments = (recordId: string) => {
     return payments.filter(
       (payment) => payment.medical_record_id === recordId
@@ -405,13 +323,19 @@ const PatientDetails = () => {
     );
   };
 
-  const getRecordRemainingAmount = (
-    record: MedicalRecord
-  ) => {
+  const getRecordRemainingAmount = (record: MedicalRecord) => {
     const costValue = Number(record.cost || 0);
     const paidValue = getRecordPaidAmount(record.id);
 
     return Math.max(costValue - paidValue, 0);
+  };
+
+  const getTotalRemainingAmount = () => {
+    return medicalRecords.reduce(
+      (total, record) =>
+        total + getRecordRemainingAmount(record),
+      0
+    );
   };
 
   const openPaymentForm = (record: MedicalRecord) => {
@@ -429,9 +353,7 @@ const PatientDetails = () => {
     setSelectedPaymentRecordId(record.id);
     setPaymentAmount("");
     setPaymentMethod("Cash");
-    setPaymentDate(
-      new Date().toISOString().split("T")[0]
-    );
+    setPaymentDate(new Date().toISOString().split("T")[0]);
     setPaymentDescription("");
     setPaymentNotes("");
     setShowPaymentForm(true);
@@ -448,9 +370,7 @@ const PatientDetails = () => {
     setPaymentNotes("");
   };
 
-  const handleSavePayment = async (
-    e: React.FormEvent
-  ) => {
+  const handleSavePayment = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!clinicId || !id) {
@@ -485,8 +405,7 @@ const PatientDetails = () => {
     }
 
     const amountValue = Number(paymentAmount);
-    const remainingValue =
-      getRecordRemainingAmount(record);
+    const remainingValue = getRecordRemainingAmount(record);
 
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       setError(
@@ -514,29 +433,26 @@ const PatientDetails = () => {
       setSavingPayment(true);
       setError("");
 
-      const { error: paymentError } =
-        await supabase
-          .from("payments")
-          .insert({
-            clinic_id: clinicId,
-            patient_id: id,
-            medical_record_id: selectedPaymentRecordId,
-            payment_date:
-              paymentDate ||
-              new Date().toISOString().split("T")[0],
-            description:
-              paymentDescription.trim() || null,
-            amount: amountValue,
-            payment_method: paymentMethod,
-            notes: paymentNotes.trim() || null,
-          });
+      const { error: paymentError } = await supabase
+        .from("payments")
+        .insert({
+          clinic_id: clinicId,
+          patient_id: id,
+          medical_record_id: selectedPaymentRecordId,
+          payment_date:
+            paymentDate ||
+            new Date().toISOString().split("T")[0],
+          description: paymentDescription.trim() || null,
+          amount: amountValue,
+          payment_method: paymentMethod,
+          notes: paymentNotes.trim() || null,
+        });
 
       if (paymentError) {
         throw new Error(paymentError.message);
       }
 
       closePaymentForm();
-
       await loadPatientDetails();
     } catch (err) {
       console.error(err);
@@ -555,74 +471,16 @@ const PatientDetails = () => {
     }
   };
 
-  // =========================
-  // DENTAL CHART
-  // =========================
-
-  const getToothData = (toothNumberValue: string) => {
-    return dentalChart.find(
-      (item) => item.tooth_number === toothNumberValue
-    );
+  const resetFollowUpForm = () => {
+    setFollowUpDate("");
+    setFollowUpTime("");
+    setFollowUpNotes("");
+    setShowFollowUpForm(false);
   };
 
-  const getToothStatusClass = (toothNumberValue: string) => {
-    const tooth = getToothData(toothNumberValue);
+  const handleAddFollowUp = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    if (!tooth) {
-      return "border-slate-300 bg-white text-slate-700 hover:border-teal-500 hover:bg-teal-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800";
-    }
-
-    switch (tooth.tooth_status) {
-      case "Cavity":
-        return "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400";
-      case "Filled":
-        return "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400";
-      case "Missing":
-        return "border-slate-400 bg-slate-200 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400";
-      case "Root Canal":
-        return "border-purple-300 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-400";
-      case "Crown":
-        return "border-yellow-300 bg-yellow-50 text-yellow-700 dark:border-yellow-900 dark:bg-yellow-950/40 dark:text-yellow-400";
-      case "Extraction Needed":
-        return "border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-400";
-      default:
-        return "border-green-300 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/40 dark:text-green-400";
-    }
-  };
-
-  const getToothStatusLabel = (status: string) => {
-    if (!isArabic) return status;
-
-    const labels: Record<string, string> = {
-      Healthy: "سليم",
-      Cavity: "تسوس",
-      Filled: "محشو",
-      Missing: "مفقود",
-      "Root Canal": "علاج جذور",
-      Crown: "تاج",
-      "Extraction Needed": "يحتاج خلع",
-    };
-
-    return labels[status] || status;
-  };
-
-  const handleSelectTooth = (toothNumberValue: string) => {
-    setSelectedTooth(toothNumberValue);
-
-    const existingTooth = getToothData(toothNumberValue);
-
-    if (existingTooth) {
-      setToothStatus(existingTooth.tooth_status);
-      setToothNotes(existingTooth.notes || "");
-    } else {
-      setToothStatus("Healthy");
-      setToothNotes("");
-    }
-
-    setError("");
-  };
-
-  const handleSaveTooth = async () => {
     if (!clinicId || !id) {
       setError(
         isArabic
@@ -632,38 +490,35 @@ const PatientDetails = () => {
       return;
     }
 
-    if (!selectedTooth) {
+    if (!followUpDate || !followUpTime) {
       setError(
         isArabic
-          ? "من فضلك اختر سنة أولًا."
-          : "Please select a tooth first."
+          ? "من فضلك اختر تاريخ ووقت موعد المتابعة."
+          : "Please select a follow-up date and time."
       );
       return;
     }
 
     try {
-      setSavingTooth(true);
+      setSavingFollowUp(true);
       setError("");
 
-      const { error: saveError } = await supabase
-        .from("dental_chart")
-        .upsert(
-          {
-            clinic_id: clinicId,
-            patient_id: id,
-            tooth_number: selectedTooth,
-            tooth_status: toothStatus,
-            notes: toothNotes || null,
-          },
-          {
-            onConflict: "patient_id,tooth_number",
-          }
-        );
+      const { error: appointmentError } = await supabase
+        .from("appointments")
+        .insert({
+          clinic_id: clinicId,
+          patient_id: id,
+          appointment_date: followUpDate,
+          appointment_time: followUpTime,
+          status: "confirmed",
+          notes: followUpNotes.trim() || null,
+        });
 
-      if (saveError) {
-        throw new Error(saveError.message);
+      if (appointmentError) {
+        throw new Error(appointmentError.message);
       }
 
+      resetFollowUpForm();
       await loadPatientDetails();
     } catch (err) {
       console.error(err);
@@ -673,59 +528,107 @@ const PatientDetails = () => {
       } else {
         setError(
           isArabic
-            ? "تعذر حفظ بيانات السنة."
-            : "Could not save tooth information."
+            ? "تعذر إضافة موعد المتابعة."
+            : "Could not add the follow-up appointment."
         );
       }
     } finally {
-      setSavingTooth(false);
+      setSavingFollowUp(false);
     }
   };
 
-  const handleDeleteTooth = async () => {
-    if (!selectedTooth || !id || !clinicId) {
+  // إكمال حالة المريض + حذف المواعيد القادمة فقط
+  const handleCompleteCase = async () => {
+    if (!clinicId || !id) {
+      setError(
+        isArabic
+          ? "بيانات العيادة أو المريض غير موجودة."
+          : "Clinic or patient information is missing."
+      );
       return;
     }
 
     const confirmed = window.confirm(
       isArabic
-        ? `هل تريد حذف بيانات السنة ${selectedTooth}؟`
-        : `Remove the dental chart information for tooth ${selectedTooth}?`
+        ? "هل أنت متأكد أن حالة المريض اكتملت؟ سيتم حذف جميع المواعيد القادمة."
+        : "Are you sure this patient's case is complete? All upcoming appointments will be removed."
     );
 
     if (!confirmed) {
       return;
     }
 
-    const { error: deleteError } = await supabase
-      .from("dental_chart")
-      .delete()
-      .eq("patient_id", id)
-      .eq("clinic_id", clinicId)
-      .eq("tooth_number", selectedTooth);
+    try {
+      setUpdatingCaseStatus(true);
+      setError("");
 
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
+      // تحديث حالة المريض
+      const { error: updateError } = await supabase
+        .from("patients")
+        .update({
+          case_status: "completed",
+        })
+        .eq("id", id)
+        .eq("clinic_id", clinicId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      // تاريخ اليوم
+      const today = new Date().toISOString().split("T")[0];
+
+      // حذف المواعيد القادمة فقط
+      const { error: deleteAppointmentsError } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("patient_id", id)
+        .eq("clinic_id", clinicId)
+        .gte("appointment_date", today);
+
+      if (deleteAppointmentsError) {
+        throw new Error(deleteAppointmentsError.message);
+      }
+
+      // تحديث حالة المريض في الواجهة
+      setPatient((previousPatient) =>
+        previousPatient
+          ? {
+              ...previousPatient,
+              case_status: "completed",
+            }
+          : previousPatient
+      );
+
+      // الاحتفاظ بالمواعيد السابقة فقط
+      setAppointments((previousAppointments) =>
+        previousAppointments.filter(
+          (appointment) =>
+            appointment.appointment_date < today
+        )
+      );
+
+      setShowFollowUpForm(false);
+    } catch (err) {
+      console.error(err);
+
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(
+          isArabic
+            ? "تعذر إكمال حالة المريض."
+            : "Could not complete the patient's case."
+        );
+      }
+    } finally {
+      setUpdatingCaseStatus(false);
     }
-
-    setSelectedTooth("");
-    setToothStatus("Healthy");
-    setToothNotes("");
-
-    await loadPatientDetails();
   };
-
-  // =========================
-  // MEDICAL RECORDS
-  // =========================
 
   const resetRecordForm = () => {
     setTreatmentDate("");
-    setToothNumber("");
     setDiagnosis("");
-    setTreatmentType("");
-    setTreatmentDetails("");
     setCost("");
     setDoctorNotes("");
     setEditingRecordId(null);
@@ -761,17 +664,13 @@ const PatientDetails = () => {
       clinic_id: clinicId,
       patient_id: id,
       treatment_date: treatmentDate || null,
-      tooth_number: toothNumber || null,
       diagnosis: diagnosis || null,
-      treatment_type: treatmentType || null,
-      treatment_details: treatmentDetails || null,
       cost: costValue,
       doctor_notes: doctorNotes || null,
     };
 
     if (editingRecordId) {
-      const paidAmount =
-        getRecordPaidAmount(editingRecordId);
+      const paidAmount = getRecordPaidAmount(editingRecordId);
 
       if (costValue < paidAmount) {
         setError(
@@ -815,18 +714,14 @@ const PatientDetails = () => {
   const handleEditRecord = (record: MedicalRecord) => {
     setEditingRecordId(record.id);
     setTreatmentDate(record.treatment_date || "");
-    setToothNumber(record.tooth_number || "");
     setDiagnosis(record.diagnosis || "");
-    setTreatmentType(record.treatment_type || "");
-    setTreatmentDetails(record.treatment_details || "");
     setCost(record.cost?.toString() || "");
     setDoctorNotes(record.doctor_notes || "");
     setShowRecordForm(true);
   };
 
   const handleDeleteRecord = async (recordId: string) => {
-    const recordPayments =
-      getRecordPayments(recordId);
+    const recordPayments = getRecordPayments(recordId);
 
     if (recordPayments.length > 0) {
       setError(
@@ -860,10 +755,6 @@ const PatientDetails = () => {
     await loadPatientDetails();
   };
 
-  // =========================
-  // PRESCRIPTIONS
-  // =========================
-
   const resetPrescriptionForm = () => {
     setPrescriptionDate("");
     setMedicineName("");
@@ -876,9 +767,7 @@ const PatientDetails = () => {
     setShowPrescriptionForm(false);
   };
 
-  const handleSavePrescription = async (
-    e: React.FormEvent
-  ) => {
+  const handleSavePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!clinicId || !id) {
@@ -1003,7 +892,7 @@ const PatientDetails = () => {
     return (
       <div
         dir={isArabic ? "rtl" : "ltr"}
-        className="min-h-screen bg-slate-50 px-6 pt-32 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+        className="min-h-screen bg-slate-50 px-6 pt-24 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
       >
         <div className="mx-auto max-w-5xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -1032,35 +921,341 @@ const PatientDetails = () => {
     (record) => record.id === selectedPaymentRecordId
   );
 
+  const totalRemainingAmount = getTotalRemainingAmount();
+
+  const isCaseCompleted = patient.case_status === "completed";
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const upcomingAppointments = appointments.filter(
+    (appointment) =>
+      appointment.appointment_date >= today
+  );
+
+  const pastAppointments = appointments.filter(
+    (appointment) =>
+      appointment.appointment_date < today
+  );
+
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-slate-50 px-6 pb-12 pt-32 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+      className="min-h-screen bg-slate-50 px-6 pb-12 pt-6 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
     >
       <div className="mx-auto max-w-7xl">
 
-        {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        {/* الشريط العلوي */}
+        <div className="mb-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+
           <div>
             <Link
               to="/doctor/patients"
-              className="text-sm font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
             >
               {isArabic
                 ? "→ العودة إلى المرضى"
                 : "← Back to Patients"}
             </Link>
 
-            <h1 className="mt-3 text-3xl font-bold text-slate-900 dark:text-white">
+            <h1 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
               {patient.name}
             </h1>
 
-            <p className="mt-2 text-slate-600 dark:text-slate-400">
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               {isArabic
                 ? "الملف الطبي للمريض"
                 : "Patient medical profile"}
             </p>
           </div>
+
+          <div className="flex items-center gap-2">
+
+            <button
+              type="button"
+              onClick={() =>
+                handleLanguageToggle(
+                  isArabic ? "en" : "ar"
+                )
+              }
+              title={
+                isArabic
+                  ? "تغيير اللغة"
+                  : "Change language"
+              }
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <Globe className="h-4 w-4" />
+              <span>{isArabic ? "EN" : "عربي"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setDarkMode((previous) => !previous)
+              }
+              title={
+                darkMode
+                  ? isArabic
+                    ? "الوضع النهاري"
+                    : "Light mode"
+                  : isArabic
+                  ? "الوضع الليلي"
+                  : "Dark mode"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              {darkMode ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+
+            <Link
+              to="/doctor/notifications"
+              title={
+                isArabic
+                  ? "إشعارات الدكتور"
+                  : "Doctor notifications"
+              }
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <Bell className="h-4 w-4" />
+            </Link>
+
+          </div>
+        </div>
+
+        {/* Patient Actions */}
+        <div className="mb-5 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/20">
+
+          <div className="flex flex-col gap-3 border-b border-indigo-200 p-4 dark:border-indigo-900/50 md:flex-row md:items-center md:justify-between">
+
+            <div className="flex flex-wrap items-center gap-2">
+
+              <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                {isArabic
+                  ? "حالة الحالة:"
+                  : "Case Status:"}
+              </span>
+
+              <span
+                className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                  isCaseCompleted
+                    ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
+                    : "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                }`}
+              >
+                {isCaseCompleted
+                  ? isArabic
+                    ? "الحالة مكتملة"
+                    : "Case Completed"
+                  : isArabic
+                  ? "الحالة نشطة"
+                  : "Active Case"}
+              </span>
+
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCaseCompleted) {
+                    return;
+                  }
+
+                  setError("");
+                  setShowFollowUpForm(
+                    !showFollowUpForm
+                  );
+                }}
+                disabled={isCaseCompleted}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {showFollowUpForm
+                  ? isArabic
+                    ? "إلغاء المتابعة"
+                    : "Cancel Follow-up"
+                  : isArabic
+                  ? "+ إضافة موعد متابعة"
+                  : "+ Add Follow-up"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCompleteCase}
+                disabled={
+                  isCaseCompleted || updatingCaseStatus
+                }
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {updatingCaseStatus
+                  ? isArabic
+                    ? "جاري الإكمال..."
+                    : "Completing..."
+                  : isArabic
+                  ? "✓ إكمال الحالة"
+                  : "✓ Complete Case"}
+              </button>
+
+            </div>
+
+          </div>
+
+          <div className="grid gap-3 p-4 md:grid-cols-3">
+
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-900/60">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي المستحق"
+                  : "Outstanding Balance"}
+              </p>
+
+              <p className="mt-1 text-xl font-bold text-orange-600 dark:text-orange-400">
+                {totalRemainingAmount.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-900/60">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "عدد السجلات الطبية"
+                  : "Medical Records"}
+              </p>
+
+              <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+                {medicalRecords.length}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-900/60">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "المواعيد القادمة"
+                  : "Upcoming Appointments"}
+              </p>
+
+              <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
+                {isCaseCompleted
+                  ? 0
+                  : upcomingAppointments.length}
+              </p>
+            </div>
+
+          </div>
+
+          {showFollowUpForm && !isCaseCompleted && (
+            <div className="border-t border-indigo-200 bg-white/50 p-5 dark:border-indigo-900/50 dark:bg-slate-900/30">
+
+              <div className="mb-5">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  {isArabic
+                    ? "إضافة موعد متابعة"
+                    : "Add Follow-up Appointment"}
+                </h3>
+
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {isArabic
+                    ? "حدد موعد المتابعة القادم لهذا المريض."
+                    : "Set the next follow-up appointment for this patient."}
+                </p>
+              </div>
+
+              <form
+                onSubmit={handleAddFollowUp}
+                className="grid gap-4 md:grid-cols-2"
+              >
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "تاريخ المتابعة"
+                      : "Follow-up Date"}
+                  </label>
+
+                  <input
+                    type="date"
+                    value={followUpDate}
+                    onChange={(e) =>
+                      setFollowUpDate(e.target.value)
+                    }
+                    required
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "وقت المتابعة"
+                      : "Follow-up Time"}
+                  </label>
+
+                  <input
+                    type="time"
+                    value={followUpTime}
+                    onChange={(e) =>
+                      setFollowUpTime(e.target.value)
+                    }
+                    required
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "ملاحظات المتابعة"
+                      : "Follow-up Notes"}
+                  </label>
+
+                  <textarea
+                    value={followUpNotes}
+                    onChange={(e) =>
+                      setFollowUpNotes(e.target.value)
+                    }
+                    placeholder={
+                      isArabic
+                        ? "مثال: متابعة بعد أسبوع لفحص الحشو"
+                        : "Example: Follow-up after one week to check the filling"
+                    }
+                    className="min-h-24 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row md:col-span-2">
+
+                  <button
+                    type="submit"
+                    disabled={savingFollowUp}
+                    className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingFollowUp
+                      ? isArabic
+                        ? "جاري إضافة الموعد..."
+                        : "Adding Appointment..."
+                      : isArabic
+                      ? "حفظ موعد المتابعة"
+                      : "Save Follow-up"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={resetFollowUpForm}
+                    className="rounded-xl bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {isArabic ? "إلغاء" : "Cancel"}
+                  </button>
+
+                </div>
+
+              </form>
+
+            </div>
+          )}
+
         </div>
 
         {error && (
@@ -1071,6 +1266,7 @@ const PatientDetails = () => {
 
         {/* Patient Information */}
         <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+
           <h2 className="mb-6 text-xl font-semibold text-slate-900 dark:text-white">
             {isArabic
               ? "معلومات المريض"
@@ -1083,6 +1279,7 @@ const PatientDetails = () => {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isArabic ? "الاسم بالكامل" : "Full Name"}
               </p>
+
               <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.name}
               </p>
@@ -1092,6 +1289,7 @@ const PatientDetails = () => {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {t.common.phone}
               </p>
+
               <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.phone || "-"}
               </p>
@@ -1101,6 +1299,7 @@ const PatientDetails = () => {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isArabic ? "العمر" : "Age"}
               </p>
+
               <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.age ?? "-"}
               </p>
@@ -1110,6 +1309,7 @@ const PatientDetails = () => {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isArabic ? "النوع" : "Gender"}
               </p>
+
               <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.gender || "-"}
               </p>
@@ -1119,6 +1319,7 @@ const PatientDetails = () => {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {t.common.address}
               </p>
+
               <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {patient.address || "-"}
               </p>
@@ -1126,8 +1327,11 @@ const PatientDetails = () => {
 
             <div>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                {isArabic ? "تاريخ التسجيل" : "Patient Since"}
+                {isArabic
+                  ? "تاريخ التسجيل"
+                  : "Patient Since"}
               </p>
+
               <p className="mt-1 font-semibold text-slate-900 dark:text-white">
                 {new Date(
                   patient.created_at
@@ -1140,6 +1344,7 @@ const PatientDetails = () => {
           </div>
 
           <div className="mt-6 border-t border-slate-100 pt-6 dark:border-slate-800">
+
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "ملاحظات طبية عامة"
@@ -1152,232 +1357,9 @@ const PatientDetails = () => {
                   ? "لا توجد ملاحظات طبية عامة."
                   : "No general medical notes.")}
             </p>
-          </div>
-        </div>
-
-        {/* Dental Chart */}
-        <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
-
-          <div className="border-b border-slate-200 p-6 dark:border-slate-800">
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              {isArabic ? "مخطط الأسنان" : "Dental Chart"}
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {isArabic
-                ? "اختر سنة لعرض أو تحديث حالتها."
-                : "Select a tooth to view or update its condition."}
-            </p>
-          </div>
-
-          <div className="p-6">
-
-            <div className="mb-8">
-              <div className="mb-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-                {isArabic ? "الأسنان العلوية" : "Upper Teeth"}
-              </div>
-
-              <div className="grid grid-cols-8 gap-2 md:gap-3">
-                {toothNumbers.slice(0, 16).map((tooth) => (
-                  <button
-                    key={tooth}
-                    type="button"
-                    onClick={() => handleSelectTooth(tooth)}
-                    className={`rounded-xl border-2 p-3 text-center transition ${getToothStatusClass(
-                      tooth
-                    )} ${
-                      selectedTooth === tooth
-                        ? "ring-2 ring-teal-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
-                        : ""
-                    }`}
-                  >
-                    <div className="text-lg">🦷</div>
-
-                    <div className="mt-1 text-sm font-bold">
-                      {tooth}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-                {isArabic ? "الأسنان السفلية" : "Lower Teeth"}
-              </div>
-
-              <div className="grid grid-cols-8 gap-2 md:gap-3">
-                {toothNumbers.slice(16, 32).map((tooth) => (
-                  <button
-                    key={tooth}
-                    type="button"
-                    onClick={() => handleSelectTooth(tooth)}
-                    className={`rounded-xl border-2 p-3 text-center transition ${getToothStatusClass(
-                      tooth
-                    )} ${
-                      selectedTooth === tooth
-                        ? "ring-2 ring-teal-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
-                        : ""
-                    }`}
-                  >
-                    <div className="text-lg">🦷</div>
-
-                    <div className="mt-1 text-sm font-bold">
-                      {tooth}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {selectedTooth && (
-              <div className="mt-8 rounded-2xl border border-teal-100 bg-teal-50 p-6 dark:border-teal-900/50 dark:bg-teal-950/20">
-
-                <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                      {isArabic ? "السنة" : "Tooth"}{" "}
-                      {selectedTooth}
-                    </h3>
-
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {isArabic
-                        ? "قم بتحديث الحالة والملاحظات."
-                        : "Update the condition and notes."}
-                    </p>
-                  </div>
-
-                  <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700 dark:bg-slate-900 dark:text-teal-400">
-                    {getToothData(selectedTooth)
-                      ? isArabic
-                        ? "تم الحفظ"
-                        : "Saved"
-                      : isArabic
-                      ? "غير محفوظ"
-                      : "Not saved"}
-                  </span>
-
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      {isArabic ? "حالة السنة" : "Tooth Status"}
-                    </label>
-
-                    <select
-                      value={toothStatus}
-                      onChange={(e) =>
-                        setToothStatus(e.target.value)
-                      }
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                    >
-                      {toothStatuses.map((status) => (
-                        <option key={status} value={status}>
-                          {getToothStatusLabel(status)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      {isArabic ? "ملاحظات" : "Notes"}
-                    </label>
-
-                    <input
-                      type="text"
-                      value={toothNotes}
-                      onChange={(e) =>
-                        setToothNotes(e.target.value)
-                      }
-                      placeholder={
-                        isArabic
-                          ? "مثال: يحتاج حشو"
-                          : "Example: Needs filling"
-                      }
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-3 md:col-span-2 md:flex-row">
-
-                    <button
-                      type="button"
-                      onClick={handleSaveTooth}
-                      disabled={savingTooth}
-                      className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {savingTooth
-                        ? isArabic
-                          ? "جاري الحفظ..."
-                          : "Saving..."
-                        : isArabic
-                        ? "حفظ السنة"
-                        : "Save Tooth"}
-                    </button>
-
-                    {getToothData(selectedTooth) && (
-                      <button
-                        type="button"
-                        onClick={handleDeleteTooth}
-                        className="rounded-xl bg-red-50 px-5 py-3 font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
-                      >
-                        {isArabic
-                          ? "حذف بيانات السنة"
-                          : "Remove Tooth Data"}
-                      </button>
-                    )}
-
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="mt-8 border-t border-slate-100 pt-6 dark:border-slate-800">
-
-              <p className="mb-3 text-sm font-semibold text-slate-600 dark:text-slate-400">
-                {isArabic ? "دليل الحالات" : "Status Legend"}
-              </p>
-
-              <div className="flex flex-wrap gap-3">
-
-                <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-400">
-                  {isArabic ? "سليم" : "Healthy"}
-                </span>
-
-                <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 dark:bg-red-950/40 dark:text-red-400">
-                  {isArabic ? "تسوس" : "Cavity"}
-                </span>
-
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
-                  {isArabic ? "محشو" : "Filled"}
-                </span>
-
-                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                  {isArabic ? "مفقود" : "Missing"}
-                </span>
-
-                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-950/40 dark:text-purple-400">
-                  {isArabic ? "علاج جذور" : "Root Canal"}
-                </span>
-
-                <span className="rounded-full bg-yellow-50 px-3 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400">
-                  {isArabic ? "تاج" : "Crown"}
-                </span>
-
-                <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-950/40 dark:text-orange-400">
-                  {isArabic
-                    ? "يحتاج خلع"
-                    : "Extraction Needed"}
-                </span>
-
-              </div>
-            </div>
 
           </div>
+
         </div>
 
         {/* Medical Records */}
@@ -1401,10 +1383,7 @@ const PatientDetails = () => {
               onClick={() => {
                 setEditingRecordId(null);
                 setTreatmentDate("");
-                setToothNumber("");
                 setDiagnosis("");
-                setTreatmentType("");
-                setTreatmentDetails("");
                 setCost("");
                 setDoctorNotes("");
                 setShowRecordForm(!showRecordForm);
@@ -1452,18 +1431,6 @@ const PatientDetails = () => {
                 <input
                   type="text"
                   placeholder={
-                    isArabic ? "رقم السنة" : "Tooth Number"
-                  }
-                  value={toothNumber}
-                  onChange={(e) =>
-                    setToothNumber(e.target.value)
-                  }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-
-                <input
-                  type="text"
-                  placeholder={
                     isArabic ? "التشخيص" : "Diagnosis"
                   }
                   value={diagnosis}
@@ -1471,31 +1438,6 @@ const PatientDetails = () => {
                     setDiagnosis(e.target.value)
                   }
                   className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-
-                <input
-                  type="text"
-                  placeholder={
-                    isArabic ? "نوع العلاج" : "Treatment Type"
-                  }
-                  value={treatmentType}
-                  onChange={(e) =>
-                    setTreatmentType(e.target.value)
-                  }
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-
-                <textarea
-                  placeholder={
-                    isArabic
-                      ? "تفاصيل العلاج"
-                      : "Treatment Details"
-                  }
-                  value={treatmentDetails}
-                  onChange={(e) =>
-                    setTreatmentDetails(e.target.value)
-                  }
-                  className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white md:col-span-2"
                 />
 
                 <input
@@ -1541,6 +1483,7 @@ const PatientDetails = () => {
                 </button>
 
               </form>
+
             </div>
           )}
 
@@ -1558,13 +1501,12 @@ const PatientDetails = () => {
               <table className="w-full min-w-[1400px]">
 
                 <thead className="bg-slate-50 dark:bg-slate-950/50">
+
                   <tr>
 
                     {[
                       isArabic ? "التاريخ" : "Date",
-                      isArabic ? "السنة" : "Tooth",
                       isArabic ? "التشخيص" : "Diagnosis",
-                      isArabic ? "العلاج" : "Treatment",
                       isArabic ? "التكلفة" : "Cost",
                       isArabic ? "المدفوع" : "Paid",
                       isArabic ? "المتبقي" : "Remaining",
@@ -1573,7 +1515,7 @@ const PatientDetails = () => {
                       <th
                         key={header}
                         className={`px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400 ${
-                          index === 7
+                          index === 5
                             ? "text-right"
                             : "text-left"
                         }`}
@@ -1583,6 +1525,7 @@ const PatientDetails = () => {
                     ))}
 
                   </tr>
+
                 </thead>
 
                 <tbody>
@@ -1604,16 +1547,8 @@ const PatientDetails = () => {
                           {record.treatment_date || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-medium text-slate-900 dark:text-white">
-                          {record.tooth_number || "-"}
-                        </td>
-
                         <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
                           {record.diagnosis || "-"}
-                        </td>
-
-                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                          {record.treatment_type || "-"}
                         </td>
 
                         <td className="px-5 py-4 text-sm font-semibold text-slate-900 dark:text-white">
@@ -1689,7 +1624,6 @@ const PatientDetails = () => {
             </div>
           )}
 
-          {/* Payment Form */}
           {showPaymentForm && selectedPaymentRecord && (
             <div className="border-t border-slate-200 bg-green-50 p-6 dark:border-slate-800 dark:bg-green-950/20">
 
@@ -1703,8 +1637,9 @@ const PatientDetails = () => {
                   </h3>
 
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    {selectedPaymentRecord.treatment_type ||
-                      (isArabic ? "علاج" : "Treatment")}{" "}
+                    {isArabic
+                      ? "السجل الطبي"
+                      : "Medical Record"}{" "}
                     •{" "}
                     {selectedPaymentRecord.treatment_date}
                   </p>
@@ -1797,15 +1732,19 @@ const PatientDetails = () => {
                   <option value="Cash">
                     {isArabic ? "نقدي" : "Cash"}
                   </option>
+
                   <option value="Card">
                     {isArabic ? "بطاقة" : "Card"}
                   </option>
+
                   <option value="Vodafone Cash">
                     Vodafone Cash
                   </option>
+
                   <option value="Instapay">
                     Instapay
                   </option>
+
                   <option value="Other">
                     {isArabic ? "أخرى" : "Other"}
                   </option>
@@ -1837,7 +1776,9 @@ const PatientDetails = () => {
 
                 <textarea
                   placeholder={
-                    isArabic ? "ملاحظات الدفع" : "Payment Notes"
+                    isArabic
+                      ? "ملاحظات الدفع"
+                      : "Payment Notes"
                   }
                   value={paymentNotes}
                   onChange={(e) =>
@@ -1865,7 +1806,6 @@ const PatientDetails = () => {
             </div>
           )}
 
-          {/* Payment History */}
           {payments.length > 0 && (
             <div className="border-t border-slate-200 p-6 dark:border-slate-800">
 
@@ -1888,11 +1828,11 @@ const PatientDetails = () => {
                 <table className="w-full">
 
                   <thead className="bg-slate-50 dark:bg-slate-950/50">
+
                     <tr>
 
                       {[
                         isArabic ? "التاريخ" : "Date",
-                        isArabic ? "العلاج" : "Treatment",
                         isArabic ? "الوصف" : "Description",
                         isArabic ? "المبلغ" : "Amount",
                         isArabic ? "الطريقة" : "Method",
@@ -1907,59 +1847,46 @@ const PatientDetails = () => {
                       ))}
 
                     </tr>
+
                   </thead>
 
                   <tbody>
 
-                    {payments.map((payment) => {
+                    {payments.map((payment) => (
+                      <tr
+                        key={payment.id}
+                        className="border-t border-slate-100 dark:border-slate-800"
+                      >
 
-                      const relatedRecord =
-                        medicalRecords.find(
-                          (record) =>
-                            record.id ===
-                            payment.medical_record_id
-                        );
+                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                          {payment.payment_date}
+                        </td>
 
-                      return (
-                        <tr
-                          key={payment.id}
-                          className="border-t border-slate-100 dark:border-slate-800"
-                        >
+                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                          {payment.description || "-"}
+                        </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                            {payment.payment_date}
-                          </td>
+                        <td className="px-5 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                          {payment.amount.toFixed(2)}
+                        </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                            {relatedRecord?.treatment_type ||
-                              "-"}
-                          </td>
+                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                          {payment.payment_method}
+                        </td>
 
-                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                            {payment.description || "-"}
-                          </td>
+                        <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {payment.notes || "-"}
+                        </td>
 
-                          <td className="px-5 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
-                            {payment.amount.toFixed(2)}
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
-                            {payment.payment_method}
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
-                            {payment.notes || "-"}
-                          </td>
-
-                        </tr>
-                      );
-                    })}
+                      </tr>
+                    ))}
 
                   </tbody>
 
                 </table>
 
               </div>
+
             </div>
           )}
 
@@ -1971,6 +1898,7 @@ const PatientDetails = () => {
           <div className="flex flex-col gap-4 border-b border-slate-200 p-6 md:flex-row md:items-center md:justify-between dark:border-slate-800">
 
             <div>
+
               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
                 {isArabic ? "الروشتات" : "Prescriptions"}
               </h2>
@@ -1980,6 +1908,7 @@ const PatientDetails = () => {
                   ? "الأدوية الموصوفة لهذا المريض"
                   : "Medicines prescribed for this patient"}
               </p>
+
             </div>
 
             <button
@@ -2095,7 +2024,9 @@ const PatientDetails = () => {
 
                 <textarea
                   placeholder={
-                    isArabic ? "التعليمات" : "Instructions"
+                    isArabic
+                      ? "التعليمات"
+                      : "Instructions"
                   }
                   value={instructions}
                   onChange={(e) =>
@@ -2131,6 +2062,7 @@ const PatientDetails = () => {
                 </button>
 
               </form>
+
             </div>
           )}
 
@@ -2160,6 +2092,7 @@ const PatientDetails = () => {
               <table className="w-full min-w-[1200px]">
 
                 <thead>
+
                   <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50">
 
                     {[
@@ -2184,6 +2117,7 @@ const PatientDetails = () => {
                     ))}
 
                   </tr>
+
                 </thead>
 
                 <tbody>
@@ -2195,8 +2129,7 @@ const PatientDetails = () => {
                     >
 
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
-                        {prescription.prescription_date ||
-                          "-"}
+                        {prescription.prescription_date || "-"}
                       </td>
 
                       <td className="px-5 py-4">
@@ -2230,8 +2163,7 @@ const PatientDetails = () => {
                       <td className="max-w-xs px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
 
                         <p className="line-clamp-2">
-                          {prescription.instructions ||
-                            "-"}
+                          {prescription.instructions || "-"}
                         </p>
 
                       </td>
@@ -2295,29 +2227,64 @@ const PatientDetails = () => {
 
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               {isArabic
-                ? "سجل المواعيد"
-                : "Appointment History"}
+                ? "المواعيد القادمة"
+                : "Upcoming Appointments"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {isArabic
-                ? "المواعيد السابقة والقادمة"
-                : "Previous and upcoming appointments"}
+                ? "المواعيد القادمة للمريض"
+                : "Upcoming appointments for this patient"}
             </p>
 
           </div>
 
-          {appointments.length === 0 ? (
+          {isCaseCompleted ? (
+
             <div className="p-10 text-center">
 
-              <p className="text-slate-500 dark:text-slate-400">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl text-green-600 dark:bg-green-950/40 dark:text-green-400">
+                ✓
+              </div>
+
+              <h3 className="text-lg font-semibold text-green-700 dark:text-green-400">
                 {isArabic
-                  ? "لا توجد مواعيد حتى الآن."
-                  : "No appointments yet."}
+                  ? "الحالة مكتملة"
+                  : "Case Completed"}
+              </h3>
+
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "لا توجد مواعيد قادمة لهذا المريض."
+                  : "There are no upcoming appointments for this patient."}
               </p>
 
             </div>
+
+          ) : upcomingAppointments.length === 0 ? (
+
+            <div className="p-10 text-center">
+
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-2xl dark:bg-slate-800">
+                📅
+              </div>
+
+              <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+                {isArabic
+                  ? "لا توجد مواعيد قادمة"
+                  : "No Upcoming Appointments"}
+              </h3>
+
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "يمكنك إضافة موعد متابعة جديد من الأعلى."
+                  : "You can add a new follow-up appointment from above."}
+              </p>
+
+            </div>
+
           ) : (
+
             <div className="overflow-x-auto">
 
               <table className="w-full">
@@ -2348,7 +2315,7 @@ const PatientDetails = () => {
 
                 <tbody>
 
-                  {appointments.map((appointment) => (
+                  {upcomingAppointments.map((appointment) => (
                     <tr
                       key={appointment.id}
                       className="border-t border-slate-100 dark:border-slate-800"
@@ -2366,14 +2333,11 @@ const PatientDetails = () => {
 
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            appointment.status ===
-                            "confirmed"
+                            appointment.status === "confirmed"
                               ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
-                              : appointment.status ===
-                                "cancelled"
+                              : appointment.status === "cancelled"
                               ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
-                              : appointment.status ===
-                                "completed"
+                              : appointment.status === "completed"
                               ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
                               : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400"
                           }`}
@@ -2382,13 +2346,11 @@ const PatientDetails = () => {
                             ? isArabic
                               ? "مؤكد"
                               : "Confirmed"
-                            : appointment.status ===
-                              "cancelled"
+                            : appointment.status === "cancelled"
                             ? isArabic
                               ? "ملغي"
                               : "Cancelled"
-                            : appointment.status ===
-                              "completed"
+                            : appointment.status === "completed"
                             ? isArabic
                               ? "مكتمل"
                               : "Completed"
@@ -2411,9 +2373,112 @@ const PatientDetails = () => {
               </table>
 
             </div>
+
           )}
 
         </div>
+
+        {/* Previous Appointments */}
+        {pastAppointments.length > 0 && (
+          <div className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+
+            <div className="border-b border-slate-200 p-6 dark:border-slate-800">
+
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                {isArabic
+                  ? "سجل المواعيد السابقة"
+                  : "Previous Appointments"}
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "المواعيد السابقة تظل محفوظة في سجل المريض."
+                  : "Previous appointments remain saved in the patient's history."}
+              </p>
+
+            </div>
+
+            <div className="overflow-x-auto">
+
+              <table className="w-full">
+
+                <thead className="bg-slate-50 dark:bg-slate-950/50">
+
+                  <tr>
+
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "التاريخ" : "Date"}
+                    </th>
+
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "الوقت" : "Time"}
+                    </th>
+
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "الحالة" : "Status"}
+                    </th>
+
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
+                      {isArabic ? "ملاحظات" : "Notes"}
+                    </th>
+
+                  </tr>
+
+                </thead>
+
+                <tbody>
+
+                  {pastAppointments.map((appointment) => (
+                    <tr
+                      key={appointment.id}
+                      className="border-t border-slate-100 dark:border-slate-800"
+                    >
+
+                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        {appointment.appointment_date}
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        {appointment.appointment_time}
+                      </td>
+
+                      <td className="px-6 py-4">
+
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {appointment.status === "confirmed"
+                            ? isArabic
+                              ? "مؤكد"
+                              : "Confirmed"
+                            : appointment.status === "completed"
+                            ? isArabic
+                              ? "مكتمل"
+                              : "Completed"
+                            : appointment.status === "cancelled"
+                            ? isArabic
+                              ? "ملغي"
+                              : "Cancelled"
+                            : isArabic
+                            ? "قيد الانتظار"
+                            : "Pending"}
+                        </span>
+
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                        {appointment.notes || "-"}
+                      </td>
+
+                    </tr>
+                  ))}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          </div>
+        )}
 
       </div>
     </div>
@@ -2421,3 +2486,8 @@ const PatientDetails = () => {
 };
 
 export default PatientDetails;
+
+
+
+
+

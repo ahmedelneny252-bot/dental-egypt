@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -17,7 +18,6 @@ import {
   Building2,
   Pencil,
   Home as HomeIcon,
-  ClipboardList,
   PackageSearch,
   Star,
   Menu,
@@ -78,7 +78,7 @@ type NotificationRow = {
 };
 
 // ============================================
-// Tooth logo (لا يوجد أيقونة سن جاهزة في lucide)
+// Tooth logo
 // ============================================
 
 const ToothIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
@@ -100,9 +100,10 @@ const DoctorDashboard = () => {
     return saved === "en" ? "en" : "ar";
   });
 
-  // وضعية الرؤية (فاتح/داكن) — بتتقرأ من نفس المفتاح اللي
-  // صفحة الإعدادات (/doctor/settings) بتستخدمه، عشان التبديل من
-  // هنا أو من هناك يفضل متزامن في كل الصفحات
+  // ============================================
+  // Theme
+  // ============================================
+
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const savedTheme = localStorage.getItem("dentalcare-theme");
     return savedTheme === "dark" ? "dark" : "light";
@@ -130,8 +131,6 @@ const DoctorDashboard = () => {
     };
   }, []);
 
-  // بيطبق كلاس "dark" على الصفحة كلها وبيحفظ الاختيار، وبيبلّغ
-  // باقي الصفحات (زي الإعدادات) إن الثيم اتغير
   useEffect(() => {
     localStorage.setItem("dentalcare-theme", theme);
 
@@ -144,8 +143,6 @@ const DoctorDashboard = () => {
     window.dispatchEvent(new Event("dentalcare-theme-change"));
   }, [theme]);
 
-  // بيسمع لو حد غيّر الثيم من صفحة تانية (زي الإعدادات) عشان
-  // الزرار هنا يفضل متزامن معاها
   useEffect(() => {
     const handleThemeChange = () => {
       const savedTheme = localStorage.getItem("dentalcare-theme");
@@ -156,28 +153,29 @@ const DoctorDashboard = () => {
     window.addEventListener("storage", handleThemeChange);
 
     return () => {
-      window.removeEventListener("dentalcare-theme-change", handleThemeChange);
+      window.removeEventListener(
+        "dentalcare-theme-change",
+        handleThemeChange
+      );
       window.removeEventListener("storage", handleThemeChange);
     };
   }, []);
 
   const toggleLanguage = () => {
     const newLanguage: Language = language === "ar" ? "en" : "ar";
+
     setLanguage(newLanguage);
     localStorage.setItem("dentalcare-language", newLanguage);
+
     document.documentElement.lang = newLanguage;
     document.documentElement.dir = newLanguage === "ar" ? "rtl" : "ltr";
+
     window.dispatchEvent(new Event("dentalcare-language-change"));
   };
 
   const toggleTheme = () => {
     setTheme((current) => (current === "light" ? "dark" : "light"));
   };
-
-  // ملاحظة: تبديل اللغة والوضع الداكن متاح دلوقتي من هنا (جنب
-  // البحث في الهيدر) وكمان من صفحة الإعدادات المستقلة
-  // (/doctor/settings) — الاتنين متزامنين مع بعض عن طريق نفس
-  // مفاتيح localStorage والأحداث المخصصة.
 
   // ============================================
   // State
@@ -205,12 +203,8 @@ const DoctorDashboard = () => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
-  // هل الـ Sidebar (الرئيسية / المرضى / المواعيد / ... إلخ) ظاهر؟
-  // نفس فكرة داشبورد المريض بالظبط: مش أوفرلاي فوق الصفحة،
-  // ده جزء ثابت على اليمين بيظهر أو يختفي بزرار في الهيدر.
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // فتح/قفل لوحة "ملخص اليوم" جوه الأدوات السريعة
   const [todaySummaryOpen, setTodaySummaryOpen] = useState(false);
 
   // ============================================
@@ -234,7 +228,6 @@ const DoctorDashboard = () => {
       hour12: false,
     }).format(new Date());
 
-  // آخر 7 أيام تبدأ من اليوم (تُستخدم في شريط "مواعيد هذا الأسبوع")
   const weekDays = useMemo(() => {
     const today = new Date();
     const days: { iso: string; label: string; dayNumber: number }[] = [];
@@ -251,7 +244,11 @@ const DoctorDashboard = () => {
         weekday: "short",
       });
 
-      days.push({ iso, label, dayNumber: d.getDate() });
+      days.push({
+        iso,
+        label,
+        dayNumber: d.getDate(),
+      });
     }
 
     return days;
@@ -265,15 +262,24 @@ const DoctorDashboard = () => {
 
   const todayLongLabel = new Date().toLocaleDateString(
     isArabic ? "ar-EG" : "en-US",
-    { weekday: "long", year: "numeric", month: "long", day: "numeric" }
+    {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }
   );
 
   const formatTime = (time: string) => {
     if (!time) return "-";
+
     const [h, m] = time.split(":");
+
     if (!h || !m) return time;
+
     const d = new Date();
     d.setHours(Number(h), Number(m), 0, 0);
+
     return d.toLocaleTimeString(isArabic ? "ar-EG" : "en-US", {
       hour: "numeric",
       minute: "2-digit",
@@ -289,8 +295,10 @@ const DoctorDashboard = () => {
     switch (type) {
       case "follow_up":
         return isArabic ? "متابعة" : "Follow-up";
+
       case "xray":
         return isArabic ? "أشعة" : "X-ray";
+
       default:
         return isArabic ? "كشف" : "Checkup";
     }
@@ -370,6 +378,7 @@ const DoctorDashboard = () => {
       setPatientsCount(totalPatients || 0);
 
       const now = new Date();
+
       const monthStart = new Intl.DateTimeFormat("en-CA").format(
         new Date(now.getFullYear(), now.getMonth(), 1)
       );
@@ -416,7 +425,9 @@ const DoctorDashboard = () => {
         const today = getEgyptToday();
 
         const upcoming = rows.filter(
-          (a) => a.appointment_date >= today && a.status !== "cancelled"
+          (a) =>
+            a.appointment_date >= today &&
+            a.status !== "cancelled"
         );
 
         setUpcomingCount(upcoming.length);
@@ -439,6 +450,7 @@ const DoctorDashboard = () => {
         const { data: lastAppointments } = await supabase
           .from("appointments")
           .select("patient_id, appointment_date, status")
+          .eq("clinic_id", cId)
           .in("patient_id", patientIds.length ? patientIds : [""])
           .order("appointment_date", { ascending: false });
 
@@ -462,8 +474,10 @@ const DoctorDashboard = () => {
             name: p.name,
             phone: p.phone,
             created_at: p.created_at,
-            latest_status: lastByPatient.get(p.id)?.status || "pending",
-            latest_visit: lastByPatient.get(p.id)?.date || null,
+            latest_status:
+              lastByPatient.get(p.id)?.status || "pending",
+            latest_visit:
+              lastByPatient.get(p.id)?.date || null,
           }))
         );
       }
@@ -496,17 +510,24 @@ const DoctorDashboard = () => {
 
       const paidThisMonthTotal = (payments || [])
         .filter((p: any) => p.created_at >= monthStart)
-        .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        .reduce(
+          (sum: number, p: any) => sum + Number(p.amount || 0),
+          0
+        );
 
       setPaidThisMonth(paidThisMonthTotal);
 
-      // مدفوعات اليوم بس (بنقارن أول 10 حروف من created_at
-      // بتاريخ النهارده بتوقيت مصر)
       const todayDateStr = getEgyptToday();
 
       const paidTodayTotal = (payments || [])
-        .filter((p: any) => (p.created_at || "").slice(0, 10) === todayDateStr)
-        .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        .filter(
+          (p: any) =>
+            (p.created_at || "").slice(0, 10) === todayDateStr
+        )
+        .reduce(
+          (sum: number, p: any) => sum + Number(p.amount || 0),
+          0
+        );
 
       setPaidToday(paidTodayTotal);
 
@@ -550,14 +571,15 @@ const DoctorDashboard = () => {
   }, [allAppointments]);
 
   // ============================================
-  // Derived — عدد الكشوفات وعدد الإعادات (المتابعة) اليوم
-  // (بنستبعد المواعيد الملغية من العد)
+  // Today's checkups and follow-ups
   // ============================================
 
   const todayCheckupsCount = useMemo(
     () =>
       todayAppointments.filter(
-        (a) => a.status !== "cancelled" && a.appointment_type !== "follow_up"
+        (a) =>
+          a.status !== "cancelled" &&
+          a.appointment_type !== "follow_up"
       ).length,
     [todayAppointments]
   );
@@ -565,17 +587,20 @@ const DoctorDashboard = () => {
   const todayFollowUpCount = useMemo(
     () =>
       todayAppointments.filter(
-        (a) => a.status !== "cancelled" && a.appointment_type === "follow_up"
+        (a) =>
+          a.status !== "cancelled" &&
+          a.appointment_type === "follow_up"
       ).length,
     [todayAppointments]
   );
 
   // ============================================
-  // Derived — this week's appointments (by selected day)
+  // This week's appointments
   // ============================================
 
   const weekAppointmentsByDay = useMemo(() => {
     const map = new Map<string, AppointmentRow[]>();
+
     weekDays.forEach((d) => map.set(d.iso, []));
 
     allAppointments.forEach((a) => {
@@ -591,25 +616,33 @@ const DoctorDashboard = () => {
     weekAppointmentsByDay.get(selectedWeekDay) || [];
 
   // ============================================
-  // Derived — patient status donut (تقديري بناءً على آخر موعد لكل مريض)
+  // Patient status
   // ============================================
 
   const patientStatusBreakdown = useMemo(() => {
-    const counts = { in_progress: 0, completed: 0, follow_up: 0, no_show: 0 };
+    const counts = {
+      in_progress: 0,
+      completed: 0,
+      follow_up: 0,
+      no_show: 0,
+    };
 
     recentPatients.forEach((p) => {
       switch (p.latest_status) {
         case "completed":
           counts.completed += 1;
           break;
+
         case "confirmed":
           counts.follow_up += 1;
           break;
+
         case "cancelled":
           counts.no_show += 1;
           break;
+
         default:
-          counts.in_progress += 1;
+          counts.in_progress++;
       }
     });
 
@@ -620,12 +653,16 @@ const DoctorDashboard = () => {
     switch (status) {
       case "pending":
         return "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300";
+
       case "confirmed":
         return "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300";
+
       case "completed":
         return "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300";
+
       case "cancelled":
         return "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300";
+
       default:
         return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
     }
@@ -635,19 +672,23 @@ const DoctorDashboard = () => {
     switch (status) {
       case "pending":
         return isArabic ? "قيد الانتظار" : "Pending";
+
       case "confirmed":
         return isArabic ? "مؤكد" : "Confirmed";
+
       case "completed":
         return isArabic ? "مكتمل" : "Completed";
+
       case "cancelled":
         return isArabic ? "ملغي" : "Cancelled";
+
       default:
         return status;
     }
   };
 
   // ============================================
-  // Sidebar nav items (القائمة الجانبية الكاملة، مع بند "معلومات العيادة" الجديد بين الرئيسية والمرضى)
+  // Sidebar nav items
   // ============================================
 
   const navItems = [
@@ -661,28 +702,31 @@ const DoctorDashboard = () => {
       label: isArabic ? "معلومات العيادة" : "Clinic Info",
       to: "/doctor/clinic-profile",
     },
-    { icon: Users, label: t.dashboard.patients, to: "/doctor/patients" },
+    {
+      icon: Users,
+      label: t.dashboard.patients,
+      to: "/doctor/patients",
+    },
     {
       icon: Calendar,
       label: t.dashboard.appointments,
       to: "/doctor/appointments",
     },
     {
-      icon: ClipboardList,
-      label: isArabic ? "السجلات الطبية" : "Medical Records",
-      to: "/doctor/medical-records",
+      icon: Wallet,
+      label: t.dashboard.payments,
+      to: "/doctor/payments",
     },
-    { icon: Wallet, label: t.dashboard.payments, to: "/doctor/payments" },
     {
       icon: BarChart3,
       label: isArabic ? "التقارير" : "Reports",
       to: "/doctor/reports",
     },
-    {
-      icon: PackageSearch,
-      label: isArabic ? "المخزون" : "Inventory",
-      to: "/doctor/inventory",
-    },
+   // {
+   //   icon: PackageSearch,
+    //  label: isArabic ? "المخزون" : "Inventory",
+    //  to: "/doctor/inventory",
+   // },
     {
       icon: SettingsIcon,
       label: isArabic ? "الإعدادات" : "Settings",
@@ -691,8 +735,8 @@ const DoctorDashboard = () => {
   ];
 
   // ============================================
-  // Quick tools (تم حذف "المخزون" و"الإعدادات"، وإضافة
-  // "متابعة حالة مريض" و"ملخص اليوم")
+  // Quick tools
+  // تم إضافة المخزون هنا
   // ============================================
 
   type QuickTool = {
@@ -708,6 +752,11 @@ const DoctorDashboard = () => {
       label: isArabic ? "التقارير" : "Reports",
       to: "/doctor/reports",
     },
+   // {
+   //   icon: PackageSearch,
+   //   label: isArabic ? "المخزون" : "Inventory",
+    //  to: "/doctor/inventory",
+  //  },
     {
       icon: Search,
       label: isArabic ? "بحث عن مريض" : "Find patient",
@@ -723,7 +772,11 @@ const DoctorDashboard = () => {
       label: isArabic ? "متابعة حالة مريض" : "Track patient status",
       to: "/doctor/patients",
     },
-    { icon: Wallet, label: t.dashboard.payments, to: "/doctor/payments" },
+    {
+      icon: Wallet,
+      label: t.dashboard.payments,
+      to: "/doctor/payments",
+    },
     {
       icon: CalendarCheck,
       label: isArabic ? "ملخص اليوم" : "Today's Summary",
@@ -735,7 +788,9 @@ const DoctorDashboard = () => {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <p className="text-slate-600 dark:text-slate-300">
-          {isArabic ? "جاري تحميل لوحة التحكم..." : "Loading dashboard..."}
+          {isArabic
+            ? "جاري تحميل لوحة التحكم..."
+            : "Loading dashboard..."}
         </p>
       </div>
     );
@@ -747,10 +802,9 @@ const DoctorDashboard = () => {
       className="min-h-screen bg-slate-50 dark:bg-slate-950"
     >
       {/* ====================================================
-          Sidebar — بقى على اليمين بالظبط زي داشبورد المريض،
-          وثابت في مكانه (مش أوفرلاي)، بيظهر/يختفي بزرار في
-          الهيدر بدل ما يتفتح فوق الصفحة.
+          Sidebar
          ==================================================== */}
+
       <aside
         className={`fixed inset-y-0 right-0 z-30 hidden w-64 flex-col overflow-y-auto bg-[#0b1526] px-4 py-6 ${
           sidebarOpen ? "lg:flex" : "lg:hidden"
@@ -760,12 +814,16 @@ const DoctorDashboard = () => {
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-white">
             <ToothIcon className="h-5 w-5" />
           </span>
+
           <div>
             <p className="text-sm font-bold leading-tight text-white">
               DentalCare
             </p>
+
             <p className="text-[11px] leading-tight text-slate-400">
-              {isArabic ? "نظام إدارة العيادة" : "Clinic System"}
+              {isArabic
+                ? "نظام إدارة العيادة"
+                : "Clinic System"}
             </p>
           </div>
         </div>
@@ -787,12 +845,15 @@ const DoctorDashboard = () => {
           ))}
         </nav>
 
-        {/* ---------- أدوات سريعة + آخر الإشعارات ---------- */}
+        {/* ---------- Quick Tools + Notifications ---------- */}
+
         <div className="mt-4 flex-1 space-y-4">
           <div className="rounded-2xl bg-white/5 p-4">
             <h2 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-white">
               <Star className="h-3.5 w-3.5 text-teal-400" />
-              {isArabic ? "أدوات سريعة" : "Quick Tools"}
+              {isArabic
+                ? "أدوات سريعة"
+                : "Quick Tools"}
             </h2>
 
             <div className="grid grid-cols-3 gap-2">
@@ -801,14 +862,19 @@ const DoctorDashboard = () => {
                   <button
                     key={tool.label}
                     type="button"
-                    onClick={() => setTodaySummaryOpen((v) => !v)}
+                    onClick={() =>
+                      setTodaySummaryOpen((v) => !v)
+                    }
                     className={`flex flex-col items-center gap-1 rounded-lg py-2.5 text-center transition hover:bg-teal-500/20 ${
-                      todaySummaryOpen ? "bg-teal-500/20" : "bg-white/5"
+                      todaySummaryOpen
+                        ? "bg-teal-500/20"
+                        : "bg-white/5"
                     }`}
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-teal-400">
                       <tool.icon className="h-3.5 w-3.5" />
                     </span>
+
                     <span className="text-[10px] font-medium leading-tight text-slate-300">
                       {tool.label}
                     </span>
@@ -822,6 +888,7 @@ const DoctorDashboard = () => {
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-teal-400">
                       <tool.icon className="h-3.5 w-3.5" />
                     </span>
+
                     <span className="text-[10px] font-medium leading-tight text-slate-300">
                       {tool.label}
                     </span>
@@ -830,29 +897,41 @@ const DoctorDashboard = () => {
               )}
             </div>
 
-            {/* لوحة ملخص اليوم: بتظهر لما تدوس على "ملخص اليوم" فوق */}
+            {/* Today's Summary */}
+
             {todaySummaryOpen && (
               <div className="mt-3 space-y-2 rounded-xl bg-white/5 p-3">
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-300">
-                    {isArabic ? "عدد الكشوفات اليوم" : "Checkups today"}
+                    {isArabic
+                      ? "عدد الكشوفات اليوم"
+                      : "Checkups today"}
                   </span>
+
                   <span className="font-bold text-white">
                     {todayCheckupsCount}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-300">
-                    {isArabic ? "عدد الإعادات اليوم" : "Follow-ups today"}
+                    {isArabic
+                      ? "عدد الإعادات اليوم"
+                      : "Follow-ups today"}
                   </span>
+
                   <span className="font-bold text-white">
                     {todayFollowUpCount}
                   </span>
                 </div>
+
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-300">
-                    {isArabic ? "إجمالي مدفوعات اليوم" : "Payments today"}
+                    {isArabic
+                      ? "إجمالي مدفوعات اليوم"
+                      : "Payments today"}
                   </span>
+
                   <span className="font-bold text-white">
                     {formatMoney(paidToday)}
                   </span>
@@ -861,40 +940,63 @@ const DoctorDashboard = () => {
             )}
           </div>
 
+          {/* Notifications */}
+
           <div className="rounded-2xl bg-white/5 p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-xs font-bold text-white">
-                {isArabic ? "آخر الإشعارات" : "Latest Notifications"}
+                {isArabic
+                  ? "آخر الإشعارات"
+                  : "Latest Notifications"}
               </h2>
+
               <Link
                 to="/doctor/notifications"
                 className="text-[10px] font-semibold text-teal-400 hover:text-teal-300"
               >
-                {isArabic ? "عرض الكل" : "View all"}
+                {isArabic
+                  ? "عرض الكل"
+                  : "View all"}
               </Link>
             </div>
 
             {notifications.length === 0 ? (
               <p className="py-3 text-center text-[11px] text-slate-500">
-                {isArabic ? "لا توجد إشعارات جديدة." : "No new notifications."}
+                {isArabic
+                  ? "لا توجد إشعارات جديدة."
+                  : "No new notifications."}
               </p>
             ) : (
               <div className="space-y-2.5">
                 {notifications.map((n) => (
-                  <div key={n.id} className="flex items-start gap-2">
+                  <div
+                    key={n.id}
+                    className="flex items-start gap-2"
+                  >
                     <span
                       className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                        n.is_read ? "bg-slate-600" : "bg-teal-400"
+                        n.is_read
+                          ? "bg-slate-600"
+                          : "bg-teal-400"
                       }`}
                     />
+
                     <div>
                       <p className="text-[11px] leading-snug text-slate-300">
                         {n.message}
                       </p>
+
                       <p className="mt-0.5 text-[10px] text-slate-500">
-                        {new Date(n.created_at).toLocaleString(
-                          isArabic ? "ar-EG" : "en-US",
-                          { hour: "numeric", minute: "2-digit" }
+                        {new Date(
+                          n.created_at
+                        ).toLocaleString(
+                          isArabic
+                            ? "ar-EG"
+                            : "en-US",
+                          {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          }
                         )}
                       </p>
                     </div>
@@ -907,21 +1009,27 @@ const DoctorDashboard = () => {
 
         <div className="mt-6 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 p-4 text-white">
           <ToothIcon className="mb-2 h-7 w-7 opacity-90" />
+
           <p className="text-sm font-bold leading-snug">
-            {isArabic ? "ابتسامتك... صحتنا" : "Your smile, our care"}
+            {isArabic
+              ? "ابتسامتك... صحتنا"
+              : "Your smile, our care"}
           </p>
         </div>
       </aside>
 
       {/* ==================== Main column ==================== */}
+
       <div className={sidebarOpen ? "lg:pr-64" : ""}>
         {/* ---------- Top bar ---------- */}
+
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:gap-4 sm:px-6">
-          {/* يمين: زرار إظهار/إخفاء القائمة الجانبية + شعار المنصة */}
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={() => setSidebarOpen((open) => !open)}
+              onClick={() =>
+                setSidebarOpen((open) => !open)
+              }
               className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 lg:flex"
               aria-label={
                 sidebarOpen
@@ -949,17 +1057,22 @@ const DoctorDashboard = () => {
               )}
             </button>
 
-            <Link to="/doctor/dashboard" className="flex items-center gap-2">
+            <Link
+              to="/doctor/dashboard"
+              className="flex items-center gap-2"
+            >
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-white">
                 <ToothIcon className="h-5 w-5" />
               </span>
+
               <span className="hidden text-sm font-bold leading-tight text-slate-800 dark:text-white sm:block">
                 DentalCare
               </span>
             </Link>
           </div>
 
-          {/* النص: خانة البحث + أزرار اللغة والوضع الداكن جنبها */}
+          {/* Search + language + theme */}
+
           <div className="hidden flex-1 items-center justify-center gap-3 sm:flex">
             <div className="relative w-full max-w-md">
               <Search
@@ -967,31 +1080,39 @@ const DoctorDashboard = () => {
                   isArabic ? "right-3" : "left-3"
                 }`}
               />
+
               <input
                 type="text"
                 value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
+                onChange={(e) =>
+                  setSearchValue(e.target.value)
+                }
                 placeholder={
                   isArabic
                     ? "ابحث عن مريض، موعد، رقم هاتف، أو أي شيء..."
                     : "Search patient, appointment, phone, or anything..."
                 }
                 className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm text-slate-700 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white ${
-                  isArabic ? "pr-9 pl-3" : "pl-9 pr-3"
+                  isArabic
+                    ? "pr-9 pl-3"
+                    : "pl-9 pr-3"
                 }`}
               />
             </div>
 
-            {/* اللغة + الوضع الداكن */}
             <div className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 dark:border-slate-700">
               <button
                 type="button"
                 onClick={toggleLanguage}
                 className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 transition-all hover:text-teal-600 dark:text-slate-300 dark:hover:text-teal-400"
-                title={isArabic ? "English" : "العربية"}
+                title={
+                  isArabic ? "English" : "العربية"
+                }
               >
                 <Languages className="h-4 w-4" />
-                <span>{isArabic ? "العربية" : "English"}</span>
+                <span>
+                  {isArabic ? "العربية" : "English"}
+                </span>
               </button>
 
               <span className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
@@ -1012,6 +1133,7 @@ const DoctorDashboard = () => {
                 className="relative flex h-7 w-14 items-center rounded-full bg-teal-600 px-1.5 transition-colors"
               >
                 <Sun className="h-3.5 w-3.5 shrink-0 text-white/80" />
+
                 <span
                   className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
                     theme === "dark"
@@ -1019,21 +1141,30 @@ const DoctorDashboard = () => {
                       : "translate-x-[2px]"
                   }`}
                 />
+
                 <Moon className="mr-0 ml-auto h-3.5 w-3.5 shrink-0 text-white/80" />
               </button>
             </div>
           </div>
 
-          {/* الشمال: الإشعارات + البروفايل */}
+          {/* Notifications + profile */}
+
           <div className="ms-auto flex items-center gap-2 sm:gap-3">
             <Link
               to="/doctor/notifications"
               className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <Bell className="h-5 w-5" />
-              {notifications.filter((n) => !n.is_read).length > 0 && (
+
+              {notifications.filter(
+                (n) => !n.is_read
+              ).length > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                  {notifications.filter((n) => !n.is_read).length}
+                  {
+                    notifications.filter(
+                      (n) => !n.is_read
+                    ).length
+                  }
                 </span>
               )}
             </Link>
@@ -1055,16 +1186,23 @@ const DoctorDashboard = () => {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setProfileMenuOpen((v) => !v)}
+                onClick={() =>
+                  setProfileMenuOpen((v) => !v)
+                }
                 className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <div className="text-end">
                   <p className="text-sm font-bold text-slate-800 dark:text-white">
-                    {isArabic ? `د. ${doctor?.name}` : `Dr. ${doctor?.name}`}
+                    {isArabic
+                      ? `د. ${doctor?.name}`
+                      : `Dr. ${doctor?.name}`}
                   </p>
+
                   <p className="text-xs text-slate-400">
                     {doctor?.specialty ||
-                      (isArabic ? "طبيب أسنان عام" : "General dentist")}
+                      (isArabic
+                        ? "طبيب أسنان عام"
+                        : "General dentist")}
                   </p>
                 </div>
 
@@ -1090,17 +1228,19 @@ const DoctorDashboard = () => {
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
                     <Pencil className="h-4 w-4" />
-                    {isArabic ? "تعديل البيانات" : "Edit profile"}
+                    {isArabic
+                      ? "تعديل البيانات"
+                      : "Edit profile"}
                   </Link>
 
-                  {/* اللغة/الوضع الداكن/تسجيل الخروج بقوا في صفحة
-                      الإعدادات المستقلة (/doctor/settings) */}
                   <Link
                     to="/doctor/settings"
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
                     <SettingsIcon className="h-4 w-4" />
-                    {isArabic ? "الإعدادات" : "Settings"}
+                    {isArabic
+                      ? "الإعدادات"
+                      : "Settings"}
                   </Link>
                 </div>
               )}
@@ -1109,25 +1249,24 @@ const DoctorDashboard = () => {
         </header>
 
         {/* ---------- Content ---------- */}
+
         <main className="px-4 py-6 sm:px-6">
           <div className="space-y-6">
-            {/* ====================================================
-                Welcome banner
-                - تم تغيير الخلفية للون فاتح بين اللبني والأزرق
-                  (جراديانت sky/blue فاتح) بدل التيل الغامق.
-                - النص بقى غامق (slate) عشان يبان واضح فوق الخلفية
-                  الفاتحة، مع نسخة dark mode بتفضل غامقة زي الأول.
-                - الصورة موجودة في public/doctor.jpeg
-               ==================================================== */}
+
+            {/* Welcome banner */}
+
             <div className="relative overflow-hidden rounded-2xl p-6 text-white sm:p-8">
               <div className="absolute inset-0 z-0">
                 <img
                   src="/doctor.jpeg"
                   alt={
-                    isArabic ? "صورة ترحيبية" : "Welcome illustration"
+                    isArabic
+                      ? "صورة ترحيبية"
+                      : "Welcome illustration"
                   }
                   className="h-full w-full object-cover"
                 />
+
                 <div className="absolute inset-0 bg-slate-900/40" />
               </div>
 
@@ -1138,11 +1277,13 @@ const DoctorDashboard = () => {
                     : `Welcome, Dr. ${doctor?.name}`}{" "}
                   👋
                 </h1>
+
                 <p className="mt-2 text-white/90">
                   {isArabic
                     ? "نتمنى لك يومًا مليئًا بالنجاحات والابتسامات."
                     : "We wish you a day full of success and smiles."}
                 </p>
+
                 <p className="mt-4 flex items-center gap-2 text-sm text-white/80">
                   <Calendar className="h-4 w-4" />
                   {todayLongLabel}
@@ -1151,14 +1292,17 @@ const DoctorDashboard = () => {
             </div>
 
             {/* Stat cards */}
+
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400">
                   <Wallet className="h-5 w-5" />
                 </span>
+
                 <p className="text-xl font-bold text-slate-900 dark:text-white">
                   {formatMoney(paidThisMonth)}
                 </p>
+
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {isArabic
                     ? "إجمالي المدفوعات هذا الشهر"
@@ -1170,11 +1314,15 @@ const DoctorDashboard = () => {
                 <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
                   <Users className="h-5 w-5" />
                 </span>
+
                 <p className="text-xl font-bold text-slate-900 dark:text-white">
                   {patientsCount}
                 </p>
+
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic ? "عدد المرضى النشطين" : "Active patients"}
+                  {isArabic
+                    ? "عدد المرضى النشطين"
+                    : "Active patients"}
                 </p>
               </div>
 
@@ -1182,11 +1330,15 @@ const DoctorDashboard = () => {
                 <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
                   <CalendarCheck className="h-5 w-5" />
                 </span>
+
                 <p className="text-xl font-bold text-slate-900 dark:text-white">
                   {upcomingCount}
                 </p>
+
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic ? "المواعيد القادمة" : "Upcoming appointments"}
+                  {isArabic
+                    ? "المواعيد القادمة"
+                    : "Upcoming appointments"}
                 </p>
               </div>
 
@@ -1194,9 +1346,11 @@ const DoctorDashboard = () => {
                 <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
                   <UserPlus className="h-5 w-5" />
                 </span>
+
                 <p className="text-xl font-bold text-slate-900 dark:text-white">
                   {newPatientsThisMonth}
                 </p>
+
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {isArabic
                     ? "المرضى الجدد هذا الشهر"
@@ -1205,19 +1359,27 @@ const DoctorDashboard = () => {
               </div>
             </div>
 
-            {/* مواعيد اليوم (يسار) + مواعيد هذا الأسبوع (يمين) */}
+            {/* Today's + week's appointments */}
+
             <div className="grid gap-6 lg:grid-cols-2">
-              {/* مواعيد اليوم */}
+
+              {/* Today's appointments */}
+
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "مواعيد اليوم" : "Today's Appointments"}
+                    {isArabic
+                      ? "مواعيد اليوم"
+                      : "Today's Appointments"}
                   </h2>
+
                   <Link
                     to="/doctor/appointments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic ? "عرض الكل" : "View all"}
+                    {isArabic
+                      ? "عرض الكل"
+                      : "View all"}
                   </Link>
                 </div>
 
@@ -1233,19 +1395,31 @@ const DoctorDashboard = () => {
                       <thead>
                         <tr className="text-slate-400">
                           <th className="pb-2 text-start font-medium">
-                            {isArabic ? "الحالة" : "Status"}
+                            {isArabic
+                              ? "الحالة"
+                              : "Status"}
                           </th>
+
                           <th className="pb-2 text-start font-medium">
-                            {isArabic ? "نوع الزيارة" : "Type"}
+                            {isArabic
+                              ? "نوع الزيارة"
+                              : "Type"}
                           </th>
+
                           <th className="pb-2 text-start font-medium">
-                            {isArabic ? "اسم المريض" : "Patient"}
+                            {isArabic
+                              ? "اسم المريض"
+                              : "Patient"}
                           </th>
+
                           <th className="pb-2 text-start font-medium">
-                            {isArabic ? "الوقت" : "Time"}
+                            {isArabic
+                              ? "الوقت"
+                              : "Time"}
                           </th>
                         </tr>
                       </thead>
+
                       <tbody>
                         {todayAppointments.map((a) => (
                           <tr
@@ -1257,16 +1431,19 @@ const DoctorDashboard = () => {
                                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                                   a.checkedState === "attended"
                                     ? "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300"
-                                    : a.checkedState === "cancelled"
+                                    : a.checkedState ===
+                                      "cancelled"
                                     ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
                                     : "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
                                 }`}
                               >
-                                {a.checkedState === "attended"
+                                {a.checkedState ===
+                                "attended"
                                   ? isArabic
                                     ? "حاضر"
                                     : "Attended"
-                                  : a.checkedState === "cancelled"
+                                  : a.checkedState ===
+                                    "cancelled"
                                   ? isArabic
                                     ? "ملغي"
                                     : "Cancelled"
@@ -1275,15 +1452,24 @@ const DoctorDashboard = () => {
                                   : "Upcoming"}
                               </span>
                             </td>
+
                             <td className="py-2.5 text-slate-600 dark:text-slate-300">
-                              {formatAppointmentType(a.appointment_type)}
+                              {formatAppointmentType(
+                                a.appointment_type
+                              )}
                             </td>
+
                             <td className="py-2.5 font-semibold text-slate-800 dark:text-white">
                               {a.patients?.name ||
-                                (isArabic ? "مريض" : "Patient")}
+                                (isArabic
+                                  ? "مريض"
+                                  : "Patient")}
                             </td>
+
                             <td className="py-2.5 text-slate-500 dark:text-slate-400">
-                              {formatTime(a.appointment_time)}
+                              {formatTime(
+                                a.appointment_time
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -1293,7 +1479,8 @@ const DoctorDashboard = () => {
                 )}
               </div>
 
-              {/* مواعيد هذا الأسبوع */}
+              {/* This week's appointments */}
+
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
@@ -1301,11 +1488,14 @@ const DoctorDashboard = () => {
                       ? "مواعيد هذا الأسبوع"
                       : "This Week's Appointments"}
                   </h2>
+
                   <Link
                     to="/doctor/appointments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic ? "عرض الكل" : "View all"}
+                    {isArabic
+                      ? "عرض الكل"
+                      : "View all"}
                   </Link>
                 </div>
 
@@ -1314,7 +1504,9 @@ const DoctorDashboard = () => {
                     <button
                       key={day.iso}
                       type="button"
-                      onClick={() => setSelectedWeekDay(day.iso)}
+                      onClick={() =>
+                        setSelectedWeekDay(day.iso)
+                      }
                       className={`flex shrink-0 flex-col items-center rounded-xl px-3 py-2 text-xs font-semibold transition ${
                         selectedWeekDay === day.iso
                           ? "bg-teal-600 text-white"
@@ -1322,13 +1514,16 @@ const DoctorDashboard = () => {
                       }`}
                     >
                       <span>{day.label}</span>
-                      <span className="mt-0.5">{day.dayNumber}</span>
+                      <span className="mt-0.5">
+                        {day.dayNumber}
+                      </span>
                     </button>
                   ))}
                 </div>
 
                 <div className="space-y-2">
-                  {selectedDayAppointments.length === 0 ? (
+                  {selectedDayAppointments.length ===
+                  0 ? (
                     <p className="py-6 text-center text-sm text-slate-400">
                       {isArabic
                         ? "لا توجد مواعيد في هذا اليوم."
@@ -1345,14 +1540,22 @@ const DoctorDashboard = () => {
                         <div>
                           <p className="text-sm font-semibold">
                             {a.patients?.name ||
-                              (isArabic ? "مريض" : "Patient")}
+                              (isArabic
+                                ? "مريض"
+                                : "Patient")}
                           </p>
+
                           <p className="text-xs opacity-80">
-                            {formatAppointmentType(a.appointment_type)}
+                            {formatAppointmentType(
+                              a.appointment_type
+                            )}
                           </p>
                         </div>
+
                         <span className="text-xs font-semibold">
-                          {formatTime(a.appointment_time)}
+                          {formatTime(
+                            a.appointment_time
+                          )}
                         </span>
                       </div>
                     ))
@@ -1361,19 +1564,27 @@ const DoctorDashboard = () => {
               </div>
             </div>
 
-            {/* المدفوعات + المرضى الأخيرون + حالة المرضى */}
+            {/* Payments + recent patients + status */}
+
             <div className="grid gap-6 lg:grid-cols-3">
-              {/* المدفوعات */}
+
+              {/* Payments */}
+
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "المدفوعات" : "Payments"}
+                    {isArabic
+                      ? "المدفوعات"
+                      : "Payments"}
                   </h2>
+
                   <Link
                     to="/doctor/payments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic ? "عرض الكل" : "View all"}
+                    {isArabic
+                      ? "عرض الكل"
+                      : "View all"}
                   </Link>
                 </div>
 
@@ -1382,7 +1593,9 @@ const DoctorDashboard = () => {
                   style={{
                     background: `conic-gradient(#14b8a6 0% ${
                       totalTreatmentValue > 0
-                        ? (totalPaid / totalTreatmentValue) * 100
+                        ? (totalPaid /
+                            totalTreatmentValue) *
+                          100
                         : 0
                     }%, #f97316 0)`,
                   }}
@@ -1391,8 +1604,11 @@ const DoctorDashboard = () => {
                     <p className="text-lg font-bold text-slate-900 dark:text-white">
                       {formatMoney(paidThisMonth)}
                     </p>
+
                     <p className="text-[10px] text-slate-400">
-                      {isArabic ? "هذا الشهر" : "this month"}
+                      {isArabic
+                        ? "هذا الشهر"
+                        : "this month"}
                     </p>
                   </div>
                 </div>
@@ -1401,43 +1617,64 @@ const DoctorDashboard = () => {
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                       <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-                      {isArabic ? "مدفوع" : "Paid"}
+
+                      {isArabic
+                        ? "مدفوع"
+                        : "Paid"}
                     </span>
+
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
                       {formatMoney(totalPaid)}
                     </span>
                   </div>
+
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                       <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
-                      {isArabic ? "متبقي" : "Remaining"}
+
+                      {isArabic
+                        ? "متبقي"
+                        : "Remaining"}
                     </span>
+
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
                       {formatMoney(
-                        Math.max(totalTreatmentValue - totalPaid, 0)
+                        Math.max(
+                          totalTreatmentValue -
+                            totalPaid,
+                          0
+                        )
                       )}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* المرضى الأخيرون */}
+              {/* Recent patients */}
+
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "المرضى الأخيرون" : "Recent Patients"}
+                    {isArabic
+                      ? "المرضى الأخيرون"
+                      : "Recent Patients"}
                   </h2>
+
                   <Link
                     to="/doctor/patients"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic ? "عرض الكل" : "View all"}
+                    {isArabic
+                      ? "عرض الكل"
+                      : "View all"}
                   </Link>
                 </div>
 
                 {recentPatients.length === 0 ? (
                   <p className="py-6 text-center text-sm text-slate-400">
-                    {isArabic ? "لا يوجد مرضى بعد." : "No patients yet."}
+                    {isArabic
+                      ? "لا يوجد مرضى بعد."
+                      : "No patients yet."}
                   </p>
                 ) : (
                   <div className="space-y-3">
@@ -1451,10 +1688,12 @@ const DoctorDashboard = () => {
                           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50 text-sm font-bold text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
                             {p.name.charAt(0)}
                           </span>
+
                           <div>
                             <p className="text-sm font-semibold text-slate-800 dark:text-white">
                               {p.name}
                             </p>
+
                             <p className="text-xs text-slate-400">
                               {p.phone || "-"}
                             </p>
@@ -1466,7 +1705,9 @@ const DoctorDashboard = () => {
                             p.latest_status
                           )}`}
                         >
-                          {formatStatusLabel(p.latest_status)}
+                          {formatStatusLabel(
+                            p.latest_status
+                          )}
                         </span>
                       </Link>
                     ))}
@@ -1474,12 +1715,16 @@ const DoctorDashboard = () => {
                 )}
               </div>
 
-              {/* حالة المرضى */}
+              {/* Patient status */}
+
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "حالة المرضى" : "Patient Status"}
+                    {isArabic
+                      ? "حالة المرضى"
+                      : "Patient Status"}
                   </h2>
+
                   <Bell className="h-4 w-4 text-slate-300" />
                 </div>
 
@@ -1498,8 +1743,11 @@ const DoctorDashboard = () => {
                     <p className="text-lg font-bold text-slate-900 dark:text-white">
                       {patientsCount}
                     </p>
+
                     <p className="text-[10px] text-slate-400">
-                      {isArabic ? "إجمالي المرضى" : "total patients"}
+                      {isArabic
+                        ? "إجمالي المرضى"
+                        : "total patients"}
                     </p>
                   </div>
                 </div>
@@ -1507,23 +1755,38 @@ const DoctorDashboard = () => {
                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-                    {isArabic ? "قيد العلاج" : "In progress"} (
-                    {patientStatusBreakdown.in_progress})
+
+                    {isArabic
+                      ? "قيد العلاج"
+                      : "In progress"}{" "}
+                    ({patientStatusBreakdown.in_progress})
                   </span>
+
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                    {isArabic ? "في المتابعة" : "Follow-up"} (
-                    {patientStatusBreakdown.follow_up})
+
+                    {isArabic
+                      ? "في المتابعة"
+                      : "Follow-up"}{" "}
+                    ({patientStatusBreakdown.follow_up})
                   </span>
+
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
-                    {isArabic ? "مكتمل العلاج" : "Completed"} (
-                    {patientStatusBreakdown.completed})
+
+                    {isArabic
+                      ? "مكتمل العلاج"
+                      : "Completed"}{" "}
+                    ({patientStatusBreakdown.completed})
                   </span>
+
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                    {isArabic ? "لم يحضر" : "No show"} (
-                    {patientStatusBreakdown.no_show})
+
+                    {isArabic
+                      ? "لم يحضر"
+                      : "No show"}{" "}
+                    ({patientStatusBreakdown.no_show})
                   </span>
                 </div>
               </div>
@@ -1536,6 +1799,8 @@ const DoctorDashboard = () => {
 };
 
 export default DoctorDashboard;
+
+
 
 
 

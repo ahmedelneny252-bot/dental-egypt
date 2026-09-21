@@ -1,16 +1,14 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertCircle,
   Bell,
-  Calendar,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
-  Eye,
   Globe,
-  MoreVertical,
   Moon,
   RefreshCcw,
   Search,
@@ -28,6 +26,7 @@ type Patient = {
   address: string | null;
   medical_notes: string | null;
   created_at: string;
+  case_status: string | null;
 };
 
 type LatestAppointmentInfo = {
@@ -61,8 +60,9 @@ const Patients = () => {
   const [patients, setPatients] = useState<PatientWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
-  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const [editingPatientId, setEditingPatientId] = useState<string | null>(
+    null
+  );
 
   const [clinicId, setClinicId] = useState("");
   const [subscriptionPlan, setSubscriptionPlan] = useState("Free");
@@ -168,7 +168,7 @@ const Patients = () => {
     const { data, error: patientsError } = await supabase
       .from("patients")
       .select(
-        "id, name, phone, age, gender, address, medical_notes, created_at"
+        "id, name, phone, age, gender, address, medical_notes, created_at, case_status"
       )
       .eq("clinic_id", clinicIdValue)
       .order("created_at", { ascending: false });
@@ -187,6 +187,7 @@ const Patients = () => {
       await supabase
         .from("appointments")
         .select("patient_id, appointment_date, status")
+        .eq("clinic_id", clinicIdValue)
         .in("patient_id", patientIds.length ? patientIds : [""])
         .order("appointment_date", { ascending: false });
 
@@ -220,6 +221,7 @@ const Patients = () => {
     const { data: recordsData, error: recordsError } = await supabase
       .from("medical_records")
       .select("patient_id, cost")
+      .eq("clinic_id", clinicIdValue)
       .in("patient_id", patientIds.length ? patientIds : [""]);
 
     if (recordsError) {
@@ -229,6 +231,7 @@ const Patients = () => {
     const { data: paymentsData, error: paymentsError } = await supabase
       .from("payments")
       .select("patient_id, amount")
+      .eq("clinic_id", clinicIdValue)
       .in("patient_id", patientIds.length ? patientIds : [""]);
 
     if (paymentsError) {
@@ -257,11 +260,19 @@ const Patients = () => {
 
     const patientsWithStatus: PatientWithStatus[] = patientRows.map((p) => {
       const latestAppointment = latestByPatient.get(p.id) || null;
-      const upcomingCount = upcomingCountByPatient.get(p.id) || 0;
+
+      // لو الحالة مكتملة، لا نعتبر أي موعد قادم موجودًا للمريض
+      // حتى لو كان هناك موعد قديم/متبقي في جدول appointments.
+      const upcomingCount =
+        p.case_status === "completed"
+          ? 0
+          : upcomingCountByPatient.get(p.id) || 0;
 
       let statusCategory: PatientStatusCategory;
 
-      if (!latestAppointment) {
+      if (p.case_status === "completed") {
+        statusCategory = "completed";
+      } else if (!latestAppointment) {
         statusCategory = "no_data";
       } else if (latestAppointment.status === "cancelled") {
         statusCategory = "needs_followup";
@@ -372,47 +383,6 @@ const Patients = () => {
 
   const hasReachedPatientLimit =
     subscriptionPlan === "Free" && patients.length >= FREE_PATIENT_LIMIT;
-
-  const startEditPatient = (patient: PatientWithStatus) => {
-    setEditingPatientId(patient.id);
-    setName(patient.name);
-    setPhone(patient.phone || "");
-    setAge(patient.age !== null ? String(patient.age) : "");
-    setGender(patient.gender || "");
-    setAddress(patient.address || "");
-    setMedicalNotes(patient.medical_notes || "");
-    setShowForm(true);
-    setOpenActionMenuId(null);
-    setError("");
-    setSuccess("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleDeletePatient = async (patient: PatientWithStatus) => {
-    setOpenActionMenuId(null);
-
-    const confirmed = window.confirm(
-      isArabic
-        ? `متأكد إنك عايز تحذف "${patient.name}"؟ الإجراء ده لا يمكن التراجع عنه.`
-        : `Are you sure you want to delete "${patient.name}"? This cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    const { error: deleteError } = await supabase
-      .from("patients")
-      .delete()
-      .eq("id", patient.id);
-
-    if (deleteError) {
-      console.error(deleteError);
-      setError(deleteError.message);
-      return;
-    }
-
-    setSuccess(isArabic ? "تم حذف المريض." : "Patient deleted.");
-    await loadPatients(clinicId);
-  };
 
   const handleSubmitPatient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -702,9 +672,7 @@ const Patients = () => {
 
               {unreadNotifications > 0 && (
                 <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {unreadNotifications > 99
-                    ? "99+"
-                    : unreadNotifications}
+                  {unreadNotifications > 99 ? "99+" : unreadNotifications}
                 </span>
               )}
             </Link>
@@ -818,7 +786,7 @@ const Patients = () => {
                 placeholder={isArabic ? "الملاحظات الطبية" : "Medical Notes"}
                 value={medicalNotes}
                 onChange={(e) => setMedicalNotes(e.target.value)}
-                className="min-h-32 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 md:col-span-2"
+                className="min-h-32 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 md:col-span-2"
               />
 
               <div className="flex gap-3 md:col-span-2">
@@ -969,7 +937,6 @@ const Patients = () => {
               <table className="w-full">
                 <thead className="bg-slate-50 dark:bg-slate-800/60">
                   <tr>
-                    {/* المريض */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -978,7 +945,6 @@ const Patients = () => {
                       {isArabic ? "المريض" : "Patient"}
                     </th>
 
-                    {/* العمر */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -987,7 +953,6 @@ const Patients = () => {
                       {isArabic ? "العمر" : "Age"}
                     </th>
 
-                    {/* رقم الهاتف */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -996,7 +961,6 @@ const Patients = () => {
                       {isArabic ? "رقم الهاتف" : "Phone"}
                     </th>
 
-                    {/* الحالة */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -1005,7 +969,6 @@ const Patients = () => {
                       {isArabic ? "الحالة" : "Status"}
                     </th>
 
-                    {/* آخر موعد */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -1014,7 +977,6 @@ const Patients = () => {
                       {isArabic ? "آخر موعد" : "Last visit"}
                     </th>
 
-                    {/* إجمالي العلاج */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -1023,7 +985,6 @@ const Patients = () => {
                       {isArabic ? "إجمالي العلاج" : "Total treatment"}
                     </th>
 
-                    {/* المدفوع */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -1032,7 +993,6 @@ const Patients = () => {
                       {isArabic ? "المدفوع" : "Paid"}
                     </th>
 
-                    {/* الباقي */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
@@ -1041,22 +1001,12 @@ const Patients = () => {
                       {isArabic ? "الباقي" : "Remaining"}
                     </th>
 
-                    {/* المواعيد القادمة */}
                     <th
                       className={`px-6 py-4 ${
                         isArabic ? "text-right" : "text-left"
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
                       {isArabic ? "المواعيد القادمة" : "Upcoming"}
-                    </th>
-
-                    {/* الإجراءات */}
-                    <th
-                      className={`px-6 py-4 ${
-                        isArabic ? "text-right" : "text-left"
-                      } text-sm font-semibold text-slate-600 dark:text-slate-300`}
-                    >
-                      {isArabic ? "الإجراءات" : "Actions"}
                     </th>
                   </tr>
                 </thead>
@@ -1070,7 +1020,6 @@ const Patients = () => {
                         key={patient.id}
                         className="border-t border-slate-100 dark:border-slate-800"
                       >
-                        {/* المريض */}
                         <td className="px-6 py-4">
                           <Link
                             to={`/doctor/patients/${patient.id}`}
@@ -1086,12 +1035,10 @@ const Patients = () => {
                           </Link>
                         </td>
 
-                        {/* العمر */}
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600 dark:text-slate-300">
                           {patient.age !== null ? patient.age : "-"}
                         </td>
 
-                        {/* رقم الهاتف */}
                         <td
                           className="whitespace-nowrap px-6 py-4 text-slate-600 dark:text-slate-300"
                           dir="ltr"
@@ -1099,7 +1046,6 @@ const Patients = () => {
                           {patient.phone || "-"}
                         </td>
 
-                        {/* الحالة */}
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${meta.badgeClass}`}
@@ -1109,24 +1055,21 @@ const Patients = () => {
                           </span>
                         </td>
 
-                        {/* آخر موعد */}
                         <td className="whitespace-nowrap px-6 py-4 text-slate-600 dark:text-slate-300">
                           {formatDate(
-                            patient.latestAppointment?.appointment_date || null
+                            patient.latestAppointment?.appointment_date ||
+                              null
                           )}
                         </td>
 
-                        {/* إجمالي العلاج */}
                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">
                           {formatMoney(patient.totalTreatment)}
                         </td>
 
-                        {/* المدفوع */}
                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-green-600 dark:text-green-400">
                           {formatMoney(patient.totalPaid)}
                         </td>
 
-                        {/* الباقي */}
                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-orange-600 dark:text-orange-400">
                           {patient.remaining > 0
                             ? formatMoney(patient.remaining)
@@ -1135,77 +1078,8 @@ const Patients = () => {
                             : "Paid in full"}
                         </td>
 
-                        {/* المواعيد القادمة */}
                         <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">
                           {patient.upcomingCount}
-                        </td>
-
-                        {/* الإجراءات */}
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-1.5">
-                            <Link
-                              to={`/doctor/patients/${patient.id}`}
-                              title={isArabic ? "عرض الملف" : "View file"}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Link>
-
-                            <Link
-                              to="/doctor/appointments"
-                              title={
-                                isArabic ? "حجز موعد" : "Book appointment"
-                              }
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
-                            >
-                              <Calendar className="h-4 w-4" />
-                            </Link>
-
-                            <div className="relative">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setOpenActionMenuId((current) =>
-                                    current === patient.id
-                                      ? null
-                                      : patient.id
-                                  )
-                                }
-                                title={isArabic ? "خيارات" : "More"}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 dark:text-slate-500 dark:hover:bg-slate-800"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-
-                              {openActionMenuId === patient.id && (
-                                <div className="absolute end-0 z-10 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      startEditPatient(patient)
-                                    }
-                                    className="w-full rounded-lg px-3 py-2 text-start text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
-                                  >
-                                    {isArabic
-                                      ? "تعديل البيانات"
-                                      : "Edit"}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleDeletePatient(patient)
-                                    }
-                                    className="w-full rounded-lg px-3 py-2 text-start text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                                  >
-                                    {isArabic
-                                      ? "حذف المريض"
-                                      : "Delete"}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
                         </td>
                       </tr>
                     );
@@ -1219,7 +1093,9 @@ const Patients = () => {
             <div className="flex flex-col gap-3 border-t border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isArabic
-                  ? `عرض ${(currentPage - 1) * PAGE_SIZE + 1} - ${Math.min(
+                  ? `عرض ${
+                      (currentPage - 1) * PAGE_SIZE + 1
+                    } - ${Math.min(
                       currentPage * PAGE_SIZE,
                       filteredPatients.length
                     )} من ${filteredPatients.length} مريض`
@@ -1235,9 +1111,7 @@ const Patients = () => {
                 <button
                   type="button"
                   disabled={currentPage === 1}
-                  onClick={() =>
-                    setPage((p) => Math.max(1, p - 1))
-                  }
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <PrevIcon className="h-4 w-4" />
@@ -1278,5 +1152,7 @@ const Patients = () => {
 };
 
 export default Patients;
+
+
 
 

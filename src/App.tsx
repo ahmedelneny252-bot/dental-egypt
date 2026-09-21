@@ -34,6 +34,7 @@ import ClinicProfile from "./ClinicProfile";
 import Reviews from "./Reviews";
 import DoctorNotifications from "./DoctorNotifications";
 import Payments from "./Payments";
+import Reports from "./Reports";
 
 // Patient Pages
 import PatientRegister from "./PatientRegister";
@@ -184,6 +185,14 @@ const AppLayout = () => {
             element={<Payments />}
           />
 
+          {/* الراوت ده كان ناقص، وهو سبب إن زرار "التقارير" في
+              الداشبورد كان بيرجّع المستخدم للصفحة الرئيسية بدل ما
+              يفتح صفحة التقارير (لأنه كان بيقع تحت الـ "*" في الآخر) */}
+          <Route
+            path="/doctor/reports"
+            element={<Reports />}
+          />
+
           <Route
             path="/doctor/subscription"
             element={<Subscription />}
@@ -197,7 +206,15 @@ const AppLayout = () => {
             فبالتالي شلنا Patientbookappointment والراوت
             الخاص بيها ("/patient/book" و "/offers")
             عشان محتوى مكرر خلاص.
+
+            صفحة /patient/appointments نفسها لسه ملفها
+            (PatientAppointments) متعلق، فسبنا الراوت بتاعها
+            متعلق برضه لحد ما يترفع الملف.
           */}
+          {/* <Route
+            path="/patient/appointments"
+            element={<PatientAppointments />}
+          /> */}
 
           <Route
             path="/patient/register"
@@ -212,11 +229,6 @@ const AppLayout = () => {
           <Route
             path="/patient/dashboard"
             element={<PatientDashboard />}
-          />
-
-         // <Route
-           // path="/patient/appointments"
-           // element={<PatientAppointments />}
           />
 
           <Route

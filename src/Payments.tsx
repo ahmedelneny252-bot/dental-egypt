@@ -1,4 +1,13 @@
+
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Globe,
+  Moon,
+  Sun,
+} from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
 
@@ -30,6 +39,8 @@ type Payment = {
 };
 
 const Payments = () => {
+  const navigate = useNavigate();
+
   const [payments, setPayments] = useState<Payment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
@@ -61,8 +72,23 @@ const Payments = () => {
     return savedLanguage === "en" ? "en" : "ar";
   });
 
+  // =========================
+  // Theme
+  // =========================
+
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const savedTheme = localStorage.getItem("theme");
+
+    return savedTheme === "dark" ? "dark" : "light";
+  });
+
   const isArabic = language === "ar";
+  const isDark = theme === "dark";
   const t = translations[language];
+
+  // =========================
+  // Language + Theme Effects
+  // =========================
 
   useEffect(() => {
     const handleLanguageChange = () => {
@@ -96,6 +122,28 @@ const Payments = () => {
       );
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dir = isArabic ? "rtl" : "ltr";
+    document.documentElement.lang = language;
+
+    localStorage.setItem(
+      "dentalcare-language",
+      language
+    );
+  }, [language, isArabic]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle(
+      "dark",
+      isDark
+    );
+
+    localStorage.setItem(
+      "theme",
+      theme
+    );
+  }, [theme, isDark]);
 
   // =========================
   // Get Clinic
@@ -523,18 +571,6 @@ const Payments = () => {
       0
     );
 
-  const vodafoneCashTotal = payments
-    .filter(
-      (payment) =>
-        payment.payment_method ===
-        "Vodafone Cash"
-    )
-    .reduce(
-      (total, payment) =>
-        total + Number(payment.amount || 0),
-      0
-    );
-
   if (loading) {
     return (
       <div
@@ -553,16 +589,96 @@ const Payments = () => {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-32 pb-12 px-6"
+      className="min-h-screen bg-slate-50 dark:bg-slate-950"
     >
-      <div className="mx-auto max-w-7xl">
+      {/* =========================
+          Top Bar
+      ========================= */}
+
+      <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+
+          {/* Back */}
+
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            {isArabic ? (
+              <ArrowRight className="h-4 w-4" />
+            ) : (
+              <ArrowLeft className="h-4 w-4" />
+            )}
+
+            {isArabic ? "رجوع" : "Back"}
+          </button>
+
+          {/* Language + Theme */}
+
+          <div className="flex items-center gap-2">
+
+            <button
+              onClick={() => {
+                const nextLanguage =
+                  isArabic ? "en" : "ar";
+
+                setLanguage(nextLanguage);
+
+                localStorage.setItem(
+                  "dentalcare-language",
+                  nextLanguage
+                );
+
+                window.dispatchEvent(
+                  new Event(
+                    "dentalcare-language-change"
+                  )
+                );
+              }}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Globe className="h-4 w-4" />
+              {isArabic ? "EN" : "AR"}
+            </button>
+
+            <button
+              onClick={() => {
+                const nextTheme =
+                  isDark ? "light" : "dark";
+
+                setTheme(nextTheme);
+
+                localStorage.setItem(
+                  "theme",
+                  nextTheme
+                );
+              }}
+              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              aria-label="Toggle theme"
+            >
+              {isDark ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </button>
+
+          </div>
+        </div>
+      </div>
+
+      {/* =========================
+          Main Content
+      ========================= */}
+
+      <main className="mx-auto max-w-7xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
 
         {/* Header */}
 
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
               {isArabic
                 ? "المدفوعات"
                 : "Payments"}
@@ -585,7 +701,7 @@ const Payments = () => {
                 resetForm();
               }
             }}
-            className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
+            className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-teal-700"
           >
             {showForm
               ? isArabic
@@ -601,13 +717,13 @@ const Payments = () => {
         {/* Messages */}
 
         {error && (
-          <div className="mb-5 rounded-xl bg-red-50 dark:bg-red-950/30 p-4 text-red-600 dark:text-red-400">
+          <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-600 dark:bg-red-950/30 dark:text-red-400">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-5 rounded-xl bg-green-50 dark:bg-green-950/30 p-4 text-green-600 dark:text-green-400">
+          <div className="mb-5 rounded-xl bg-green-50 p-4 text-green-600 dark:bg-green-950/30 dark:text-green-400">
             {success}
           </div>
         )}
@@ -616,7 +732,7 @@ const Payments = () => {
 
         <div className="mb-8 grid gap-5 md:grid-cols-2 lg:grid-cols-5">
 
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "قيمة العلاجات"
@@ -628,7 +744,7 @@ const Payments = () => {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "إجمالي المدفوع"
@@ -640,7 +756,7 @@ const Payments = () => {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "إجمالي المتبقي"
@@ -652,7 +768,7 @@ const Payments = () => {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "نقدي"
@@ -664,7 +780,7 @@ const Payments = () => {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "بطاقة"
@@ -681,7 +797,7 @@ const Payments = () => {
         {/* Add Payment Form */}
 
         {showForm && (
-          <div className="mb-8 rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
+          <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
 
             <h2 className="mb-6 text-2xl font-semibold text-slate-900 dark:text-white">
               {isArabic
@@ -711,7 +827,7 @@ const Payments = () => {
                     )
                   }
                   required
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 >
                   <option value="">
                     {isArabic
@@ -752,7 +868,7 @@ const Payments = () => {
                   }}
                   disabled={!patientId}
                   required
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500 disabled:bg-slate-100 dark:disabled:bg-slate-700"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:disabled:bg-slate-700"
                 >
                   <option value="">
                     {patientId
@@ -800,7 +916,7 @@ const Payments = () => {
               {/* Treatment Summary */}
 
               {selectedRecord && (
-                <div className="rounded-xl bg-slate-50 dark:bg-slate-800 p-4 md:col-span-2">
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800 md:col-span-2">
 
                   <div className="grid gap-4 md:grid-cols-3">
 
@@ -884,7 +1000,7 @@ const Payments = () => {
                     )
                   }
                   required
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 px-4 py-3 outline-none focus:border-teal-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400"
                 />
               </div>
 
@@ -904,7 +1020,7 @@ const Payments = () => {
                       e.target.value
                     )
                   }
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 >
                   <option value="Cash">
                     {isArabic
@@ -951,7 +1067,7 @@ const Payments = () => {
                       e.target.value
                     )
                   }
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-4 py-3 outline-none focus:border-teal-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 />
               </div>
 
@@ -977,7 +1093,7 @@ const Payments = () => {
                       e.target.value
                     )
                   }
-                  className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 px-4 py-3 outline-none focus:border-teal-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400"
                 />
               </div>
 
@@ -993,12 +1109,12 @@ const Payments = () => {
                 onChange={(e) =>
                   setNotes(e.target.value)
                 }
-                className="min-h-28 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 px-4 py-3 outline-none focus:border-teal-500 md:col-span-2"
+                className="min-h-28 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400 md:col-span-2"
               />
 
               <button
                 type="submit"
-                className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 md:col-span-2"
+                className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white transition hover:bg-teal-700 md:col-span-2"
               >
                 {isArabic
                   ? "إضافة الدفعة"
@@ -1011,9 +1127,9 @@ const Payments = () => {
 
         {/* Payment History */}
 
-        <div className="rounded-2xl bg-white dark:bg-slate-900 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
 
-          <div className="border-b border-slate-200 dark:border-slate-700 p-6">
+          <div className="border-b border-slate-200 p-6 dark:border-slate-700">
 
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
               {isArabic
@@ -1115,7 +1231,7 @@ const Payments = () => {
                       return (
                         <tr
                           key={payment.id}
-                          className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                          className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                         >
 
                           <td className="px-5 py-4 font-medium text-slate-900 dark:text-white">
@@ -1190,10 +1306,11 @@ const Payments = () => {
 
         </div>
 
-      </div>
+      </main>
     </div>
   );
 };
 
 export default Payments;
+
 
