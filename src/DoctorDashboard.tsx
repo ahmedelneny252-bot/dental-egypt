@@ -21,7 +21,7 @@ import {
   PackageSearch,
   Star,
   Menu,
-  X,
+  PanelRightClose,
   Languages,
   Sun,
   Moon,
@@ -205,9 +205,10 @@ const DoctorDashboard = () => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
-  // السايدبار (القائمة الجانبية) بقى مخفي افتراضيًا زي صفحة
-  // منفصلة، ومايظهرش إلا لما تدوس على زرار القائمة (☰) في الهيدر
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // هل الـ Sidebar (الرئيسية / المرضى / المواعيد / ... إلخ) ظاهر؟
+  // نفس فكرة داشبورد المريض بالظبط: مش أوفرلاي فوق الصفحة،
+  // ده جزء ثابت على اليمين بيظهر أو يختفي بزرار في الهيدر.
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // فتح/قفل لوحة "ملخص اليوم" جوه الأدوات السريعة
   const [todaySummaryOpen, setTodaySummaryOpen] = useState(false);
@@ -746,46 +747,30 @@ const DoctorDashboard = () => {
       className="min-h-screen bg-slate-50 dark:bg-slate-950"
     >
       {/* ====================================================
-          Sidebar (بقى Overlay/Drawer مخفي افتراضيًا)
-          - مش جزء ثابت من الصفحة تاني، ده بيبان زي صفحة
-            منفصلة بس لما تدوس على زرار القائمة (☰) في الهيدر.
-          - z-40 عشان يبقى فوق الـ backdrop (z-30) وفوق الهيدر
-            نفسه (z-20).
-          - بيتحرك بـ translate-x بدل ما يتشال من الـ DOM عشان
-            الانتقال يبقى سلس (transition).
+          Sidebar — بقى على اليمين بالظبط زي داشبورد المريض،
+          وثابت في مكانه (مش أوفرلاي)، بيظهر/يختفي بزرار في
+          الهيدر بدل ما يتفتح فوق الصفحة.
          ==================================================== */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-y-auto bg-[#0b1526] px-4 py-6 transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-0 right-0 z-30 hidden w-64 flex-col overflow-y-auto bg-[#0b1526] px-4 py-6 ${
+          sidebarOpen ? "lg:flex" : "lg:hidden"
         }`}
       >
-        <div className="mb-8 flex items-center justify-between gap-2 px-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-white">
-              <ToothIcon className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-sm font-bold leading-tight text-white">
-                DentalCare
-              </p>
-              <p className="text-[11px] leading-tight text-slate-400">
-                {isArabic ? "نظام إدارة العيادة" : "Clinic System"}
-              </p>
-            </div>
+        <div className="mb-8 flex items-center gap-2 px-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-white">
+            <ToothIcon className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-sm font-bold leading-tight text-white">
+              DentalCare
+            </p>
+            <p className="text-[11px] leading-tight text-slate-400">
+              {isArabic ? "نظام إدارة العيادة" : "Clinic System"}
+            </p>
           </div>
-
-          {/* زرار قفل القائمة */}
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/5 hover:text-white"
-            aria-label={isArabic ? "إغلاق القائمة" : "Close menu"}
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
 
-        <nav className="space-y-1" onClick={() => setSidebarOpen(false)}>
+        <nav className="space-y-1">
           {navItems.map((item) => (
             <Link
               key={item.to}
@@ -928,28 +913,40 @@ const DoctorDashboard = () => {
         </div>
       </aside>
 
-      {/* خلفية شفافة (backdrop) تظهر لما القائمة تكون مفتوحة، الدوس
-          عليها بيقفل القائمة تاني */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
       {/* ==================== Main column ==================== */}
-      <div>
+      <div className={sidebarOpen ? "lg:pr-64" : ""}>
         {/* ---------- Top bar ---------- */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:gap-4 sm:px-6">
-          {/* يمين: زرار فتح القائمة + شعار المنصة */}
+          {/* يمين: زرار إظهار/إخفاء القائمة الجانبية + شعار المنصة */}
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-              aria-label={isArabic ? "فتح القائمة" : "Open menu"}
+              onClick={() => setSidebarOpen((open) => !open)}
+              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 lg:flex"
+              aria-label={
+                sidebarOpen
+                  ? isArabic
+                    ? "إخفاء القائمة"
+                    : "Hide sidebar"
+                  : isArabic
+                  ? "إظهار القائمة"
+                  : "Show sidebar"
+              }
+              title={
+                sidebarOpen
+                  ? isArabic
+                    ? "إخفاء القائمة"
+                    : "Hide sidebar"
+                  : isArabic
+                  ? "إظهار القائمة"
+                  : "Show sidebar"
+              }
             >
-              <Menu className="h-5 w-5" />
+              {sidebarOpen ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <Menu className="h-4 w-4" />
+              )}
             </button>
 
             <Link to="/doctor/dashboard" className="flex items-center gap-2">

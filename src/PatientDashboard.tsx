@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Bell,
+  Building2,
   Calendar,
   CalendarPlus,
   CheckCircle2,
@@ -182,6 +183,23 @@ const PatientDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // ============================================
+  // العيادة المختارة — كل حاجة في الداشبورد (المواعيد،
+  // الحجز، الإشعارات، المدفوعات) بتبقى خاصة بالعيادة دي بس
+  // ============================================
+
+  const [clinicsList, setClinicsList] = useState<{ id: string; name: string }[]>([]);
+
+  const [selectedClinicId, setSelectedClinicId] = useState<string>(() => {
+    return localStorage.getItem("dentalcare-selected-clinic") || "";
+  });
+
+  const handleClinicChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newClinicId = e.target.value;
+    setSelectedClinicId(newClinicId);
+    localStorage.setItem("dentalcare-selected-clinic", newClinicId);
+  };
+
+  // ============================================
   // Helpers
   // ============================================
 
@@ -267,6 +285,29 @@ const PatientDashboard = () => {
   };
 
   // ============================================
+  // Load clinics list (لملء قائمة اختيار العيادة فوق)
+  // ============================================
+
+  useEffect(() => {
+    const loadClinicsList = async () => {
+      const { data, error } = await supabase
+        .from("clinics")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error("Clinics list load error:", error);
+        setClinicsList([]);
+        return;
+      }
+
+      setClinicsList(data || []);
+    };
+
+    loadClinicsList();
+  }, []);
+
+  // ============================================
   // Load dashboard data
   // ============================================
 
@@ -283,22 +324,62 @@ const PatientDashboard = () => {
         return;
       }
 
-      // مريض واحد ممكن يكون ليه أكتر من سجل (زي صفحة
-      // /patient/appointments بالظبط)
-      const { data: patientRows, error: patientError } = await supabase
+      // كل سجلات المريض عبر كل العيادات — بنستخدمها بس عشان
+      // نحدد عيادة افتراضية لو المريض لسه ما اختارش عيادة
+      const { data: allPatientRows, error: allPatientsError } = await supabase
         .from("patients")
-        .select("id, name")
+        .select("id, name, clinic_id")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true });
 
-      if (patientError || !patientRows || patientRows.length === 0) {
-        console.error("Patient load error:", patientError);
+      if (allPatientsError) {
+        console.error("Patient load error:", allPatientsError);
+      }
+
+      let activeClinicId = selectedClinicId;
+
+      // لسه ما اختارش عيادة يدويًا؟ نفترض عيادة أول سجل مريض عنده كعيادة افتراضية
+      if (!activeClinicId && allPatientRows && allPatientRows.length > 0) {
+        activeClinicId = allPatientRows[0].clinic_id;
+        setSelectedClinicId(activeClinicId);
+        localStorage.setItem("dentalcare-selected-clinic", activeClinicId);
+      }
+
+      // مفيش عيادة متحددة خالص ومفيش سجلات قديمة — لازم يختار عيادة الأول
+      if (!activeClinicId) {
+        setPatient(null);
+        setUpcomingAppointments([]);
+        setUpcomingCount(0);
+        setRecentVisits([]);
+        setNotifications([]);
+        setTotalPaid(0);
+        setTotalTreatmentValue(0);
+        setMonthlyPayments([]);
         setLoading(false);
         return;
       }
 
-      setPatient(patientRows[0]);
-      const patientIds = patientRows.map((p) => p.id);
+      // سجل المريض الخاص بالعيادة المختارة تحديدًا
+      const matchingPatient =
+        (allPatientRows || []).find((p) => p.clinic_id === activeClinicId) || null;
+
+      // اختار عيادة لسه ما حجزش فيها قبل كده — نعرض حالة فاضية
+      // (لحد ما يحجز أول موعد فيها من زرار "حجز موعد جديد")
+      if (!matchingPatient) {
+        setPatient(null);
+        setUpcomingAppointments([]);
+        setUpcomingCount(0);
+        setRecentVisits([]);
+        setNotifications([]);
+        setTotalPaid(0);
+        setTotalTreatmentValue(0);
+        setMonthlyPayments([]);
+        setLoading(false);
+        return;
+      }
+
+      setPatient({ id: matchingPatient.id, name: matchingPatient.name });
+      const patientIds = [matchingPatient.id];
 
       // ---------- Appointments ----------
 
@@ -416,7 +497,7 @@ const PatientDashboard = () => {
       const { data: notificationsData, error: notificationsError } = await supabase
         .from("notifications")
         .select("id, title, message, created_at, is_read")
-        .eq("patient_id", patientRows[0].id)
+        .eq("patient_id", matchingPatient.id)
         .eq("recipient_type", "patient")
         .order("created_at", { ascending: false })
         .limit(3);
@@ -431,7 +512,7 @@ const PatientDashboard = () => {
     };
 
     loadDashboard();
-  }, []);
+  }, [selectedClinicId]);
 
   // ============================================
   // Derived — المبلغ المتبقي
@@ -504,9 +585,17 @@ const PatientDashboard = () => {
   // ============================================
 
   const quickActions = [
-    { icon: CalendarPlus, label: isArabic ? "حجز موعد جديد" : "Book new appointment", to: "/patient/book" },
+    {
+      icon: CalendarPlus,
+      label: isArabic ? "حجز موعد جديد" : "Book new appointment",
+      to: selectedClinicId ? `/clinics/${selectedClinicId}/book` : "/clinics",
+    },
     { icon: Activity, label: isArabic ? "متابعة حالتي" : "Track my status", to: "/patient/appointments" },
-    { icon: RefreshCcw, label: isArabic ? "حجز موعد متابعة" : "Book follow-up appointment", to: "/patient/book?type=follow_up" },
+   // {
+      //icon: RefreshCcw,
+     // label: isArabic ? "حجز موعد متابعة" : "Book follow-up appointment",
+     // to: selectedClinicId ? `/clinics/${selectedClinicId}/book?type=follow_up` : "/clinics",
+   // },
     { icon: MessageCircle, label: isArabic ? "التواصل مع العيادة" : "Contact clinic", to: "/contact" },
   ];
 
@@ -682,35 +771,43 @@ const PatientDashboard = () => {
         {/* ---------- Content ---------- */}
         <main className="px-4 py-6 sm:px-6">
           <div className="space-y-6">
-            {/* Welcome banner + صورة */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-sky-500 via-blue-500 to-blue-600 p-6 text-white sm:p-8">
-              <div className="relative z-10 flex flex-col items-center gap-6 sm:flex-row sm:justify-between">
-                <div className="max-w-md text-center sm:text-right">
-                  <h1 className="flex items-center justify-center gap-2 text-2xl font-bold sm:justify-start sm:text-3xl">
-                    {isArabic ? "مرحباً بك مجدداً" : "Welcome back"} 👋
-                  </h1>
-                  <p className="mt-2 text-blue-50">
-                    {isArabic
-                      ? "نحن سعداء بوجودك دائمًا في عيادتنا."
-                      : "We're always happy to have you at our clinic."}
-                  </p>
-                </div>
+            {/* اختيار العيادة - كل حاجة تحت بتبقى خاصة بالعيادة دي */}
+            <div className="flex flex-col gap-3 rounded-2xl bg-blue-50/70 p-5 shadow-sm dark:bg-blue-950/20 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  {isArabic ? "عيادتك" : "Your clinic"}
+                </p>
 
-                {/* صورة ترحيبية - استبدل src بصورتك */}
-                <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-2 border-white/30 bg-white/10 shadow-lg sm:h-32 sm:w-32">
-                  <img
-                    src="/images/patient-welcome.jpg"
-                    alt={isArabic ? "صورة ترحيبية" : "Welcome image"}
-                    className="h-full w-full object-cover"
-                    onError={(e) => {
-                      // لو الصورة مش موجودة لسه، يظهر أيقونة سن بدل ما تتكسر الصفحة
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                </div>
+                {selectedClinicId ? (
+                  <p className="mt-1 flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
+                    <Building2 className="h-4 w-4 shrink-0 text-blue-500" />
+                    {isArabic ? "عيادتك الحالية: " : "Current clinic: "}
+                    {clinicsList.find((c) => c.id === selectedClinicId)?.name ||
+                      (isArabic ? "جاري التحميل..." : "Loading...")}
+                  </p>
+                ) : (
+                  <p className="mt-1 font-semibold text-amber-600 dark:text-amber-400">
+                    {isArabic
+                      ? "من فضلك اختر عيادتك عشان تقدر تحجز وتتابع مواعيدك"
+                      : "Please choose your clinic so you can book and track your appointments"}
+                  </p>
+                )}
               </div>
 
-              <ToothIcon className="pointer-events-none absolute -bottom-8 -end-6 h-40 w-40 text-white/10" />
+              <select
+                value={selectedClinicId}
+                onChange={handleClinicChange}
+                className="w-full rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 dark:border-blue-900 dark:bg-slate-800 dark:text-white sm:w-64"
+              >
+                <option value="" disabled>
+                  {isArabic ? "اختر عيادة" : "Choose a clinic"}
+                </option>
+                {clinicsList.map((clinic) => (
+                  <option key={clinic.id} value={clinic.id}>
+                    {clinic.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Stat cards */}
@@ -727,7 +824,7 @@ const PatientDashboard = () => {
                 </p>
                 <Link
                   to="/patient/appointments"
-                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                 >
                   {isArabic ? "عرض المواعيد" : "View appointments"}
                   <ChevronIcon className="h-3.5 w-3.5" />
@@ -764,7 +861,7 @@ const PatientDashboard = () => {
                 </p>
                 <Link
                   to="/patient/payments"
-                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                 >
                   {isArabic ? "عرض الفواتير" : "View invoices"}
                   <ChevronIcon className="h-3.5 w-3.5" />
@@ -783,7 +880,7 @@ const PatientDashboard = () => {
                 </p>
                 <Link
                   to="/patient/payments"
-                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                 >
                   {isArabic ? "عرض المدفوعات" : "View payments"}
                   <ChevronIcon className="h-3.5 w-3.5" />
@@ -807,7 +904,7 @@ const PatientDashboard = () => {
                     <Link
                       key={action.label}
                       to={action.to}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-teal-200 hover:bg-teal-50/50 hover:text-teal-700 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-teal-950/20 dark:hover:text-teal-300"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-blue-950/20 dark:hover:text-blue-300"
                     >
                       <span className="flex items-center gap-2">
                         <action.icon className="h-4 w-4" />
@@ -827,7 +924,7 @@ const PatientDashboard = () => {
                   </h2>
                   <Link
                     to="/patient/appointments"
-                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
                     {isArabic ? "عرض الكل" : "View all"}
@@ -846,7 +943,7 @@ const PatientDashboard = () => {
                         className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
                             <Calendar className="h-4 w-4" />
                           </span>
                           <div>
@@ -882,12 +979,12 @@ const PatientDashboard = () => {
                 <h2 className="mb-1 font-bold text-slate-900 dark:text-white">
                   {isArabic ? "تقدم خطة العلاج" : "Treatment plan progress"}
                 </h2>
-                <p className="mb-4 text-2xl font-bold text-teal-600 dark:text-teal-400">
+                <p className="mb-4 text-2xl font-bold text-blue-600 dark:text-blue-400">
                   {treatmentProgressPercent}%
                 </p>
                 <div className="mb-6 h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                   <div
-                    className="h-full rounded-full bg-teal-500"
+                    className="h-full rounded-full bg-blue-500"
                     style={{ width: `${treatmentProgressPercent}%` }}
                   />
                 </div>
@@ -898,9 +995,9 @@ const PatientDashboard = () => {
                       <span
                         className={`absolute top-0.5 -end-[27px] flex h-5 w-5 items-center justify-center rounded-full ${
                           step.status === "done"
-                            ? "bg-teal-500 text-white"
+                            ? "bg-blue-500 text-white"
                             : step.status === "current"
-                            ? "border-2 border-teal-500 bg-white text-teal-500 dark:bg-slate-900"
+                            ? "border-2 border-blue-500 bg-white text-blue-500 dark:bg-slate-900"
                             : "border-2 border-slate-200 bg-white text-slate-300 dark:border-slate-700 dark:bg-slate-900"
                         }`}
                       >
@@ -936,7 +1033,7 @@ const PatientDashboard = () => {
                   </h2>
                   <Link
                     to="/patient/appointments"
-                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
                     {isArabic ? "عرض الكل" : "View all"}
@@ -1003,7 +1100,7 @@ const PatientDashboard = () => {
                   </h2>
                   <Link
                     to="/patient/payments"
-                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
                     {isArabic ? "عرض الكل" : "View all"}
@@ -1052,7 +1149,7 @@ const PatientDashboard = () => {
                   </h2>
                   <Link
                     to="/patient/notifications"
-                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
                     {isArabic ? "عرض الكل" : "View all"}
@@ -1069,7 +1166,7 @@ const PatientDashboard = () => {
                       <div key={n.id} className="flex items-start gap-2">
                         <span
                           className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                            n.is_read ? "bg-slate-300 dark:bg-slate-600" : "bg-teal-500"
+                            n.is_read ? "bg-slate-300 dark:bg-slate-600" : "bg-blue-500"
                           }`}
                         />
                         <div>

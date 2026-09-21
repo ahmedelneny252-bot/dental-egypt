@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -7,7 +6,6 @@ import {
   Clock,
   Stethoscope,
   ScanLine,
-  RotateCcw,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
@@ -26,8 +24,9 @@ type Patient = {
 
 type AppointmentType =
   | "new_checkup"
-  | "follow_up"
   | "xray";
+
+type MedicalConditionsAnswer = "" | "no" | "yes";
 
 const FREE_APPOINTMENT_LIMIT = 50;
 
@@ -38,6 +37,13 @@ const BookAppointment = () => {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [age, setAge] = useState("");
+
+  const [hasMedicalConditions, setHasMedicalConditions] =
+    useState<MedicalConditionsAnswer>("");
+
+  const [medicalConditionsDetails, setMedicalConditionsDetails] =
+    useState("");
 
   const [appointmentType, setAppointmentType] =
     useState<AppointmentType>("new_checkup");
@@ -153,9 +159,6 @@ const BookAppointment = () => {
 
       case "xray":
         return isArabic ? "أشعة" : "X-ray";
-
-      case "follow_up":
-        return isArabic ? "إعادة" : "Follow-up";
 
       default:
         return isArabic ? "كشف" : "Checkup";
@@ -326,6 +329,55 @@ const BookAppointment = () => {
     }
 
     // ========================================
+    // Validate Age
+    // ========================================
+
+    const trimmedAge = age.trim();
+    const ageNumber = Number(trimmedAge);
+
+    if (
+      !trimmedAge ||
+      Number.isNaN(ageNumber) ||
+      ageNumber <= 0 ||
+      ageNumber > 120
+    ) {
+      setError(
+        isArabic
+          ? "من فضلك أدخل عمر المريض بشكل صحيح."
+          : "Please enter a valid patient age."
+      );
+
+      return;
+    }
+
+    // ========================================
+    // Validate Medical Conditions Answer
+    // ========================================
+
+    if (!hasMedicalConditions) {
+      setError(
+        isArabic
+          ? "من فضلك حدد هل يعاني المريض من أي أمراض أم لا."
+          : "Please specify whether the patient has any medical conditions."
+      );
+
+      return;
+    }
+
+    if (
+      hasMedicalConditions === "yes" &&
+      !medicalConditionsDetails.trim()
+    ) {
+      setError(
+        isArabic
+          ? "من فضلك اذكر الأمراض التي يعاني منها المريض."
+          : "Please describe the patient's medical conditions."
+      );
+
+      return;
+    }
+
+    // ========================================
     // Validate Appointment Type
     // ========================================
 
@@ -395,6 +447,18 @@ const BookAppointment = () => {
       }
 
       // ========================================
+      // Medical notes text built from the
+      // Yes/No answer + details
+      // ========================================
+
+      const medicalNotes =
+        hasMedicalConditions === "yes"
+          ? medicalConditionsDetails.trim()
+          : isArabic
+          ? "لا يعاني من أي أمراض"
+          : "No known medical conditions";
+
+      // ========================================
       // Create NEW Patient for THIS booking
       // ========================================
       //
@@ -414,7 +478,8 @@ const BookAppointment = () => {
           clinic_id: id,
           name: patientName,
           phone: phone.trim(),
-          medical_notes: null,
+          age: ageNumber,
+          medical_notes: medicalNotes,
           user_id: user.id,
         })
         .select("id, name, phone")
@@ -548,6 +613,9 @@ const BookAppointment = () => {
 
       setName("");
       setPhone("");
+      setAge("");
+      setHasMedicalConditions("");
+      setMedicalConditionsDetails("");
 
       // ========================================
       // Reset Appointment Fields
@@ -819,33 +887,146 @@ const BookAppointment = () => {
 
             </div>
 
-            {/* Phone */}
+            {/* Phone + Age */}
+
+            <div className="grid gap-5 md:grid-cols-2">
+
+              {/* Phone */}
+
+              <div>
+
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {isArabic
+                    ? "رقم الهاتف"
+                    : "Phone Number"}
+                </label>
+
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) =>
+                    setPhone(e.target.value)
+                  }
+                  placeholder={
+                    isArabic
+                      ? "أدخل رقم هاتف المريض"
+                      : "Enter the patient's phone number"
+                  }
+                  required
+                  disabled={
+                    hasReachedAppointmentLimit
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-teal-400 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                />
+
+              </div>
+
+              {/* Age */}
+
+              <div>
+
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {isArabic
+                    ? "عمر المريض"
+                    : "Patient Age"}
+                </label>
+
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  value={age}
+                  onChange={(e) =>
+                    setAge(e.target.value)
+                  }
+                  placeholder={
+                    isArabic
+                      ? "أدخل عمر المريض"
+                      : "Enter the patient's age"
+                  }
+                  required
+                  disabled={
+                    hasReachedAppointmentLimit
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-teal-400 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
+                />
+
+              </div>
+
+            </div>
+
+            {/* Medical Conditions */}
 
             <div>
 
               <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {isArabic
-                  ? "رقم الهاتف"
-                  : "Phone Number"}
+                  ? "هل يعاني المريض من أي أمراض؟"
+                  : "Does the patient have any medical conditions?"}
               </label>
 
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) =>
-                  setPhone(e.target.value)
-                }
-                placeholder={
-                  isArabic
-                    ? "أدخل رقم هاتف المريض"
-                    : "Enter the patient's phone number"
-                }
-                required
-                disabled={
-                  hasReachedAppointmentLimit
-                }
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-teal-400 disabled:bg-slate-100 dark:disabled:bg-slate-800/50"
-              />
+              <div className="grid grid-cols-2 gap-3">
+
+                <button
+                  type="button"
+                  disabled={
+                    hasReachedAppointmentLimit
+                  }
+                  onClick={() =>
+                    setHasMedicalConditions("no")
+                  }
+                  className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
+                    hasMedicalConditions === "no"
+                      ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
+                  }`}
+                >
+                  {isArabic ? "لا" : "No"}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    hasReachedAppointmentLimit
+                  }
+                  onClick={() =>
+                    setHasMedicalConditions("yes")
+                  }
+                  className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
+                    hasMedicalConditions === "yes"
+                      ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
+                  }`}
+                >
+                  {isArabic ? "نعم" : "Yes"}
+                </button>
+
+              </div>
+
+              {hasMedicalConditions === "yes" && (
+                <div className="mt-3">
+
+                  <textarea
+                    value={medicalConditionsDetails}
+                    onChange={(e) =>
+                      setMedicalConditionsDetails(
+                        e.target.value
+                      )
+                    }
+                    placeholder={
+                      isArabic
+                        ? "اذكر الأمراض، مثل: ضغط، سكر، حساسية من أدوية..."
+                        : "Describe the conditions, e.g. blood pressure, diabetes, drug allergies..."
+                    }
+                    rows={3}
+                    disabled={
+                      hasReachedAppointmentLimit
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                  />
+
+                </div>
+              )}
 
             </div>
 
@@ -859,7 +1040,7 @@ const BookAppointment = () => {
                   : "Appointment Type"}
               </label>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
                 {/* Checkup */}
 
@@ -931,46 +1112,6 @@ const BookAppointment = () => {
 
                   {appointmentType ===
                     "xray" && (
-                    <span className="mt-1 block text-xs">
-                      ✓{" "}
-                      {isArabic
-                        ? "تم الاختيار"
-                        : "Selected"}
-                    </span>
-                  )}
-
-                </button>
-
-                {/* Follow-up */}
-
-                <button
-                  type="button"
-                  disabled={
-                    hasReachedAppointmentLimit
-                  }
-                  onClick={() =>
-                    setAppointmentType(
-                      "follow_up"
-                    )
-                  }
-                  className={`rounded-xl border-2 p-4 text-center transition ${
-                    appointmentType ===
-                    "follow_up"
-                      ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
-                  }`}
-                >
-
-                  <RotateCcw className="mx-auto mb-2 h-7 w-7" />
-
-                  <span className="block font-semibold">
-                    {isArabic
-                      ? "إعادة"
-                      : "Follow-up"}
-                  </span>
-
-                  {appointmentType ===
-                    "follow_up" && (
                     <span className="mt-1 block text-xs">
                       ✓{" "}
                       {isArabic

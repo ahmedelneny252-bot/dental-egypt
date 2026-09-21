@@ -1,188 +1,283 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  Bell,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
+  Phone,
+  RefreshCcw,
+  User,
+} from "lucide-react";
 import { supabase } from "./supabase";
 import type { Language } from "./i18n";
 
-type AppointmentStatus =
-| "pending"
-| "confirmed"
-| "completed"
-| "cancelled";
+type AppointmentStatus = "pending" | "confirmed" | "completed" | "cancelled";
 
-type AppointmentType =
-| "booking"
-| "follow_up";
+type AppointmentType = "booking" | "follow_up";
 
-type CreatedBy =
-| "patient"
-| "doctor";
+type CreatedBy = "patient" | "doctor";
 
 type PatientInfo = {
-name: string;
-phone: string | null;
+  name: string;
+  phone: string | null;
 };
 
 type Appointment = {
-id: string;
-appointment_date: string;
-appointment_time: string;
-status: AppointmentStatus;
-notes: string | null;
-patient_id: string;
-clinic_id: string;
-appointment_type: AppointmentType;
-created_by: CreatedBy;
-updated_at: string | null;
-patient: PatientInfo | null;
+  id: string;
+  appointment_date: string;
+  appointment_time: string;
+  status: AppointmentStatus;
+  notes: string | null;
+  patient_id: string;
+  clinic_id: string;
+  appointment_type: AppointmentType;
+  created_by: CreatedBy;
+  updated_at: string | null;
+  patient: PatientInfo | null;
 };
 
 type Patient = {
-id: string;
-name: string;
-phone: string | null;
+  id: string;
+  name: string;
+  phone: string | null;
 };
+
+type DoctorProfile = {
+  name: string;
+  specialty: string | null;
+  avatar_url: string | null;
+};
+
+type ViewMode = "day" | "week" | "month";
 
 const Appointments = () => {
-const [appointments, setAppointments] = useState<Appointment[]>([]);
-const [patients, setPatients] = useState<Patient[]>([]);
-const [clinicId, setClinicId] = useState("");
-const [loading, setLoading] = useState(true);
-const [actionLoading, setActionLoading] = useState<string | null>(null);
-const [error, setError] = useState("");
-const [success, setSuccess] = useState("");
-
-const getTodayDate = () => {
-const today = new Date();
-
-
-const year = today.getFullYear();
-const month = String(today.getMonth() + 1).padStart(2, "0");
-const day = String(today.getDate()).padStart(2, "0");
-
-return `${year}-${month}-${day}`;
-
-
-};
-
-const [selectedDate, setSelectedDate] = useState(getTodayDate());
-
-const [showFollowUpModal, setShowFollowUpModal] = useState(false);
-const [followUpPatientId, setFollowUpPatientId] = useState("");
-const [followUpDate, setFollowUpDate] = useState(getTodayDate());
-const [followUpTime, setFollowUpTime] = useState("");
-const [followUpNotes, setFollowUpNotes] = useState("");
-const [followUpLoading, setFollowUpLoading] = useState(false);
-
-const [editingAppointment, setEditingAppointment] =
-useState<Appointment | null>(null);
-const [editDate, setEditDate] = useState("");
-const [editTime, setEditTime] = useState("");
-const [editNotes, setEditNotes] = useState("");
-const [editLoading, setEditLoading] = useState(false);
-
-const [language, setLanguage] = useState<Language>(() => {
-const savedLanguage = localStorage.getItem("dentalcare-language");
-return savedLanguage === "en" ? "en" : "ar";
-});
-
-const isArabic = language === "ar";
-
-useEffect(() => {
-const handleLanguageChange = () => {
-const savedLanguage = localStorage.getItem("dentalcare-language");
-
-
-  setLanguage(savedLanguage === "en" ? "en" : "ar");
-};
-
-window.addEventListener(
-  "dentalcare-language-change",
-  handleLanguageChange
-);
-
-window.addEventListener("storage", handleLanguageChange);
-
-return () => {
-  window.removeEventListener(
-    "dentalcare-language-change",
-    handleLanguageChange
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [clinicId, setClinicId] = useState("");
+  const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(
+    null
   );
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  window.removeEventListener("storage", handleLanguageChange);
-};
+  const getTodayDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
+  const [selectedDate, setSelectedDate] = useState(getTodayDate());
+  const [viewMode, setViewMode] = useState<ViewMode>("day");
 
-}, []);
+  // input تاريخ مخفي — بنستخدمه عشان نفتح تقويم المتصفح الحقيقي
+  // لما الدكتور يدوس على أيقونة التقويم، ويختار أي تاريخ يحب
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
 
-const formatDate = (date: string) => {
-try {
-return new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", {
-year: "numeric",
-month: "long",
-day: "numeric",
-}).format(new Date(`${date}T00:00:00`));
-} catch {
-return date;
-}
-};
+  const openDatePicker = () => {
+    const input = dateInputRef.current;
+    if (!input) return;
 
-const getClinic = async () => {
-setLoading(true);
-setError("");
+    if (typeof (input as any).showPicker === "function") {
+      (input as any).showPicker();
+    } else {
+      input.focus();
+      input.click();
+    }
+  };
 
+  // الموعد المختار حاليًا — بيتحدد بيه اللي بيظهر في كارت
+  // "تفاصيل المريض" على اليمين
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<
+    string | null
+  >(null);
 
-const {
-  data: { user },
-} = await supabase.auth.getUser();
+  // القائمة المنسدلة (الثلاث نقط) لكل صف في الجدول
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-if (!user) {
-  window.location.href = "/doctor/login";
-  return;
-}
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [followUpPatientId, setFollowUpPatientId] = useState("");
+  const [followUpDate, setFollowUpDate] = useState(getTodayDate());
+  const [followUpTime, setFollowUpTime] = useState("");
+  const [followUpNotes, setFollowUpNotes] = useState("");
+  const [followUpLoading, setFollowUpLoading] = useState(false);
 
-const { data: profile, error: profileError } = await supabase
-  .from("profiles")
-  .select("clinic_id")
-  .eq("id", user.id)
-  .single();
+  const [editingAppointment, setEditingAppointment] =
+    useState<Appointment | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
 
-if (profileError) {
-  console.error(profileError);
+  const [language, setLanguage] = useState<Language>(() => {
+    const savedLanguage = localStorage.getItem("dentalcare-language");
+    return savedLanguage === "en" ? "en" : "ar";
+  });
 
-  setError(
-    isArabic
-      ? "تعذر تحميل معلومات العيادة."
-      : "Could not load clinic information."
-  );
+  const isArabic = language === "ar";
 
-  setLoading(false);
-  return;
-}
+  useEffect(() => {
+    const handleLanguageChange = () => {
+      const savedLanguage = localStorage.getItem("dentalcare-language");
+      setLanguage(savedLanguage === "en" ? "en" : "ar");
+    };
 
-if (!profile?.clinic_id) {
-  setError(
-    isArabic
-      ? "لا توجد عيادة مرتبطة بهذا الطبيب."
-      : "No clinic is connected to this doctor."
-  );
+    window.addEventListener("dentalcare-language-change", handleLanguageChange);
+    window.addEventListener("storage", handleLanguageChange);
 
-  setLoading(false);
-  return;
-}
+    return () => {
+      window.removeEventListener(
+        "dentalcare-language-change",
+        handleLanguageChange
+      );
+      window.removeEventListener("storage", handleLanguageChange);
+    };
+  }, []);
 
-setClinicId(profile.clinic_id);
+  const formatDate = (date: string) => {
+    try {
+      return new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }).format(new Date(`${date}T00:00:00`));
+    } catch {
+      return date;
+    }
+  };
 
-await Promise.all([
-  loadAppointments(profile.clinic_id),
-  loadPatients(profile.clinic_id),
-]);
+  // "السبت 3, مايو 2025" — نفس شكل التصميم المطلوب
+  const formatDateNav = (date: string) => {
+    try {
+      const d = new Date(`${date}T00:00:00`);
+      const weekday = new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", {
+        weekday: "long",
+      }).format(d);
+      const day = d.getDate();
+      const monthYear = new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(d);
+      return `${weekday} ${day}, ${monthYear}`;
+    } catch {
+      return date;
+    }
+  };
 
+  const toISODate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(d.getDate()).padStart(2, "0")}`;
 
-};
+  const shiftSelectedDate = (days: number) => {
+    const d = new Date(`${selectedDate}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    setSelectedDate(toISODate(d));
+  };
 
-const loadAppointments = async (clinicIdValue: string) => {
-const { data, error: appointmentsError } = await supabase
-.from("appointments")
-.select(`         id,
+  const shiftSelectedMonth = (months: number) => {
+    const d = new Date(`${selectedDate}T00:00:00`);
+    d.setMonth(d.getMonth() + months);
+    setSelectedDate(toISODate(d));
+  };
+
+  const handlePrev = () => {
+    if (viewMode === "week") shiftSelectedDate(-7);
+    else if (viewMode === "month") shiftSelectedMonth(-1);
+    else shiftSelectedDate(-1);
+  };
+
+  const handleNext = () => {
+    if (viewMode === "week") shiftSelectedDate(7);
+    else if (viewMode === "month") shiftSelectedMonth(1);
+    else shiftSelectedDate(1);
+  };
+
+  // نطاق الأسبوع (بيبدأ يوم السبت زي الأسبوع عندنا)
+  const getWeekRange = (date: string) => {
+    const d = new Date(`${date}T00:00:00`);
+    const dayOfWeek = d.getDay(); // 0 = Sunday ... 6 = Saturday
+    const diffFromSaturday = (dayOfWeek + 1) % 7;
+    const start = new Date(d);
+    start.setDate(d.getDate() - diffFromSaturday);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start: toISODate(start), end: toISODate(end) };
+  };
+
+  const getMonthRange = (date: string) => {
+    const d = new Date(`${date}T00:00:00`);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { start: toISODate(start), end: toISODate(end) };
+  };
+
+  const getClinic = async () => {
+    setLoading(true);
+    setError("");
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      window.location.href = "/doctor/login";
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("clinic_id, name, specialty, avatar_url")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      console.error(profileError);
+      setError(
+        isArabic
+          ? "تعذر تحميل معلومات العيادة."
+          : "Could not load clinic information."
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (!profile?.clinic_id) {
+      setError(
+        isArabic
+          ? "لا توجد عيادة مرتبطة بهذا الطبيب."
+          : "No clinic is connected to this doctor."
+      );
+      setLoading(false);
+      return;
+    }
+
+    setDoctorProfile({
+      name: profile.name || "",
+      specialty: (profile as any).specialty || null,
+      avatar_url: (profile as any).avatar_url || null,
+    });
+
+    setClinicId(profile.clinic_id);
+
+    await Promise.all([
+      loadAppointments(profile.clinic_id),
+      loadPatients(profile.clinic_id),
+    ]);
+  };
+
+  const loadAppointments = async (clinicIdValue: string) => {
+    const { data, error: appointmentsError } = await supabase
+      .from("appointments")
+      .select(
+        `
+        id,
         appointment_date,
         appointment_time,
         status,
@@ -196,482 +291,437 @@ const { data, error: appointmentsError } = await supabase
           name,
           phone
         )
-      `)
-.eq("clinic_id", clinicIdValue)
-.order("appointment_date", { ascending: true })
-.order("appointment_time", { ascending: true });
+      `
+      )
+      .eq("clinic_id", clinicIdValue)
+      .order("appointment_date", { ascending: true })
+      .order("appointment_time", { ascending: true });
 
-
-if (appointmentsError) {
-  console.error(appointmentsError);
-
-  setError(appointmentsError.message);
-  setLoading(false);
-  return;
-}
-
-const formattedAppointments: Appointment[] = (data ?? []).map((item) => {
-  const row = item as unknown as {
-    id: string;
-    appointment_date: string;
-    appointment_time: string;
-    status: string;
-    notes: string | null;
-    patient_id: string;
-    clinic_id: string;
-    appointment_type: string | null;
-    created_by: string | null;
-    updated_at: string | null;
-    patients:
-      | {
-          name: string;
-          phone: string | null;
-        }
-      | {
-          name: string;
-          phone: string | null;
-        }[]
-      | null;
-  };
-
-  let patient: PatientInfo | null = null;
-
-  if (Array.isArray(row.patients)) {
-    if (row.patients.length > 0) {
-      patient = {
-        name: row.patients[0].name,
-        phone: row.patients[0].phone,
-      };
+    if (appointmentsError) {
+      console.error(appointmentsError);
+      setError(appointmentsError.message);
+      setLoading(false);
+      return;
     }
-  } else if (row.patients) {
-    patient = {
-      name: row.patients.name,
-      phone: row.patients.phone,
-    };
-  }
 
-  return {
-    id: row.id,
-    appointment_date: row.appointment_date,
-    appointment_time: row.appointment_time,
-    status: row.status as AppointmentStatus,
-    notes: row.notes,
-    patient_id: row.patient_id,
-    clinic_id: row.clinic_id,
-    appointment_type:
-      row.appointment_type === "follow_up"
-        ? "follow_up"
-        : "booking",
-    created_by:
-      row.created_by === "doctor"
-        ? "doctor"
-        : "patient",
-    updated_at: row.updated_at,
-    patient,
+    const formattedAppointments: Appointment[] = (data ?? []).map((item) => {
+      const row = item as unknown as {
+        id: string;
+        appointment_date: string;
+        appointment_time: string;
+        status: string;
+        notes: string | null;
+        patient_id: string;
+        clinic_id: string;
+        appointment_type: string | null;
+        created_by: string | null;
+        updated_at: string | null;
+        patients:
+          | { name: string; phone: string | null }
+          | { name: string; phone: string | null }[]
+          | null;
+      };
+
+      let patient: PatientInfo | null = null;
+
+      if (Array.isArray(row.patients)) {
+        if (row.patients.length > 0) {
+          patient = {
+            name: row.patients[0].name,
+            phone: row.patients[0].phone,
+          };
+        }
+      } else if (row.patients) {
+        patient = {
+          name: row.patients.name,
+          phone: row.patients.phone,
+        };
+      }
+
+      return {
+        id: row.id,
+        appointment_date: row.appointment_date,
+        appointment_time: row.appointment_time,
+        status: row.status as AppointmentStatus,
+        notes: row.notes,
+        patient_id: row.patient_id,
+        clinic_id: row.clinic_id,
+        appointment_type:
+          row.appointment_type === "follow_up" ? "follow_up" : "booking",
+        created_by: row.created_by === "doctor" ? "doctor" : "patient",
+        updated_at: row.updated_at,
+        patient,
+      };
+    });
+
+    setAppointments(formattedAppointments);
+    setLoading(false);
   };
-});
 
-setAppointments(formattedAppointments);
-setLoading(false);
+  const loadPatients = async (clinicIdValue: string) => {
+    const { data, error: patientsError } = await supabase
+      .from("patients")
+      .select("id, name, phone")
+      .eq("clinic_id", clinicIdValue)
+      .order("name", { ascending: true });
 
+    if (patientsError) {
+      console.error(patientsError);
+      setError(patientsError.message);
+      return;
+    }
 
-};
+    setPatients(data ?? []);
+  };
 
-const loadPatients = async (clinicIdValue: string) => {
-const { data, error: patientsError } = await supabase
-.from("patients")
-.select("id, name, phone")
-.eq("clinic_id", clinicIdValue)
-.order("name", { ascending: true });
+  useEffect(() => {
+    getClinic();
+  }, []);
 
+  // ============================================
+  // المواعيد المعروضة حسب الفلتر المختار (يوم / أسبوع / شهر)
+  // ============================================
 
-if (patientsError) {
-  console.error(patientsError);
-  setError(patientsError.message);
-  return;
-}
+  const displayedAppointments = useMemo(() => {
+    if (viewMode === "week") {
+      const { start, end } = getWeekRange(selectedDate);
+      return appointments.filter(
+        (a) => a.appointment_date >= start && a.appointment_date <= end
+      );
+    }
 
-setPatients(data ?? []);
+    if (viewMode === "month") {
+      const { start, end } = getMonthRange(selectedDate);
+      return appointments.filter(
+        (a) => a.appointment_date >= start && a.appointment_date <= end
+      );
+    }
 
+    return appointments.filter(
+      (a) => a.appointment_date === selectedDate
+    );
+  }, [appointments, viewMode, selectedDate]);
 
-};
+  const rangeLabel = useMemo(() => {
+    if (viewMode === "week") {
+      const { start, end } = getWeekRange(selectedDate);
+      return `${formatDate(start)} - ${formatDate(end)}`;
+    }
 
-useEffect(() => {
-getClinic();
-}, []);
+    if (viewMode === "month") {
+      const d = new Date(`${selectedDate}T00:00:00`);
+      return new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", {
+        month: "long",
+        year: "numeric",
+      }).format(d);
+    }
 
-const selectedDayAppointments = appointments.filter(
-(appointment) =>
-appointment.appointment_date === selectedDate
-);
+    return formatDateNav(selectedDate);
+  }, [viewMode, selectedDate, isArabic]);
 
-const handleAppointmentAction = async (
-appointment: Appointment,
-action: "confirm" | "cancel"
-) => {
-if (!clinicId) {
-return;
-}
+  // الموعد المختار حاليًا لعرضه في كارت "تفاصيل المريض"
+  const selectedAppointment = useMemo(() => {
+    if (selectedAppointmentId) {
+      const found = displayedAppointments.find(
+        (a) => a.id === selectedAppointmentId
+      );
+      if (found) return found;
+    }
+    return displayedAppointments[0] || null;
+  }, [displayedAppointments, selectedAppointmentId]);
 
+  const handleAppointmentAction = async (
+    appointment: Appointment,
+    action: "confirm" | "cancel"
+  ) => {
+    if (!clinicId) {
+      return;
+    }
 
-if (appointment.status !== "pending") {
-  setError(
-    isArabic
-      ? "هذا الموعد تمت معالجته بالفعل."
-      : "This appointment has already been processed."
-  );
-  return;
-}
+    if (appointment.status !== "pending") {
+      setError(
+        isArabic
+          ? "هذا الموعد تمت معالجته بالفعل."
+          : "This appointment has already been processed."
+      );
+      return;
+    }
 
-setError("");
-setSuccess("");
-setActionLoading(appointment.id);
+    setError("");
+    setSuccess("");
+    setActionLoading(appointment.id);
+    setOpenMenuId(null);
 
-const newStatus: AppointmentStatus =
-  action === "confirm"
-    ? "confirmed"
-    : "cancelled";
+    const newStatus: AppointmentStatus =
+      action === "confirm" ? "confirmed" : "cancelled";
 
-const {
-  data: updatedAppointment,
-  error: updateError,
-} = await supabase
-  .from("appointments")
-  .update({
-    status: newStatus,
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", appointment.id)
-  .eq("clinic_id", clinicId)
-  .eq("status", "pending")
-  .select(`
+    const { data: updatedAppointment, error: updateError } = await supabase
+      .from("appointments")
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", appointment.id)
+      .eq("clinic_id", clinicId)
+      .eq("status", "pending")
+      .select(
+        `
     id,
     appointment_date,
     appointment_time,
     patient_id,
     clinic_id,
     status
-  `)
-  .maybeSingle();
+  `
+      )
+      .maybeSingle();
 
-if (updateError || !updatedAppointment) {
-  console.error(updateError);
+    if (updateError || !updatedAppointment) {
+      console.error(updateError);
+      setError(
+        updateError?.message ||
+          (isArabic
+            ? "تعذر تحديث حالة الموعد. ربما تمت معالجته من مكان آخر."
+            : "Could not update the appointment. It may have already been processed elsewhere.")
+      );
+      setActionLoading(null);
+      return;
+    }
 
-  setError(
-    updateError?.message ||
-      (isArabic
-        ? "تعذر تحديث حالة الموعد. ربما تمت معالجته من مكان آخر."
-        : "Could not update the appointment. It may have already been processed elsewhere.")
-  );
+    const patientName = appointment.patient?.name || (isArabic ? "المريض" : "Patient");
+    const formattedDate = formatDate(appointment.appointment_date);
 
-  setActionLoading(null);
-  return;
-}
+    // =========================
+    // Patient Notification
+    // =========================
 
-const patientName =
-  appointment.patient?.name ||
-  (isArabic ? "المريض" : "Patient");
-
-const formattedDate = formatDate(
-  appointment.appointment_date
-);
-
-// =========================
-// Patient Notification
-// =========================
-
-const patientNotificationTitle =
-  action === "confirm"
-    ? isArabic
-      ? "تم قبول موعدك"
-      : "Your Appointment Was Confirmed"
-    : isArabic
-    ? "تم رفض موعدك"
-    : "Your Appointment Was Rejected";
-
-const patientNotificationMessage =
-  action === "confirm"
-    ? isArabic
-      ? `مرحبًا ${patientName}، تم قبول موعدك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
-      : `Hello ${patientName}, your appointment on ${formattedDate} at ${appointment.appointment_time} has been confirmed.`
-    : isArabic
-    ? `مرحبًا ${patientName}، نعتذر، تم رفض موعدك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
-    : `Hello ${patientName}, unfortunately your appointment on ${formattedDate} at ${appointment.appointment_time} has been rejected.`;
-
-const {
-  error: patientNotificationError,
-} = await supabase
-  .from("notifications")
-  .insert({
-    clinic_id: clinicId,
-    patient_id: updatedAppointment.patient_id,
-    appointment_id: updatedAppointment.id,
-    title: patientNotificationTitle,
-    message: patientNotificationMessage,
-    is_read: false,
-    recipient_type: "patient",
-    notification_type:
+    const patientNotificationTitle =
       action === "confirm"
-        ? "appointment_confirmed"
-        : "appointment_rejected",
-  });
+        ? isArabic
+          ? "تم قبول موعدك"
+          : "Your Appointment Was Confirmed"
+        : isArabic
+        ? "تم رفض موعدك"
+        : "Your Appointment Was Rejected";
 
-if (patientNotificationError) {
-  console.error(
-    "Patient notification error:",
-    patientNotificationError
-  );
-}
-
-// =========================
-// Update Doctor Notification
-// =========================
-
-const doctorNotificationTitle =
-  action === "confirm"
-    ? isArabic
-      ? "تم قبول الموعد"
-      : "Appointment Confirmed"
-    : isArabic
-    ? "تم رفض الموعد"
-    : "Appointment Rejected";
-
-const doctorNotificationMessage =
-  action === "confirm"
-    ? isArabic
-      ? `تم قبول موعد ${patientName} يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
-      : `The appointment for ${patientName} on ${formattedDate} at ${appointment.appointment_time} has been confirmed.`
-    : isArabic
-    ? `تم رفض موعد ${patientName} يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
-    : `The appointment for ${patientName} on ${formattedDate} at ${appointment.appointment_time} has been rejected.`;
-
-const {
-  error: doctorNotificationError,
-} = await supabase
-  .from("notifications")
-  .update({
-    title: doctorNotificationTitle,
-    message: doctorNotificationMessage,
-    is_read: true,
-    notification_type:
+    const patientNotificationMessage =
       action === "confirm"
-        ? "appointment_confirmed"
-        : "appointment_rejected",
-  })
-  .eq("clinic_id", clinicId)
-  .eq("appointment_id", appointment.id)
-  .eq("recipient_type", "doctor")
-  .eq("notification_type", "appointment_request");
+        ? isArabic
+          ? `مرحبًا ${patientName}، تم قبول موعدك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+          : `Hello ${patientName}, your appointment on ${formattedDate} at ${appointment.appointment_time} has been confirmed.`
+        : isArabic
+        ? `مرحبًا ${patientName}، نعتذر، تم رفض موعدك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+        : `Hello ${patientName}, unfortunately your appointment on ${formattedDate} at ${appointment.appointment_time} has been rejected.`;
 
-if (doctorNotificationError) {
-  console.error(
-    "Doctor notification update error:",
-    doctorNotificationError
-  );
-}
+    const { error: patientNotificationError } = await supabase
+      .from("notifications")
+      .insert({
+        clinic_id: clinicId,
+        patient_id: updatedAppointment.patient_id,
+        appointment_id: updatedAppointment.id,
+        title: patientNotificationTitle,
+        message: patientNotificationMessage,
+        is_read: false,
+        recipient_type: "patient",
+        notification_type:
+          action === "confirm" ? "appointment_confirmed" : "appointment_rejected",
+      });
 
-// =========================
-// Update Appointment UI
-// =========================
+    if (patientNotificationError) {
+      console.error("Patient notification error:", patientNotificationError);
+    }
 
-setAppointments((currentAppointments) =>
-  currentAppointments.map((item) =>
-    item.id === appointment.id
-      ? {
-          ...item,
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        }
-      : item
-  )
-);
+    // =========================
+    // Update Doctor Notification
+    // =========================
 
-if (
-  patientNotificationError &&
-  doctorNotificationError
-) {
-  setError(
-    isArabic
-      ? "تم تحديث حالة الموعد، لكن تعذر تحديث إشعارات الطبيب والمريض."
-      : "Appointment status was updated, but both patient and doctor notifications could not be updated."
-  );
-} else if (patientNotificationError) {
-  setError(
-    isArabic
-      ? "تم تحديث الموعد وإشعار الطبيب، لكن تعذر إرسال إشعار للمريض."
-      : "Appointment and doctor notification were updated, but the patient could not be notified."
-  );
-} else if (doctorNotificationError) {
-  setError(
-    isArabic
-      ? "تم تحديث الموعد وإشعار المريض، لكن تعذر تحديث إشعار الطبيب."
-      : "Appointment and patient notification were updated, but the doctor notification could not be updated."
-  );
-} else {
-  setSuccess(
-    action === "confirm"
-      ? isArabic
-        ? "تم قبول الموعد وتحديث الإشعارات."
-        : "Appointment confirmed and notifications updated."
-      : isArabic
-      ? "تم رفض الموعد وتحديث الإشعارات."
-      : "Appointment rejected and notifications updated."
-  );
-}
+    const doctorNotificationTitle =
+      action === "confirm"
+        ? isArabic
+          ? "تم قبول الموعد"
+          : "Appointment Confirmed"
+        : isArabic
+        ? "تم رفض الموعد"
+        : "Appointment Rejected";
 
-setActionLoading(null);
+    const doctorNotificationMessage =
+      action === "confirm"
+        ? isArabic
+          ? `تم قبول موعد ${patientName} يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+          : `The appointment for ${patientName} on ${formattedDate} at ${appointment.appointment_time} has been confirmed.`
+        : isArabic
+        ? `تم رفض موعد ${patientName} يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+        : `The appointment for ${patientName} on ${formattedDate} at ${appointment.appointment_time} has been rejected.`;
 
+    const { error: doctorNotificationError } = await supabase
+      .from("notifications")
+      .update({
+        title: doctorNotificationTitle,
+        message: doctorNotificationMessage,
+        is_read: true,
+        notification_type:
+          action === "confirm" ? "appointment_confirmed" : "appointment_rejected",
+      })
+      .eq("clinic_id", clinicId)
+      .eq("appointment_id", appointment.id)
+      .eq("recipient_type", "doctor")
+      .eq("notification_type", "appointment_request");
 
-};
+    if (doctorNotificationError) {
+      console.error("Doctor notification update error:", doctorNotificationError);
+    }
 
-const openFollowUpModal = () => {
-setError("");
-setSuccess("");
+    // =========================
+    // Update Appointment UI
+    // =========================
 
+    setAppointments((currentAppointments) =>
+      currentAppointments.map((item) =>
+        item.id === appointment.id
+          ? { ...item, status: newStatus, updated_at: new Date().toISOString() }
+          : item
+      )
+    );
 
-setFollowUpPatientId("");
-setFollowUpDate(
-  selectedDate < getTodayDate()
-    ? getTodayDate()
-    : selectedDate
-);
-setFollowUpTime("");
-setFollowUpNotes("");
+    if (patientNotificationError && doctorNotificationError) {
+      setError(
+        isArabic
+          ? "تم تحديث حالة الموعد، لكن تعذر تحديث إشعارات الطبيب والمريض."
+          : "Appointment status was updated, but both patient and doctor notifications could not be updated."
+      );
+    } else if (patientNotificationError) {
+      setError(
+        isArabic
+          ? "تم تحديث الموعد وإشعار الطبيب، لكن تعذر إرسال إشعار للمريض."
+          : "Appointment and doctor notification were updated, but the patient could not be notified."
+      );
+    } else if (doctorNotificationError) {
+      setError(
+        isArabic
+          ? "تم تحديث الموعد وإشعار المريض، لكن تعذر تحديث إشعار الطبيب."
+          : "Appointment and patient notification were updated, but the doctor notification could not be updated."
+      );
+    } else {
+      setSuccess(
+        action === "confirm"
+          ? isArabic
+            ? "تم قبول الموعد وتحديث الإشعارات."
+            : "Appointment confirmed and notifications updated."
+          : isArabic
+          ? "تم رفض الموعد وتحديث الإشعارات."
+          : "Appointment rejected and notifications updated."
+      );
+    }
 
-setShowFollowUpModal(true);
-
-
-};
-
-const checkAppointmentConflict = async (
-date: string,
-time: string,
-excludeAppointmentId?: string
-) => {
-let query = supabase
-.from("appointments")
-.select("id")
-.eq("clinic_id", clinicId)
-.eq("appointment_date", date)
-.eq("appointment_time", time)
-.neq("status", "cancelled");
-
-
-if (excludeAppointmentId) {
-  query = query.neq(
-    "id",
-    excludeAppointmentId
-  );
-}
-
-const {
-  data,
-  error: conflictError,
-} = await query.limit(1);
-
-if (conflictError) {
-  console.error(
-    "Conflict check error:",
-    conflictError
-  );
-
-  return {
-    error: conflictError,
-    conflict: false,
+    setActionLoading(null);
   };
-}
 
-return {
-  error: null,
-  conflict: (data?.length ?? 0) > 0,
-};
+  const openFollowUpModal = () => {
+    setError("");
+    setSuccess("");
+    setFollowUpPatientId("");
+    setFollowUpDate(selectedDate < getTodayDate() ? getTodayDate() : selectedDate);
+    setFollowUpTime("");
+    setFollowUpNotes("");
+    setShowFollowUpModal(true);
+  };
 
+  const checkAppointmentConflict = async (
+    date: string,
+    time: string,
+    excludeAppointmentId?: string
+  ) => {
+    let query = supabase
+      .from("appointments")
+      .select("id")
+      .eq("clinic_id", clinicId)
+      .eq("appointment_date", date)
+      .eq("appointment_time", time)
+      .neq("status", "cancelled");
 
-};
+    if (excludeAppointmentId) {
+      query = query.neq("id", excludeAppointmentId);
+    }
 
-const handleCreateFollowUp = async () => {
-if (!clinicId) {
-return;
-}
+    const { data, error: conflictError } = await query.limit(1);
 
+    if (conflictError) {
+      console.error("Conflict check error:", conflictError);
+      return { error: conflictError, conflict: false };
+    }
 
-if (
-  !followUpPatientId ||
-  !followUpDate ||
-  !followUpTime
-) {
-  setError(
-    isArabic
-      ? "من فضلك اختر المريض والتاريخ والوقت."
-      : "Please select the patient, date and time."
-  );
+    return { error: null, conflict: (data?.length ?? 0) > 0 };
+  };
 
-  return;
-}
+  const handleCreateFollowUp = async () => {
+    if (!clinicId) {
+      return;
+    }
 
-const today = getTodayDate();
+    if (!followUpPatientId || !followUpDate || !followUpTime) {
+      setError(
+        isArabic
+          ? "من فضلك اختر المريض والتاريخ والوقت."
+          : "Please select the patient, date and time."
+      );
+      return;
+    }
 
-if (followUpDate < today) {
-  setError(
-    isArabic
-      ? "لا يمكن اختيار تاريخ قديم. من فضلك اختر اليوم أو تاريخًا قادمًا."
-      : "You cannot select a past date. Please choose today or a future date."
-  );
+    const today = getTodayDate();
 
-  return;
-}
+    if (followUpDate < today) {
+      setError(
+        isArabic
+          ? "لا يمكن اختيار تاريخ قديم. من فضلك اختر اليوم أو تاريخًا قادمًا."
+          : "You cannot select a past date. Please choose today or a future date."
+      );
+      return;
+    }
 
-setFollowUpLoading(true);
-setError("");
-setSuccess("");
+    setFollowUpLoading(true);
+    setError("");
+    setSuccess("");
 
-const {
-  conflict,
-  error: conflictError,
-} = await checkAppointmentConflict(
-  followUpDate,
-  followUpTime
-);
+    const { conflict, error: conflictError } = await checkAppointmentConflict(
+      followUpDate,
+      followUpTime
+    );
 
-if (conflictError) {
-  setError(
-    isArabic
-      ? "تعذر التحقق من توفر الموعد."
-      : "Could not check appointment availability."
-  );
+    if (conflictError) {
+      setError(
+        isArabic
+          ? "تعذر التحقق من توفر الموعد."
+          : "Could not check appointment availability."
+      );
+      setFollowUpLoading(false);
+      return;
+    }
 
-  setFollowUpLoading(false);
-  return;
-}
+    if (conflict) {
+      setError(
+        isArabic
+          ? "هذا الوقت محجوز بالفعل. من فضلك اختر وقتًا آخر."
+          : "This time is already booked. Please choose another time."
+      );
+      setFollowUpLoading(false);
+      return;
+    }
 
-if (conflict) {
-  setError(
-    isArabic
-      ? "هذا الوقت محجوز بالفعل. من فضلك اختر وقتًا آخر."
-      : "This time is already booked. Please choose another time."
-  );
-
-  setFollowUpLoading(false);
-  return;
-}
-
-const {
-  data: newAppointment,
-  error: insertError,
-} = await supabase
-  .from("appointments")
-  .insert({
-    clinic_id: clinicId,
-    patient_id: followUpPatientId,
-    appointment_date: followUpDate,
-    appointment_time: followUpTime,
-    status: "confirmed",
-    notes: followUpNotes.trim() || null,
-    appointment_type: "follow_up",
-    created_by: "doctor",
-    updated_at: new Date().toISOString(),
-  })
-  .select(`
+    const { data: newAppointment, error: insertError } = await supabase
+      .from("appointments")
+      .insert({
+        clinic_id: clinicId,
+        patient_id: followUpPatientId,
+        appointment_date: followUpDate,
+        appointment_time: followUpTime,
+        status: "confirmed",
+        notes: followUpNotes.trim() || null,
+        appointment_type: "follow_up",
+        created_by: "doctor",
+        updated_at: new Date().toISOString(),
+      })
+      .select(
+        `
     id,
     appointment_date,
     appointment_time,
@@ -682,1117 +732,926 @@ const {
     appointment_type,
     created_by,
     updated_at
-  `)
-  .single();
+  `
+      )
+      .single();
 
-if (insertError || !newAppointment) {
-  console.error(insertError);
+    if (insertError || !newAppointment) {
+      console.error(insertError);
+      setError(
+        insertError?.message ||
+          (isArabic
+            ? "تعذر إنشاء موعد المتابعة."
+            : "Could not create follow-up appointment.")
+      );
+      setFollowUpLoading(false);
+      return;
+    }
 
-  setError(
-    insertError?.message ||
-      (isArabic
-        ? "تعذر إنشاء موعد المتابعة."
-        : "Could not create follow-up appointment.")
-  );
+    const selectedPatient = patients.find((patient) => patient.id === followUpPatientId);
+    const patientName = selectedPatient?.name || (isArabic ? "المريض" : "Patient");
+    const formattedDate = formatDate(followUpDate);
 
-  setFollowUpLoading(false);
-  return;
-}
+    const { error: notificationError } = await supabase.from("notifications").insert({
+      clinic_id: clinicId,
+      patient_id: followUpPatientId,
+      appointment_id: newAppointment.id,
+      title: isArabic ? "تم تحديد موعد متابعة" : "Follow-up Appointment Scheduled",
+      message: isArabic
+        ? `مرحبًا ${patientName}، قام الطبيب بتحديد موعد متابعة لك يوم ${formattedDate} الساعة ${followUpTime}.`
+        : `Hello ${patientName}, your doctor scheduled a follow-up appointment for ${formattedDate} at ${followUpTime}.`,
+      is_read: false,
+      recipient_type: "patient",
+      notification_type: "follow_up_created",
+    });
 
-const selectedPatient = patients.find(
-  (patient) =>
-    patient.id === followUpPatientId
-);
+    if (notificationError) {
+      console.error("Notification error:", notificationError);
+      setError(
+        isArabic
+          ? "تم إنشاء موعد المتابعة، لكن تعذر إرسال الإشعار."
+          : "Follow-up was created, but the notification could not be sent."
+      );
+    } else {
+      setSuccess(
+        isArabic
+          ? "تم إنشاء موعد المتابعة وإرسال إشعار للمريض."
+          : "Follow-up appointment created and the patient was notified."
+      );
+    }
 
-const patientName =
-  selectedPatient?.name ||
-  (isArabic ? "المريض" : "Patient");
+    await loadAppointments(clinicId);
+    setSelectedDate(followUpDate);
+    setViewMode("day");
+    setShowFollowUpModal(false);
+    setFollowUpLoading(false);
+  };
 
-const formattedDate =
-  formatDate(followUpDate);
+  const openEditModal = (appointment: Appointment) => {
+    setError("");
+    setSuccess("");
+    setOpenMenuId(null);
+    setEditingAppointment(appointment);
+    setEditDate(appointment.appointment_date);
+    setEditTime(appointment.appointment_time);
+    setEditNotes(appointment.notes || "");
+  };
 
-const {
-  error: notificationError,
-} = await supabase
-  .from("notifications")
-  .insert({
-    clinic_id: clinicId,
-    patient_id: followUpPatientId,
-    appointment_id: newAppointment.id,
-    title: isArabic
-      ? "تم تحديد موعد متابعة"
-      : "Follow-up Appointment Scheduled",
-    message: isArabic
-      ? `مرحبًا ${patientName}، قام الطبيب بتحديد موعد متابعة لك يوم ${formattedDate} الساعة ${followUpTime}.`
-      : `Hello ${patientName}, your doctor scheduled a follow-up appointment for ${formattedDate} at ${followUpTime}.`,
-    is_read: false,
-    recipient_type: "patient",
-    notification_type: "follow_up_created",
-  });
+  const handleUpdateFollowUp = async () => {
+    if (!clinicId || !editingAppointment) {
+      return;
+    }
 
-if (notificationError) {
-  console.error(
-    "Notification error:",
-    notificationError
-  );
+    if (!editDate || !editTime) {
+      setError(
+        isArabic ? "من فضلك اختر التاريخ والوقت." : "Please select the date and time."
+      );
+      return;
+    }
 
-  setError(
-    isArabic
-      ? "تم إنشاء موعد المتابعة، لكن تعذر إرسال الإشعار."
-      : "Follow-up was created, but the notification could not be sent."
-  );
-} else {
-  setSuccess(
-    isArabic
-      ? "تم إنشاء موعد المتابعة وإرسال إشعار للمريض."
-      : "Follow-up appointment created and the patient was notified."
-  );
-}
+    const today = getTodayDate();
 
-await loadAppointments(clinicId);
+    if (editDate < today) {
+      setError(
+        isArabic
+          ? "لا يمكن اختيار تاريخ قديم. من فضلك اختر اليوم أو تاريخًا قادمًا."
+          : "You cannot select a past date. Please choose today or a future date."
+      );
+      return;
+    }
 
-setSelectedDate(followUpDate);
-setShowFollowUpModal(false);
-setFollowUpLoading(false);
+    setEditLoading(true);
+    setError("");
+    setSuccess("");
 
+    const { conflict, error: conflictError } = await checkAppointmentConflict(
+      editDate,
+      editTime,
+      editingAppointment.id
+    );
 
-};
+    if (conflictError) {
+      setError(
+        isArabic
+          ? "تعذر التحقق من توفر الموعد."
+          : "Could not check appointment availability."
+      );
+      setEditLoading(false);
+      return;
+    }
 
-const openEditModal = (
-appointment: Appointment
-) => {
-setError("");
-setSuccess("");
+    if (conflict) {
+      setError(
+        isArabic
+          ? "هذا الوقت محجوز بالفعل. من فضلك اختر وقتًا آخر."
+          : "This time is already booked. Please choose another time."
+      );
+      setEditLoading(false);
+      return;
+    }
 
-
-setEditingAppointment(appointment);
-setEditDate(appointment.appointment_date);
-setEditTime(appointment.appointment_time);
-setEditNotes(appointment.notes || "");
-
-
-};
-
-const handleUpdateFollowUp = async () => {
-if (!clinicId || !editingAppointment) {
-return;
-}
-
-
-if (!editDate || !editTime) {
-  setError(
-    isArabic
-      ? "من فضلك اختر التاريخ والوقت."
-      : "Please select the date and time."
-  );
-
-  return;
-}
-
-const today = getTodayDate();
-
-if (editDate < today) {
-  setError(
-    isArabic
-      ? "لا يمكن اختيار تاريخ قديم. من فضلك اختر اليوم أو تاريخًا قادمًا."
-      : "You cannot select a past date. Please choose today or a future date."
-  );
-
-  return;
-}
-
-setEditLoading(true);
-setError("");
-setSuccess("");
-
-const {
-  conflict,
-  error: conflictError,
-} = await checkAppointmentConflict(
-  editDate,
-  editTime,
-  editingAppointment.id
-);
-
-if (conflictError) {
-  setError(
-    isArabic
-      ? "تعذر التحقق من توفر الموعد."
-      : "Could not check appointment availability."
-  );
-
-  setEditLoading(false);
-  return;
-}
-
-if (conflict) {
-  setError(
-    isArabic
-      ? "هذا الوقت محجوز بالفعل. من فضلك اختر وقتًا آخر."
-      : "This time is already booked. Please choose another time."
-  );
-
-  setEditLoading(false);
-  return;
-}
-
-const {
-  data: updatedAppointment,
-  error: updateError,
-} = await supabase
-  .from("appointments")
-  .update({
-    appointment_date: editDate,
-    appointment_time: editTime,
-    notes: editNotes.trim() || null,
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", editingAppointment.id)
-  .eq("clinic_id", clinicId)
-  .eq("appointment_type", "follow_up")
-  .select(`
+    const { data: updatedAppointment, error: updateError } = await supabase
+      .from("appointments")
+      .update({
+        appointment_date: editDate,
+        appointment_time: editTime,
+        notes: editNotes.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", editingAppointment.id)
+      .eq("clinic_id", clinicId)
+      .eq("appointment_type", "follow_up")
+      .select(
+        `
     id,
     appointment_date,
     appointment_time,
     patient_id,
     clinic_id,
     status
-  `)
-  .single();
+  `
+      )
+      .single();
 
-if (updateError || !updatedAppointment) {
-  console.error(updateError);
+    if (updateError || !updatedAppointment) {
+      console.error(updateError);
+      setError(
+        updateError?.message ||
+          (isArabic
+            ? "تعذر تعديل موعد المتابعة."
+            : "Could not update the follow-up appointment.")
+      );
+      setEditLoading(false);
+      return;
+    }
 
-  setError(
-    updateError?.message ||
-      (isArabic
-        ? "تعذر تعديل موعد المتابعة."
-        : "Could not update the follow-up appointment.")
-  );
+    const patientName =
+      editingAppointment.patient?.name || (isArabic ? "المريض" : "Patient");
+    const formattedDate = formatDate(editDate);
 
-  setEditLoading(false);
-  return;
-}
+    const { error: notificationError } = await supabase.from("notifications").insert({
+      clinic_id: clinicId,
+      patient_id: updatedAppointment.patient_id,
+      appointment_id: updatedAppointment.id,
+      title: isArabic ? "تم تغيير موعد المتابعة" : "Follow-up Appointment Changed",
+      message: isArabic
+        ? `مرحبًا ${patientName}، تم تغيير موعد المتابعة الخاص بك إلى يوم ${formattedDate} الساعة ${editTime}.`
+        : `Hello ${patientName}, your follow-up appointment has been changed to ${formattedDate} at ${editTime}.`,
+      is_read: false,
+      recipient_type: "patient",
+      notification_type: "appointment_rescheduled",
+    });
 
-const patientName =
-  editingAppointment.patient?.name ||
-  (isArabic ? "المريض" : "Patient");
+    if (notificationError) {
+      console.error("Notification error:", notificationError);
+      setError(
+        isArabic
+          ? "تم تعديل الموعد، لكن تعذر إرسال الإشعار."
+          : "Appointment updated, but the notification could not be sent."
+      );
+    } else {
+      setSuccess(
+        isArabic
+          ? "تم تعديل موعد المتابعة وإرسال إشعار للمريض."
+          : "Follow-up appointment updated and the patient was notified."
+      );
+    }
 
-const formattedDate = formatDate(editDate);
+    await loadAppointments(clinicId);
+    setSelectedDate(editDate);
+    setViewMode("day");
+    setEditingAppointment(null);
+    setEditLoading(false);
+  };
 
-const {
-  error: notificationError,
-} = await supabase
-  .from("notifications")
-  .insert({
-    clinic_id: clinicId,
-    patient_id: updatedAppointment.patient_id,
-    appointment_id: updatedAppointment.id,
-    title: isArabic
-      ? "تم تغيير موعد المتابعة"
-      : "Follow-up Appointment Changed",
-    message: isArabic
-      ? `مرحبًا ${patientName}، تم تغيير موعد المتابعة الخاص بك إلى يوم ${formattedDate} الساعة ${editTime}.`
-      : `Hello ${patientName}, your follow-up appointment has been changed to ${formattedDate} at ${editTime}.`,
-    is_read: false,
-    recipient_type: "patient",
-    notification_type: "appointment_rescheduled",
-  });
+  const handleCancelFollowUp = async (appointment: Appointment) => {
+    if (!clinicId) {
+      return;
+    }
 
-if (notificationError) {
-  console.error(
-    "Notification error:",
-    notificationError
-  );
+    const confirmed = window.confirm(
+      isArabic
+        ? "هل أنت متأكد من إلغاء موعد المتابعة؟"
+        : "Are you sure you want to cancel this follow-up appointment?"
+    );
 
-  setError(
-    isArabic
-      ? "تم تعديل الموعد، لكن تعذر إرسال الإشعار."
-      : "Appointment updated, but the notification could not be sent."
-  );
-} else {
-  setSuccess(
-    isArabic
-      ? "تم تعديل موعد المتابعة وإرسال إشعار للمريض."
-      : "Follow-up appointment updated and the patient was notified."
-  );
-}
+    if (!confirmed) {
+      return;
+    }
 
-await loadAppointments(clinicId);
+    setActionLoading(appointment.id);
+    setOpenMenuId(null);
+    setError("");
+    setSuccess("");
 
-setSelectedDate(editDate);
-setEditingAppointment(null);
-setEditLoading(false);
+    const { error: cancelError } = await supabase
+      .from("appointments")
+      .update({
+        status: "cancelled",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", appointment.id)
+      .eq("clinic_id", clinicId)
+      .eq("appointment_type", "follow_up");
 
+    if (cancelError) {
+      console.error(cancelError);
+      setError(cancelError.message);
+      setActionLoading(null);
+      return;
+    }
 
-};
+    const patientName = appointment.patient?.name || (isArabic ? "المريض" : "Patient");
+    const formattedDate = formatDate(appointment.appointment_date);
 
-const handleCancelFollowUp = async (
-appointment: Appointment
-) => {
-if (!clinicId) {
-return;
-}
+    const { error: notificationError } = await supabase.from("notifications").insert({
+      clinic_id: clinicId,
+      patient_id: appointment.patient_id,
+      appointment_id: appointment.id,
+      title: isArabic ? "تم إلغاء موعد المتابعة" : "Follow-up Appointment Cancelled",
+      message: isArabic
+        ? `مرحبًا ${patientName}، تم إلغاء موعد المتابعة الخاص بك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
+        : `Hello ${patientName}, your follow-up appointment on ${formattedDate} at ${appointment.appointment_time} has been cancelled.`,
+      is_read: false,
+      recipient_type: "patient",
+      notification_type: "appointment_cancelled",
+    });
 
+    if (notificationError) {
+      console.error("Notification error:", notificationError);
+      setError(
+        isArabic
+          ? "تم إلغاء الموعد، لكن تعذر إرسال الإشعار."
+          : "Appointment cancelled, but the notification could not be sent."
+      );
+    } else {
+      setSuccess(
+        isArabic
+          ? "تم إلغاء موعد المتابعة وإرسال إشعار للمريض."
+          : "Follow-up appointment cancelled and the patient was notified."
+      );
+    }
 
-const confirmed = window.confirm(
-  isArabic
-    ? "هل أنت متأكد من إلغاء موعد المتابعة؟"
-    : "Are you sure you want to cancel this follow-up appointment?"
-);
+    setAppointments((currentAppointments) =>
+      currentAppointments.map((item) =>
+        item.id === appointment.id ? { ...item, status: "cancelled" } : item
+      )
+    );
 
-if (!confirmed) {
-  return;
-}
+    setActionLoading(null);
+  };
 
-setActionLoading(appointment.id);
-setError("");
-setSuccess("");
+  const getStatusLabel = (status: AppointmentStatus) => {
+    switch (status) {
+      case "pending":
+        return isArabic ? "قادم" : "Pending";
+      case "confirmed":
+        return isArabic ? "مؤكد" : "Confirmed";
+      case "completed":
+        return isArabic ? "مكتمل" : "Completed";
+      case "cancelled":
+        return isArabic ? "ملغي / مرفوض" : "Cancelled / Rejected";
+      default:
+        return status;
+    }
+  };
 
-const {
-  error: cancelError,
-} = await supabase
-  .from("appointments")
-  .update({
-    status: "cancelled",
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", appointment.id)
-  .eq("clinic_id", clinicId)
-  .eq("appointment_type", "follow_up");
+  const getStatusClasses = (status: AppointmentStatus) => {
+    switch (status) {
+      case "pending":
+        return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
+      case "confirmed":
+        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+      case "completed":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+      case "cancelled":
+        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      default:
+        return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+    }
+  };
 
-if (cancelError) {
-  console.error(cancelError);
+  const getAppointmentTypeLabel = (type: AppointmentType) => {
+    if (type === "follow_up") {
+      return isArabic ? "متابعة" : "Follow-up";
+    }
+    return isArabic ? "حجز" : "Booking";
+  };
 
-  setError(cancelError.message);
-  setActionLoading(null);
-  return;
-}
-
-const patientName =
-  appointment.patient?.name ||
-  (isArabic ? "المريض" : "Patient");
-
-const formattedDate = formatDate(
-  appointment.appointment_date
-);
-
-const {
-  error: notificationError,
-} = await supabase
-  .from("notifications")
-  .insert({
-    clinic_id: clinicId,
-    patient_id: appointment.patient_id,
-    appointment_id: appointment.id,
-    title: isArabic
-      ? "تم إلغاء موعد المتابعة"
-      : "Follow-up Appointment Cancelled",
-    message: isArabic
-      ? `مرحبًا ${patientName}، تم إلغاء موعد المتابعة الخاص بك يوم ${formattedDate} الساعة ${appointment.appointment_time}.`
-      : `Hello ${patientName}, your follow-up appointment on ${formattedDate} at ${appointment.appointment_time} has been cancelled.`,
-    is_read: false,
-    recipient_type: "patient",
-    notification_type: "appointment_cancelled",
-  });
-
-if (notificationError) {
-  console.error(
-    "Notification error:",
-    notificationError
-  );
-
-  setError(
-    isArabic
-      ? "تم إلغاء الموعد، لكن تعذر إرسال الإشعار."
-      : "Appointment cancelled, but the notification could not be sent."
-  );
-} else {
-  setSuccess(
-    isArabic
-      ? "تم إلغاء موعد المتابعة وإرسال إشعار للمريض."
-      : "Follow-up appointment cancelled and the patient was notified."
-  );
-}
-
-setAppointments((currentAppointments) =>
-  currentAppointments.map((item) =>
-    item.id === appointment.id
-      ? {
-          ...item,
-          status: "cancelled",
-        }
-      : item
-  )
-);
-
-setActionLoading(null);
-
-
-};
-
-const getStatusLabel = (
-status: AppointmentStatus
-) => {
-switch (status) {
-case "pending":
-return isArabic
-? "في انتظار الموافقة"
-: "Pending";
-
-
-  case "confirmed":
-    return isArabic
-      ? "تم التأكيد"
-      : "Confirmed";
-
-  case "completed":
-    return isArabic
-      ? "مكتمل"
-      : "Completed";
-
-  case "cancelled":
-    return isArabic
-      ? "ملغي / مرفوض"
-      : "Cancelled / Rejected";
-
-  default:
-    return status;
-}
-
-
-};
-
-const getStatusClasses = (
-status: AppointmentStatus
-) => {
-switch (status) {
-case "pending":
-return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
-
-
-  case "confirmed":
-    return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
-
-  case "completed":
-    return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-
-  case "cancelled":
-    return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-
-  default:
-    return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
-}
-
-
-};
-
-const getAppointmentTypeLabel = (
-type: AppointmentType
-) => {
-if (type === "follow_up") {
-return isArabic
-? "متابعة"
-: "Follow-up";
-}
-
-
-return isArabic
-  ? "حجز"
-  : "Booking";
-
-
-};
-
-const getAppointmentTypeClasses = (
-type: AppointmentType
-) => {
-if (type === "follow_up") {
-return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300";
-}
-
-
-return "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300";
-
-
-};
-
-if (loading) {
-return (
-<div
-dir={isArabic ? "rtl" : "ltr"}
-className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center pt-28"
-> <p className="text-slate-600 dark:text-slate-300">
-{isArabic
-? "جاري تحميل المواعيد..."
-: "Loading appointments..."} </p> </div>
-);
-}
-
-return (
-<div
-dir={isArabic ? "rtl" : "ltr"}
-className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-32 pb-12 px-6"
-> <div className="mx-auto max-w-7xl">
-
-
-    <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-          {isArabic ? "المواعيد" : "Appointments"}
-        </h1>
-
-        <p className="mt-2 text-slate-600 dark:text-slate-300">
-          {isArabic
-            ? "إدارة حجوزات المرضى ومواعيد المتابعة."
-            : "Manage patient bookings and follow-up appointments."}
+  if (loading) {
+    return (
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="flex min-h-screen items-center justify-center bg-slate-50 pt-28 dark:bg-slate-950"
+      >
+        <p className="text-slate-600 dark:text-slate-300">
+          {isArabic ? "جاري تحميل المواعيد..." : "Loading appointments..."}
         </p>
       </div>
+    );
+  }
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          onClick={openFollowUpModal}
-          className="rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white hover:bg-purple-700"
-        >
-          {isArabic
-            ? "+ إضافة موعد متابعة"
-            : "+ Add Follow-up"}
-        </button>
+  return (
+    <div
+      dir={isArabic ? "rtl" : "ltr"}
+      className="min-h-screen bg-slate-50 px-4 pb-12 pt-28 dark:bg-slate-950 sm:px-6"
+    >
+      <div className="mx-auto max-w-7xl">
+        {error && (
+          <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-600 dark:bg-red-950/30 dark:text-red-400">
+            {error}
+          </div>
+        )}
 
-        <button
-          type="button"
-          onClick={() => {
-            setError("");
-            setSuccess("");
+        {success && (
+          <div className="mb-5 rounded-xl bg-green-50 p-4 text-green-600 dark:bg-green-950/30 dark:text-green-400">
+            {success}
+          </div>
+        )}
 
-            loadAppointments(clinicId);
-            loadPatients(clinicId);
-          }}
-          className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700"
-        >
-          {isArabic ? "تحديث" : "Refresh"}
-        </button>
-      </div>
-    </div>
-
-    {error && (
-      <div className="mb-5 rounded-xl bg-red-50 dark:bg-red-950/30 p-4 text-red-600 dark:text-red-400">
-        {error}
-      </div>
-    )}
-
-    {success && (
-      <div className="mb-5 rounded-xl bg-green-50 dark:bg-green-950/30 p-4 text-green-600 dark:text-green-400">
-        {success}
-      </div>
-    )}
-
-    <div className="mb-8 rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            {isArabic
-              ? "مواعيد اليوم"
-              : "Appointments by Date"}
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {isArabic
-              ? "اختر اليوم لعرض جميع المواعيد الخاصة به."
-              : "Choose a date to view all appointments for that day."}
-          </p>
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-            {isArabic
-              ? "اختيار التاريخ"
-              : "Select Date"}
-          </label>
-
-          <input
-            type="date"
-            value={selectedDate}
-            min={getTodayDate()}
-            onChange={(event) =>
-              setSelectedDate(event.target.value)
-            }
-            className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-          />
-        </div>
-      </div>
-
-      <div className="mt-5 rounded-xl bg-slate-50 dark:bg-slate-800 p-4">
-        <p className="font-semibold text-slate-900 dark:text-white">
-          {formatDate(selectedDate)}
-        </p>
-
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {isArabic
-            ? `${selectedDayAppointments.length} موعد في هذا اليوم`
-            : `${selectedDayAppointments.length} appointment(s) on this day`}
-        </p>
-      </div>
-    </div>
-
-    <div className="mb-8 grid gap-4 md:grid-cols-4">
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {isArabic
-            ? "مواعيد اليوم"
-            : "Today's Appointments"}
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
-          {selectedDayAppointments.length}
-        </p>
-      </div>
-
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {isArabic
-            ? "طلبات معلقة"
-            : "Pending Requests"}
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-yellow-600">
-          {
-            selectedDayAppointments.filter(
-              (appointment) =>
-                appointment.status === "pending"
-            ).length
-          }
-        </p>
-      </div>
-
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {isArabic
-            ? "مواعيد مؤكدة"
-            : "Confirmed"}
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-green-600">
-          {
-            selectedDayAppointments.filter(
-              (appointment) =>
-                appointment.status === "confirmed"
-            ).length
-          }
-        </p>
-      </div>
-
-      <div className="rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-sm">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {isArabic ? "متابعات" : "Follow-ups"}
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-purple-600">
-          {
-            selectedDayAppointments.filter(
-              (appointment) =>
-                appointment.appointment_type === "follow_up"
-            ).length
-          }
-        </p>
-      </div>
-    </div>
-
-    <div className="rounded-2xl bg-white dark:bg-slate-900 shadow-sm">
-      <div className="border-b border-slate-200 dark:border-slate-700 p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              {isArabic
-                ? "مواعيد اليوم"
-                : "Daily Appointments"}
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {formatDate(selectedDate)}
-            </p>
+        {/* ---------- عنوان الصفحة + إضافة موعد متابعة ---------- */}
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              to="/doctor/notifications"
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label={isArabic ? "الإشعارات" : "Notifications"}
+            >
+              <Bell className="h-4 w-4" />
+            </Link>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
+              {isArabic ? "المواعيد" : "Appointments"}
+            </h1>
           </div>
 
-          <button
-            type="button"
-            onClick={openFollowUpModal}
-            className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700"
-          >
-            {isArabic
-              ? "+ موعد متابعة"
-              : "+ Follow-up"}
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={openFollowUpModal}
+              className="rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700"
+            >
+              {isArabic ? "+ إضافة موعد متابعة" : "+ Add Follow-up"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setSuccess("");
+                loadAppointments(clinicId);
+                loadPatients(clinicId);
+              }}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              {isArabic ? "تحديث" : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        {/* ==================== Main grid: الجدول على اليسار +
+            بروفايل الطبيب وتفاصيل المريض على اليمين ==================== */}
+        <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+          {/* ---------- العمود الأيمن ---------- */}
+          <div className="space-y-6 lg:order-first">
+            {/* بروفايل الطبيب */}
+            {doctorProfile && (
+              <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900">
+                {doctorProfile.avatar_url ? (
+                  <img
+                    src={doctorProfile.avatar_url}
+                    alt={doctorProfile.name}
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-teal-100 text-lg font-bold text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                    {doctorProfile.name?.charAt(0) || "D"}
+                  </span>
+                )}
+                <div>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">
+                    {isArabic ? `د. ${doctorProfile.name}` : `Dr. ${doctorProfile.name}`}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {doctorProfile.specialty ||
+                      (isArabic ? "طبيب أسنان عام" : "General dentist")}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* تفاصيل المريض — بتتغير حسب الموعد المختار من الجدول */}
+            <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
+              <h2 className="mb-4 font-bold text-slate-900 dark:text-white">
+                {isArabic ? "تفاصيل المريض" : "Patient Details"}
+              </h2>
+
+              {selectedAppointment ? (
+                <>
+                  <div className="mb-4 flex items-center gap-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                      <User className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="font-bold text-slate-900 dark:text-white">
+                        {selectedAppointment.patient?.name ||
+                          (isArabic ? "مريض غير معروف" : "Unknown patient")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedAppointment.patient?.phone && (
+                    <div className="mb-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                      <Phone className="h-4 w-4 text-slate-400" />
+                      {selectedAppointment.patient.phone}
+                    </div>
+                  )}
+
+                  <div className="mb-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      {isArabic ? "الموعد المحدد" : "Selected appointment"}
+                    </p>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
+                      <Calendar className="h-4 w-4 text-slate-400" />
+                      {formatDate(selectedAppointment.appointment_date)}
+                      {" - "}
+                      {selectedAppointment.appointment_time}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      {getAppointmentTypeLabel(selectedAppointment.appointment_type)}
+                    </p>
+                  </div>
+
+                  <Link
+                    to={`/doctor/patients/${selectedAppointment.patient_id}`}
+                    className="block w-full rounded-xl bg-blue-50 px-4 py-2.5 text-center text-sm font-semibold text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300"
+                  >
+                    {isArabic ? "عرض الملف الكامل" : "View full file"}
+                  </Link>
+                </>
+              ) : (
+                <p className="py-6 text-center text-sm text-slate-400">
+                  {isArabic
+                    ? "اختر موعدًا من الجدول لعرض تفاصيل المريض."
+                    : "Select an appointment from the table to see patient details."}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* ---------- العمود الرئيسي: التنقل بين التواريخ + الجدول ---------- */}
+          <div className="space-y-6 lg:order-last">
+            {/* تنقل بين الأيام / الأسبوع / الشهر + اختيار تاريخ مباشر
+                من التقويم — تم عكس الأماكن بناءً على طلبك: التبويبات
+                بقت مكان التقويم القديم، والتقويم بقى في مكان التبويبات */}
+            <div className="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                {(
+                  [
+                    { key: "day", label: isArabic ? "اليوم" : "Day" },
+                    { key: "week", label: isArabic ? "الأسبوع" : "Week" },
+                    { key: "month", label: isArabic ? "الشهر" : "Month" },
+                  ] as { key: ViewMode; label: string }[]
+                ).map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setViewMode(option.key)}
+                    className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+                      viewMode === option.key
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  aria-label={isArabic ? "السابق" : "Previous"}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+
+                {/* زرار التقويم — بيفتح تقويم المتصفح الحقيقي عشان
+                    تختار أي تاريخ تحب مباشرة، مش بس بالزيادة والنقصان */}
+                <button
+                  type="button"
+                  onClick={openDatePicker}
+                  className="relative flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <Calendar className="h-4 w-4 text-slate-400" />
+                  {rangeLabel}
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    value={selectedDate}
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSelectedDate(event.target.value);
+                      }
+                    }}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    aria-label={isArabic ? "اختيار تاريخ" : "Choose date"}
+                  />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  aria-label={isArabic ? "التالي" : "Next"}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* جدول المواعيد */}
+            <div className="rounded-2xl bg-white shadow-sm dark:bg-slate-900">
+              {displayedAppointments.length === 0 ? (
+                <div className="p-12 text-center">
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {isArabic
+                      ? "لا توجد مواعيد في هذه الفترة."
+                      : "No appointments in this period."}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400 dark:text-slate-500">
+                    {isArabic
+                      ? "يمكنك إضافة موعد متابعة جديد للمريض."
+                      : "You can add a new follow-up appointment for a patient."}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 dark:bg-slate-800">
+                      <tr>
+                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                          {isArabic ? "الوقت" : "Time"}
+                        </th>
+                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                          {isArabic ? "اسم المريض" : "Patient"}
+                        </th>
+                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                          {isArabic ? "نوع الموعد" : "Type"}
+                        </th>
+                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                          {isArabic ? "الحالة" : "Status"}
+                        </th>
+                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                          {isArabic ? "الإجراءات" : "Actions"}
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {displayedAppointments.map((appointment) => {
+                        const isPending = appointment.status === "pending";
+                        const isFollowUp = appointment.appointment_type === "follow_up";
+                        const isProcessing = actionLoading === appointment.id;
+                        const isRowSelected = selectedAppointment?.id === appointment.id;
+
+                        return (
+                          <tr
+                            key={appointment.id}
+                            className={`border-t border-slate-100 transition dark:border-slate-800 ${
+                              isRowSelected ? "bg-blue-50/60 dark:bg-blue-950/20" : ""
+                            }`}
+                          >
+                            <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">
+                              {appointment.appointment_time}
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                                  <User className="h-4 w-4" />
+                                </span>
+                                <span className="font-semibold text-slate-900 dark:text-white">
+                                  {appointment.patient?.name ||
+                                    (isArabic ? "مريض غير معروف" : "Unknown Patient")}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                              {getAppointmentTypeLabel(appointment.appointment_type)}
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <span
+                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                                  appointment.status
+                                )}`}
+                              >
+                                {getStatusLabel(appointment.status)}
+                              </span>
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedAppointmentId(appointment.id)}
+                                  className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300"
+                                >
+                                  {isArabic ? "عرض التفاصيل" : "View details"}
+                                </button>
+
+                                {(isPending || isFollowUp) &&
+                                  appointment.status !== "cancelled" && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        disabled={isProcessing}
+                                        onClick={() =>
+                                          setOpenMenuId((current) =>
+                                            current === appointment.id
+                                              ? null
+                                              : appointment.id
+                                          )
+                                        }
+                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+                                        aria-label={isArabic ? "المزيد" : "More"}
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </button>
+
+                                      {openMenuId === appointment.id && (
+                                        <>
+                                          <div
+                                            className="fixed inset-0 z-10"
+                                            onClick={() => setOpenMenuId(null)}
+                                          />
+                                          <div className="absolute end-0 z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                            {isPending && !isFollowUp && (
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleAppointmentAction(
+                                                      appointment,
+                                                      "confirm"
+                                                    )
+                                                  }
+                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30"
+                                                >
+                                                  {isArabic ? "قبول" : "Accept"}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleAppointmentAction(
+                                                      appointment,
+                                                      "cancel"
+                                                    )
+                                                  }
+                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                >
+                                                  {isArabic ? "رفض" : "Reject"}
+                                                </button>
+                                              </>
+                                            )}
+
+                                            {isFollowUp && (
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => openEditModal(appointment)}
+                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                                >
+                                                  {isArabic ? "تعديل" : "Edit"}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleCancelFollowUp(appointment)
+                                                  }
+                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                >
+                                                  {isArabic ? "إلغاء" : "Cancel"}
+                                                </button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {selectedDayAppointments.length === 0 ? (
-        <div className="p-12 text-center">
-          <p className="text-slate-500 dark:text-slate-400">
-            {isArabic
-              ? "لا توجد مواعيد في هذا اليوم."
-              : "No appointments on this date."}
-          </p>
+      {/* ==================== مودال إضافة موعد متابعة ==================== */}
+      {showFollowUpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="border-b border-slate-200 p-6 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  {isArabic ? "إضافة موعد متابعة" : "Add Follow-up Appointment"}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowFollowUpModal(false)}
+                  className="text-2xl text-slate-400 hover:text-slate-600"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
 
-          <p className="mt-2 text-sm text-slate-400 dark:text-slate-500">
-            {isArabic
-              ? "يمكنك إضافة موعد متابعة جديد للمريض."
-              : "You can add a new follow-up appointment for a patient."}
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 dark:bg-slate-800">
-              <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+            <div className="space-y-5 p-6">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {isArabic ? "المريض" : "Patient"}
-                </th>
+                </label>
+                <select
+                  value={followUpPatientId}
+                  onChange={(event) => setFollowUpPatientId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                >
+                  <option value="">{isArabic ? "اختر المريض" : "Select Patient"}</option>
+                  {patients.map((patient) => (
+                    <option key={patient.id} value={patient.id}>
+                      {patient.name}
+                      {patient.phone ? ` - ${patient.phone}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  {isArabic ? "الهاتف" : "Phone"}
-                </th>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic ? "التاريخ" : "Date"}
+                </label>
+                <input
+                  type="date"
+                  value={followUpDate}
+                  min={getTodayDate()}
+                  onChange={(event) => setFollowUpDate(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
 
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {isArabic ? "الوقت" : "Time"}
-                </th>
+                </label>
+                <input
+                  type="time"
+                  value={followUpTime}
+                  onChange={(event) => setFollowUpTime(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
 
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  {isArabic ? "النوع" : "Type"}
-                </th>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic ? "ملاحظات" : "Notes"}
+                </label>
+                <textarea
+                  value={followUpNotes}
+                  onChange={(event) => setFollowUpNotes(event.target.value)}
+                  rows={3}
+                  placeholder={
+                    isArabic
+                      ? "مثال: متابعة بعد تنظيف الأسنان..."
+                      : "Example: Follow-up after dental cleaning..."
+                  }
+                  className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
 
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  {isArabic ? "الحالة" : "Status"}
-                </th>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={followUpLoading}
+                  onClick={handleCreateFollowUp}
+                  className="flex-1 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {followUpLoading
+                    ? "..."
+                    : isArabic
+                    ? "إنشاء الموعد"
+                    : "Create Appointment"}
+                </button>
+                <button
+                  type="button"
+                  disabled={followUpLoading}
+                  onClick={() => setShowFollowUpModal(false)}
+                  className="rounded-xl bg-slate-200 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {isArabic ? "إلغاء" : "Close"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
+      {/* ==================== مودال تعديل موعد متابعة ==================== */}
+      {editingAppointment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="border-b border-slate-200 p-6 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    {isArabic ? "تعديل موعد المتابعة" : "Edit Follow-up"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {editingAppointment.patient?.name}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingAppointment(null)}
+                  className="text-2xl text-slate-400 hover:text-slate-600"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic ? "التاريخ الجديد" : "New Date"}
+                </label>
+                <input
+                  type="date"
+                  value={editDate}
+                  min={getTodayDate()}
+                  onChange={(event) => setEditDate(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {isArabic ? "الوقت الجديد" : "New Time"}
+                </label>
+                <input
+                  type="time"
+                  value={editTime}
+                  onChange={(event) => setEditTime(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {isArabic ? "الملاحظات" : "Notes"}
-                </th>
+                </label>
+                <textarea
+                  value={editNotes}
+                  onChange={(event) => setEditNotes(event.target.value)}
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+              </div>
 
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  {isArabic ? "الإجراء" : "Action"}
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {selectedDayAppointments.map(
-                (appointment) => {
-                  const isPending =
-                    appointment.status === "pending";
-
-                  const isFollowUp =
-                    appointment.appointment_type === "follow_up";
-
-                  const isProcessing =
-                    actionLoading === appointment.id;
-
-                  return (
-                    <tr
-                      key={appointment.id}
-                      className="border-t border-slate-100 dark:border-slate-800"
-                    >
-                      <td className="px-6 py-5">
-                        <div className="font-semibold text-slate-900 dark:text-white">
-                          {appointment.patient?.name ||
-                            (isArabic
-                              ? "مريض غير معروف"
-                              : "Unknown Patient")}
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-600 dark:text-slate-300">
-                        {appointment.patient?.phone || "-"}
-                      </td>
-
-                      <td className="px-6 py-5 font-medium text-slate-700 dark:text-slate-200">
-                        {appointment.appointment_time}
-                      </td>
-
-                      <td className="px-6 py-5">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getAppointmentTypeClasses(
-                            appointment.appointment_type
-                          )}`}
-                        >
-                          {getAppointmentTypeLabel(
-                            appointment.appointment_type
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-5">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getStatusClasses(
-                            appointment.status
-                          )}`}
-                        >
-                          {getStatusLabel(
-                            appointment.status
-                          )}
-                        </span>
-                      </td>
-
-                      <td className="max-w-xs px-6 py-5 text-slate-600 dark:text-slate-300">
-                        {appointment.notes || "-"}
-                      </td>
-
-                      <td className="px-6 py-5">
-                        {isPending && !isFollowUp ? (
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <button
-                              type="button"
-                              disabled={isProcessing}
-                              onClick={() =>
-                                handleAppointmentAction(
-                                  appointment,
-                                  "confirm"
-                                )
-                              }
-                              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {isProcessing
-                                ? "..."
-                                : isArabic
-                                ? "قبول"
-                                : "Accept"}
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isProcessing}
-                              onClick={() =>
-                                handleAppointmentAction(
-                                  appointment,
-                                  "cancel"
-                                )
-                              }
-                              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {isProcessing
-                                ? "..."
-                                : isArabic
-                                ? "رفض"
-                                : "Reject"}
-                            </button>
-                          </div>
-                        ) : isFollowUp &&
-                          appointment.status !== "cancelled" ? (
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <button
-                              type="button"
-                              disabled={isProcessing}
-                              onClick={() =>
-                                openEditModal(
-                                  appointment
-                                )
-                              }
-                              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              {isArabic ? "تعديل" : "Edit"}
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isProcessing}
-                              onClick={() =>
-                                handleCancelFollowUp(
-                                  appointment
-                                )
-                              }
-                              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                            >
-                              {isProcessing
-                                ? "..."
-                                : isArabic
-                                ? "إلغاء"
-                                : "Cancel"}
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-slate-400 dark:text-slate-500">
-                            {isArabic
-                              ? "لا يوجد إجراء"
-                              : "No action"}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                }
-              )}
-            </tbody>
-          </table>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={editLoading}
+                  onClick={handleUpdateFollowUp}
+                  className="flex-1 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {editLoading ? "..." : isArabic ? "حفظ التعديل" : "Save Changes"}
+                </button>
+                <button
+                  type="button"
+                  disabled={editLoading}
+                  onClick={() => setEditingAppointment(null)}
+                  className="rounded-xl bg-slate-200 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {isArabic ? "إلغاء" : "Close"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
-  </div>
-
-  {showFollowUpModal && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 shadow-xl">
-        <div className="border-b border-slate-200 dark:border-slate-700 p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              {isArabic
-                ? "إضافة موعد متابعة"
-                : "Add Follow-up Appointment"}
-            </h2>
-
-            <button
-              type="button"
-              onClick={() =>
-                setShowFollowUpModal(false)
-              }
-              className="text-2xl text-slate-400 hover:text-slate-600"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-5 p-6">
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic ? "المريض" : "Patient"}
-            </label>
-
-            <select
-              value={followUpPatientId}
-              onChange={(event) =>
-                setFollowUpPatientId(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            >
-              <option value="">
-                {isArabic
-                  ? "اختر المريض"
-                  : "Select Patient"}
-              </option>
-
-              {patients.map((patient) => (
-                <option
-                  key={patient.id}
-                  value={patient.id}
-                >
-                  {patient.name}
-                  {patient.phone
-                    ? ` - ${patient.phone}`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic ? "التاريخ" : "Date"}
-            </label>
-
-            <input
-              type="date"
-              value={followUpDate}
-              min={getTodayDate()}
-              onChange={(event) =>
-                setFollowUpDate(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic ? "الوقت" : "Time"}
-            </label>
-
-            <input
-              type="time"
-              value={followUpTime}
-              onChange={(event) =>
-                setFollowUpTime(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic ? "ملاحظات" : "Notes"}
-            </label>
-
-            <textarea
-              value={followUpNotes}
-              onChange={(event) =>
-                setFollowUpNotes(
-                  event.target.value
-                )
-              }
-              rows={3}
-              placeholder={
-                isArabic
-                  ? "مثال: متابعة بعد تنظيف الأسنان..."
-                  : "Example: Follow-up after dental cleaning..."
-              }
-              className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              disabled={followUpLoading}
-              onClick={handleCreateFollowUp}
-              className="flex-1 rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {followUpLoading
-                ? "..."
-                : isArabic
-                ? "إنشاء الموعد"
-                : "Create Appointment"}
-            </button>
-
-            <button
-              type="button"
-              disabled={followUpLoading}
-              onClick={() =>
-                setShowFollowUpModal(false)
-              }
-              className="rounded-xl bg-slate-200 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200"
-            >
-              {isArabic ? "إلغاء" : "Close"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )}
-
-  {editingAppointment && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 shadow-xl">
-        <div className="border-b border-slate-200 dark:border-slate-700 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                {isArabic
-                  ? "تعديل موعد المتابعة"
-                  : "Edit Follow-up"}
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {editingAppointment.patient?.name}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                setEditingAppointment(null)
-              }
-              className="text-2xl text-slate-400 hover:text-slate-600"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-5 p-6">
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic
-                ? "التاريخ الجديد"
-                : "New Date"}
-            </label>
-
-            <input
-              type="date"
-              value={editDate}
-              min={getTodayDate()}
-              onChange={(event) =>
-                setEditDate(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic
-                ? "الوقت الجديد"
-                : "New Time"}
-            </label>
-
-            <input
-              type="time"
-              value={editTime}
-              onChange={(event) =>
-                setEditTime(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic ? "الملاحظات" : "Notes"}
-            </label>
-
-            <textarea
-              value={editNotes}
-              onChange={(event) =>
-                setEditNotes(
-                  event.target.value
-                )
-              }
-              rows={3}
-              className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              disabled={editLoading}
-              onClick={handleUpdateFollowUp}
-              className="flex-1 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {editLoading
-                ? "..."
-                : isArabic
-                ? "حفظ التعديل"
-                : "Save Changes"}
-            </button>
-
-            <button
-              type="button"
-              disabled={editLoading}
-              onClick={() =>
-                setEditingAppointment(null)
-              }
-              className="rounded-xl bg-slate-200 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200"
-            >
-              {isArabic ? "إلغاء" : "Close"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
-
-
-);
+  );
 };
 
 export default Appointments;
-
