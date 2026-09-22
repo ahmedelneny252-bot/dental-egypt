@@ -1,5 +1,11 @@
+
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -8,7 +14,10 @@ import {
   ScanLine,
 } from "lucide-react";
 import { supabase } from "../supabase";
-import { translations, type Language } from "../i18n";
+import {
+  translations,
+  type Language,
+} from "../i18n";
 
 type Clinic = {
   id: string;
@@ -26,71 +35,117 @@ type AppointmentType =
   | "new_checkup"
   | "xray";
 
-type MedicalConditionsAnswer = "" | "no" | "yes";
+type MedicalConditionsAnswer =
+  | ""
+  | "no"
+  | "yes";
 
 const FREE_APPOINTMENT_LIMIT = 50;
 
 const BookAppointment = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id } =
+    useParams<{ id: string }>();
 
-  const [clinic, setClinic] = useState<Clinic | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [age, setAge] = useState("");
+  const [clinic, setClinic] =
+    useState<Clinic | null>(null);
 
-  const [hasMedicalConditions, setHasMedicalConditions] =
-    useState<MedicalConditionsAnswer>("");
-
-  const [medicalConditionsDetails, setMedicalConditionsDetails] =
+  const [name, setName] =
     useState("");
 
-  const [appointmentType, setAppointmentType] =
-    useState<AppointmentType>("new_checkup");
-
-  const [appointmentDate, setAppointmentDate] =
+  const [phone, setPhone] =
     useState("");
 
-  const [appointmentTime, setAppointmentTime] =
+  const [age, setAge] =
     useState("");
 
-  const [notes, setNotes] = useState("");
+  const [
+    hasMedicalConditions,
+    setHasMedicalConditions,
+  ] =
+    useState<MedicalConditionsAnswer>(
+      ""
+    );
 
-  const [loading, setLoading] = useState(true);
-  const [booking, setBooking] = useState(false);
+  const [
+    medicalConditionsDetails,
+    setMedicalConditionsDetails,
+  ] = useState("");
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [
+    appointmentType,
+    setAppointmentType,
+  ] =
+    useState<AppointmentType>(
+      "new_checkup"
+    );
 
-  const [appointmentCount, setAppointmentCount] =
-    useState(0);
+  const [
+    appointmentDate,
+    setAppointmentDate,
+  ] = useState("");
 
-  // ============================================
+  const [
+    appointmentTime,
+    setAppointmentTime,
+  ] = useState("");
+
+  const [notes, setNotes] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [booking, setBooking] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [success, setSuccess] =
+    useState("");
+
+  const [
+    appointmentCount,
+    setAppointmentCount,
+  ] = useState(0);
+
+  // ============================================================
   // Language
-  // ============================================
+  // ============================================================
 
   const [language, setLanguage] =
     useState<Language>(() => {
       const savedLanguage =
-        localStorage.getItem("dentalcare-language");
+        localStorage.getItem(
+          "dentalcare-language"
+        );
 
-      return savedLanguage === "en" ? "en" : "ar";
+      return savedLanguage === "en"
+        ? "en"
+        : "ar";
     });
 
   const isArabic = language === "ar";
   const t = translations[language];
 
-  // ============================================
+  // ============================================================
   // Language Change
-  // ============================================
+  // ============================================================
 
   useEffect(() => {
     const handleLanguageChange = () => {
       const savedLanguage =
-        localStorage.getItem("dentalcare-language");
+        localStorage.getItem(
+          "dentalcare-language"
+        );
 
       setLanguage(
-        savedLanguage === "en" ? "en" : "ar"
+        savedLanguage === "en"
+          ? "en"
+          : "ar"
       );
     };
 
@@ -117,90 +172,14 @@ const BookAppointment = () => {
     };
   }, []);
 
-  // ============================================
-  // Current Month
-  // ============================================
-
-  const getCurrentMonthRange = () => {
-    const now = new Date();
-
-    const startOfMonth = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1
-    );
-
-    const startOfNextMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      1
-    );
-
-    const formatDate = (date: Date) => {
-      return date.toISOString().split("T")[0];
-    };
-
-    return {
-      start: formatDate(startOfMonth),
-      end: formatDate(startOfNextMonth),
-    };
-  };
-
-  // ============================================
-  // Appointment Type Label
-  // ============================================
-
-  const getAppointmentTypeLabel = (
-    type: AppointmentType
-  ) => {
-    switch (type) {
-      case "new_checkup":
-        return isArabic ? "كشف" : "Checkup";
-
-      case "xray":
-        return isArabic ? "أشعة" : "X-ray";
-
-      default:
-        return isArabic ? "كشف" : "Checkup";
-    }
-  };
-
-  // ============================================
-  // Load Clinic
-  // ============================================
+  // ============================================================
+  // Protect Booking Page
+  // ============================================================
 
   useEffect(() => {
-    const loadData = async () => {
-      if (!id) {
-        setError(
-          isArabic
-            ? "العيادة غير موجودة."
-            : "Clinic not found."
-        );
-
-        setLoading(false);
-        return;
-      }
-
-      try {
-        // ======================================
-        // Clinic
-        // ======================================
-
-        const {
-          data: clinicData,
-          error: clinicError,
-        } = await supabase
-          .from("clinics")
-          .select(
-            "id, name, subscription_plan"
-          )
-          .eq("id", id)
-          .single();
-
-        if (clinicError) {
-          console.error(clinicError);
-
+    const checkPatientAccess =
+      async () => {
+        if (!id) {
           setError(
             isArabic
               ? "العيادة غير موجودة."
@@ -211,68 +190,289 @@ const BookAppointment = () => {
           return;
         }
 
-        setClinic(clinicData);
+        try {
+          const {
+            data: {
+              user,
+            },
+          } =
+            await supabase.auth.getUser();
 
-        // ======================================
-        // Monthly Appointment Count
-        // ======================================
+          // ------------------------------------------------------
+          // No Auth User
+          // ------------------------------------------------------
 
-        const {
-          start,
-          end,
-        } = getCurrentMonthRange();
+          if (!user) {
+            const redirectUrl =
+              `${location.pathname}${location.search}`;
 
-        const {
-          count,
-          error: appointmentCountError,
-        } = await supabase
-          .from("appointments")
-          .select("id", {
-            count: "exact",
-            head: true,
-          })
-          .eq("clinic_id", id)
-          .gte("appointment_date", start)
-          .lt("appointment_date", end);
+            navigate(
+              `/patient/login?redirect=${encodeURIComponent(
+                redirectUrl
+              )}`,
+              {
+                replace: true,
+              }
+            );
 
-        if (appointmentCountError) {
+            return;
+          }
+
+          // ------------------------------------------------------
+          // Verify Patient Account
+          // ------------------------------------------------------
+          //
+          // مجرد وجود Supabase session مش كفاية.
+          // لازم يكون المستخدم مرتبط بسجل Patient.
+          //
+
+          const {
+            data: patientRecord,
+            error: patientError,
+          } =
+            await supabase
+              .from("patients")
+              .select("id")
+              .eq("user_id", user.id)
+              .limit(1)
+              .maybeSingle();
+
+          if (
+            patientError ||
+            !patientRecord
+          ) {
+            console.error(
+              "Patient access verification error:",
+              patientError
+            );
+
+            const redirectUrl =
+              `${location.pathname}${location.search}`;
+
+            navigate(
+              `/patient/login?redirect=${encodeURIComponent(
+                redirectUrl
+              )}&reason=patient_account_required`,
+              {
+                replace: true,
+              }
+            );
+
+            return;
+          }
+
+          // ------------------------------------------------------
+          // Authorized Patient
+          // ------------------------------------------------------
+
+          await loadClinicData();
+        } catch (err) {
           console.error(
-            appointmentCountError
+            "Booking access error:",
+            err
           );
-        } else {
-          setAppointmentCount(count || 0);
-        }
-      } catch (err) {
-        console.error(err);
 
-        setError(
-          isArabic
-            ? "حدث خطأ أثناء تحميل بيانات الحجز."
-            : "Something went wrong while loading booking data."
+          const redirectUrl =
+            `${location.pathname}${location.search}`;
+
+          navigate(
+            `/patient/login?redirect=${encodeURIComponent(
+              redirectUrl
+            )}`,
+            {
+              replace: true,
+            }
+          );
+        }
+      };
+
+    const loadClinicData =
+      async () => {
+        if (!id) {
+          return;
+        }
+
+        try {
+          // ======================================================
+          // Clinic
+          // ======================================================
+
+          const {
+            data: clinicData,
+            error: clinicError,
+          } =
+            await supabase
+              .from("clinics")
+              .select(
+                "id, name, subscription_plan"
+              )
+              .eq("id", id)
+              .single();
+
+          if (clinicError) {
+            console.error(
+              clinicError
+            );
+
+            setError(
+              isArabic
+                ? "العيادة غير موجودة."
+                : "Clinic not found."
+            );
+
+            return;
+          }
+
+          setClinic(clinicData);
+
+          // ======================================================
+          // Monthly Appointment Count
+          // ======================================================
+
+          const {
+            start,
+            end,
+          } = getCurrentMonthRange();
+
+          const {
+            count,
+            error:
+              appointmentCountError,
+          } =
+            await supabase
+              .from("appointments")
+              .select("id", {
+                count: "exact",
+                head: true,
+              })
+              .eq("clinic_id", id)
+              .gte(
+                "appointment_date",
+                start
+              )
+              .lt(
+                "appointment_date",
+                end
+              );
+
+          if (
+            appointmentCountError
+          ) {
+            console.error(
+              appointmentCountError
+            );
+          } else {
+            setAppointmentCount(
+              count || 0
+            );
+          }
+        } catch (err) {
+          console.error(err);
+
+          setError(
+            isArabic
+              ? "حدث خطأ أثناء تحميل بيانات الحجز."
+              : "Something went wrong while loading booking data."
+          );
+        } finally {
+          setLoading(false);
+        }
+      };
+
+    checkPatientAccess();
+  }, [
+    id,
+    navigate,
+    location.pathname,
+    location.search,
+    isArabic,
+  ]);
+
+  // ============================================================
+  // Current Month
+  // ============================================================
+
+  const getCurrentMonthRange =
+    () => {
+      const now = new Date();
+
+      const startOfMonth =
+        new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          1
         );
-      } finally {
-        setLoading(false);
+
+      const startOfNextMonth =
+        new Date(
+          now.getFullYear(),
+          now.getMonth() + 1,
+          1
+        );
+
+      const formatDate = (
+        date: Date
+      ) => {
+        return date
+          .toISOString()
+          .split("T")[0];
+      };
+
+      return {
+        start:
+          formatDate(
+            startOfMonth
+          ),
+        end:
+          formatDate(
+            startOfNextMonth
+          ),
+      };
+    };
+
+  // ============================================================
+  // Appointment Type Label
+  // ============================================================
+
+  const getAppointmentTypeLabel =
+    (
+      type: AppointmentType
+    ) => {
+      switch (type) {
+        case "new_checkup":
+          return isArabic
+            ? "كشف"
+            : "Checkup";
+
+        case "xray":
+          return isArabic
+            ? "أشعة"
+            : "X-ray";
+
+        default:
+          return isArabic
+            ? "كشف"
+            : "Checkup";
       }
     };
 
-    loadData();
-  }, [id, isArabic]);
-
-  // ============================================
+  // ============================================================
   // Free Plan
-  // ============================================
+  // ============================================================
 
   const isFreePlan =
-    clinic?.subscription_plan === "Free" ||
+    clinic?.subscription_plan ===
+      "Free" ||
     !clinic?.subscription_plan;
 
   const hasReachedAppointmentLimit =
     isFreePlan &&
-    appointmentCount >= FREE_APPOINTMENT_LIMIT;
+    appointmentCount >=
+      FREE_APPOINTMENT_LIMIT;
 
-  // ============================================
+  // ============================================================
   // Handle Booking
-  // ============================================
+  // ============================================================
 
   const handleBooking = async (
     e: React.FormEvent
@@ -292,11 +492,14 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
+    // ========================================================
     // Validate Patient Name + Phone
-    // ========================================
+    // ========================================================
 
-    if (!name.trim() || !phone.trim()) {
+    if (
+      !name.trim() ||
+      !phone.trim()
+    ) {
       setError(
         isArabic
           ? "من فضلك أدخل اسم المريض ورقم هاتفه."
@@ -306,19 +509,23 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
-    // Name must contain at least 3 names
-    // ========================================
+    // ========================================================
+    // Name
+    // ========================================================
 
-    const patientName = name
-      .trim()
-      .replace(/\s+/g, " ");
+    const patientName =
+      name
+        .trim()
+        .replace(/\s+/g, " ");
 
-    const nameParts = patientName
-      .split(" ")
-      .filter(Boolean);
+    const nameParts =
+      patientName
+        .split(" ")
+        .filter(Boolean);
 
-    if (nameParts.length < 3) {
+    if (
+      nameParts.length < 3
+    ) {
       setError(
         isArabic
           ? "يجب كتابة اسم المريض ثلاثيًا على الأقل."
@@ -328,12 +535,15 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
-    // Validate Age
-    // ========================================
+    // ========================================================
+    // Age
+    // ========================================================
 
-    const trimmedAge = age.trim();
-    const ageNumber = Number(trimmedAge);
+    const trimmedAge =
+      age.trim();
+
+    const ageNumber =
+      Number(trimmedAge);
 
     if (
       !trimmedAge ||
@@ -350,11 +560,13 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
-    // Validate Medical Conditions Answer
-    // ========================================
+    // ========================================================
+    // Medical Conditions
+    // ========================================================
 
-    if (!hasMedicalConditions) {
+    if (
+      !hasMedicalConditions
+    ) {
       setError(
         isArabic
           ? "من فضلك حدد هل يعاني المريض من أي أمراض أم لا."
@@ -365,7 +577,8 @@ const BookAppointment = () => {
     }
 
     if (
-      hasMedicalConditions === "yes" &&
+      hasMedicalConditions ===
+        "yes" &&
       !medicalConditionsDetails.trim()
     ) {
       setError(
@@ -377,9 +590,9 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
-    // Validate Appointment Type
-    // ========================================
+    // ========================================================
+    // Appointment Type
+    // ========================================================
 
     if (!appointmentType) {
       setError(
@@ -391,9 +604,9 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
-    // Validate Date + Time
-    // ========================================
+    // ========================================================
+    // Date + Time
+    // ========================================================
 
     if (
       !appointmentDate ||
@@ -408,13 +621,14 @@ const BookAppointment = () => {
       return;
     }
 
-    // ========================================
+    // ========================================================
     // Free Plan Limit
-    // ========================================
+    // ========================================================
 
     if (
       isFreePlan &&
-      appointmentCount >= FREE_APPOINTMENT_LIMIT
+      appointmentCount >=
+        FREE_APPOINTMENT_LIMIT
     ) {
       setError(
         isArabic
@@ -428,110 +642,152 @@ const BookAppointment = () => {
     setBooking(true);
 
     try {
-      // ========================================
+      // ========================================================
       // Current User
-      // ========================================
+      // ========================================================
 
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: {
+          user,
+        },
+      } =
+        await supabase.auth.getUser();
 
       if (!user) {
-        setError(
-          isArabic
-            ? "يجب تسجيل الدخول أولًا لحجز موعد."
-            : "You must be logged in to book an appointment."
+        const redirectUrl =
+          `${location.pathname}${location.search}`;
+
+        navigate(
+          `/patient/login?redirect=${encodeURIComponent(
+            redirectUrl
+          )}`,
+          {
+            replace: true,
+          }
         );
 
         return;
       }
 
-      // ========================================
-      // Medical notes text built from the
-      // Yes/No answer + details
-      // ========================================
+      // ========================================================
+      // Verify Patient Account Again
+      // ========================================================
+
+      const {
+        data: patientAccount,
+        error:
+          patientAccountError,
+      } =
+        await supabase
+          .from("patients")
+          .select("id")
+          .eq("user_id", user.id)
+          .limit(1)
+          .maybeSingle();
+
+      if (
+        patientAccountError ||
+        !patientAccount
+      ) {
+        const redirectUrl =
+          `${location.pathname}${location.search}`;
+
+        navigate(
+          `/patient/login?redirect=${encodeURIComponent(
+            redirectUrl
+          )}&reason=patient_account_required`,
+          {
+            replace: true,
+          }
+        );
+
+        return;
+      }
+
+      // ========================================================
+      // Medical Notes
+      // ========================================================
 
       const medicalNotes =
-        hasMedicalConditions === "yes"
+        hasMedicalConditions ===
+        "yes"
           ? medicalConditionsDetails.trim()
           : isArabic
-          ? "لا يعاني من أي أمراض"
-          : "No known medical conditions";
+            ? "لا يعاني من أي أمراض"
+            : "No known medical conditions";
 
-      // ========================================
-      // Create NEW Patient for THIS booking
-      // ========================================
-      //
-      // الحساب الواحد يمكنه الحجز لأكثر من شخص:
-      // نفسه، والدته، والده، أخوه... إلخ.
-      //
-      // لذلك لا نبحث عن Patient قديم.
-      // كل حجز جديد ينشئ Patient record مستقل.
-      //
+      // ========================================================
+      // Create NEW Patient
+      // ========================================================
 
       const {
         data: newPatient,
-        error: patientInsertError,
-      } = await supabase
-        .from("patients")
-        .insert({
-          clinic_id: id,
-          name: patientName,
-          phone: phone.trim(),
-          age: ageNumber,
-          medical_notes: medicalNotes,
-          user_id: user.id,
-        })
-        .select("id, name, phone")
-        .single();
+        error:
+          patientInsertError,
+      } =
+        await supabase
+          .from("patients")
+          .insert({
+            clinic_id: id,
+            name: patientName,
+            phone: phone.trim(),
+            age: ageNumber,
+            medical_notes:
+              medicalNotes,
+            user_id: user.id,
+          })
+          .select(
+            "id, name, phone"
+          )
+          .single();
 
       if (patientInsertError) {
         throw patientInsertError;
       }
 
-      const patient: Patient = newPatient;
+      const patient: Patient =
+        newPatient;
 
-      // ========================================
+      // ========================================================
       // Create Appointment
-      // ========================================
+      // ========================================================
 
       const {
         data: newAppointment,
-        error: appointmentError,
-      } = await supabase
-        .from("appointments")
-        .insert({
-          clinic_id: id,
-          patient_id: patient.id,
-
-          appointment_date:
-            appointmentDate,
-
-          appointment_time:
-            appointmentTime,
-
-          appointment_type:
-            appointmentType,
-
-          status: "pending",
-
-          notes:
-            notes.trim() || null,
-
-          created_by: "patient",
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .select("id")
-        .single();
+        error:
+          appointmentError,
+      } =
+        await supabase
+          .from("appointments")
+          .insert({
+            clinic_id: id,
+            patient_id:
+              patient.id,
+            appointment_date:
+              appointmentDate,
+            appointment_time:
+              appointmentTime,
+            appointment_type:
+              appointmentType,
+            status: "pending",
+            notes:
+              notes.trim() ||
+              null,
+            created_by:
+              "patient",
+            updated_at:
+              new Date().toISOString(),
+          })
+          .select("id")
+          .single();
 
       if (appointmentError) {
         throw appointmentError;
       }
 
       setAppointmentCount(
-        (current) => current + 1
+        (current) =>
+          current + 1
       );
 
       const appointmentTypeLabel =
@@ -539,50 +795,38 @@ const BookAppointment = () => {
           appointmentType
         );
 
-      // ========================================
+      // ========================================================
       // Doctor Notification ONLY
-      // ========================================
-      //
-      // عند إنشاء الحجز:
-      // الطبيب فقط يحصل على إشعار.
-      //
-      // المريض لا يحصل على إشعار هنا.
-      //
-      // المريض يحصل على إشعار فقط عندما
-      // يقوم الطبيب بالقبول أو الرفض.
-      //
+      // ========================================================
 
       const {
-        error: doctorNotificationError,
-      } = await supabase
-        .from("notifications")
-        .insert({
-          clinic_id: id,
+        error:
+          doctorNotificationError,
+      } =
+        await supabase
+          .from("notifications")
+          .insert({
+            clinic_id: id,
+            patient_id:
+              patient.id,
+            appointment_id:
+              newAppointment.id,
+            title: isArabic
+              ? "طلب موعد جديد"
+              : "New Appointment Request",
+            message: isArabic
+              ? `${patient.name} طلب ${appointmentTypeLabel}. التاريخ: ${appointmentDate} الساعة ${appointmentTime}.`
+              : `${patient.name} requested a ${appointmentTypeLabel} appointment. Date: ${appointmentDate} at ${appointmentTime}.`,
+            is_read: false,
+            recipient_type:
+              "doctor",
+            notification_type:
+              "appointment_request",
+          });
 
-          patient_id:
-            patient.id,
-
-          appointment_id:
-            newAppointment.id,
-
-          title: isArabic
-            ? "طلب موعد جديد"
-            : "New Appointment Request",
-
-          message: isArabic
-            ? `${patient.name} طلب ${appointmentTypeLabel}. التاريخ: ${appointmentDate} الساعة ${appointmentTime}.`
-            : `${patient.name} requested a ${appointmentTypeLabel} appointment. Date: ${appointmentDate} at ${appointmentTime}.`,
-
-          is_read: false,
-
-          recipient_type:
-            "doctor",
-
-          notification_type:
-            "appointment_request",
-        });
-
-      if (doctorNotificationError) {
+      if (
+        doctorNotificationError
+      ) {
         console.error(
           "Doctor notification error:",
           doctorNotificationError
@@ -597,9 +841,9 @@ const BookAppointment = () => {
         return;
       }
 
-      // ========================================
+      // ========================================================
       // Success
-      // ========================================
+      // ========================================================
 
       setSuccess(
         isArabic
@@ -607,28 +851,22 @@ const BookAppointment = () => {
           : `${appointmentTypeLabel} appointment request has been sent successfully!`
       );
 
-      // ========================================
-      // Reset Patient Data
-      // ========================================
-
       setName("");
       setPhone("");
       setAge("");
-      setHasMedicalConditions("");
-      setMedicalConditionsDetails("");
-
-      // ========================================
-      // Reset Appointment Fields
-      // ========================================
+      setHasMedicalConditions(
+        ""
+      );
+      setMedicalConditionsDetails(
+        ""
+      );
 
       setAppointmentType(
         "new_checkup"
       );
 
       setAppointmentDate("");
-
       setAppointmentTime("");
-
       setNotes("");
     } catch (err: any) {
       console.error(
@@ -647,36 +885,48 @@ const BookAppointment = () => {
     }
   };
 
-  // ============================================
+  // ============================================================
   // Loading
-  // ============================================
+  // ============================================================
 
   if (loading) {
     return (
       <div
-        dir={isArabic ? "rtl" : "ltr"}
+        dir={
+          isArabic
+            ? "rtl"
+            : "ltr"
+        }
         className="flex min-h-screen items-center justify-center bg-slate-50 px-6 pt-24 dark:bg-slate-950"
       >
         <p className="text-slate-600 dark:text-slate-300">
           {isArabic
-            ? "جاري التحميل..."
-            : "Loading..."}
+            ? "جاري التحقق من الحساب..."
+            : "Checking your account..."}
         </p>
       </div>
     );
   }
 
-  // ============================================
+  // ============================================================
   // Clinic Not Found
-  // ============================================
+  // ============================================================
 
-  if (error && !clinic) {
+  if (
+    error &&
+    !clinic
+  ) {
     return (
       <div
-        dir={isArabic ? "rtl" : "ltr"}
+        dir={
+          isArabic
+            ? "rtl"
+            : "ltr"
+        }
         className="flex min-h-screen items-center justify-center bg-slate-50 px-6 pt-24 dark:bg-slate-950"
       >
         <div className="text-center">
+
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
             {isArabic
               ? "العيادة غير موجودة"
@@ -701,14 +951,23 @@ const BookAppointment = () => {
               </>
             )}
           </Link>
+
         </div>
       </div>
     );
   }
 
+  // ============================================================
+  // Main
+  // ============================================================
+
   return (
     <div
-      dir={isArabic ? "rtl" : "ltr"}
+      dir={
+        isArabic
+          ? "rtl"
+          : "ltr"
+      }
       className="min-h-screen bg-slate-50 pt-24 dark:bg-slate-950"
     >
       <div className="mx-auto max-w-3xl px-6 py-10">
@@ -771,7 +1030,9 @@ const BookAppointment = () => {
                   }`}
                 >
                   {appointmentCount}/
-                  {FREE_APPOINTMENT_LIMIT}
+                  {
+                    FREE_APPOINTMENT_LIMIT
+                  }
                 </span>{" "}
 
                 {isArabic
@@ -796,6 +1057,7 @@ const BookAppointment = () => {
 
               </p>
             )}
+
           </div>
 
           {/* Limit */}
@@ -847,7 +1109,9 @@ const BookAppointment = () => {
           {/* Form */}
 
           <form
-            onSubmit={handleBooking}
+            onSubmit={
+              handleBooking
+            }
             className="space-y-6"
           >
 
@@ -865,7 +1129,9 @@ const BookAppointment = () => {
                 type="text"
                 value={name}
                 onChange={(e) =>
-                  setName(e.target.value)
+                  setName(
+                    e.target.value
+                  )
                 }
                 placeholder={
                   isArabic
@@ -891,8 +1157,6 @@ const BookAppointment = () => {
 
             <div className="grid gap-5 md:grid-cols-2">
 
-              {/* Phone */}
-
               <div>
 
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -905,7 +1169,9 @@ const BookAppointment = () => {
                   type="tel"
                   value={phone}
                   onChange={(e) =>
-                    setPhone(e.target.value)
+                    setPhone(
+                      e.target.value
+                    )
                   }
                   placeholder={
                     isArabic
@@ -921,8 +1187,6 @@ const BookAppointment = () => {
 
               </div>
 
-              {/* Age */}
-
               <div>
 
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -937,7 +1201,9 @@ const BookAppointment = () => {
                   max="120"
                   value={age}
                   onChange={(e) =>
-                    setAge(e.target.value)
+                    setAge(
+                      e.target.value
+                    )
                   }
                   placeholder={
                     isArabic
@@ -973,15 +1239,20 @@ const BookAppointment = () => {
                     hasReachedAppointmentLimit
                   }
                   onClick={() =>
-                    setHasMedicalConditions("no")
+                    setHasMedicalConditions(
+                      "no"
+                    )
                   }
                   className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
-                    hasMedicalConditions === "no"
+                    hasMedicalConditions ===
+                    "no"
                       ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
                       : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                   }`}
                 >
-                  {isArabic ? "لا" : "No"}
+                  {isArabic
+                    ? "لا"
+                    : "No"}
                 </button>
 
                 <button
@@ -990,24 +1261,32 @@ const BookAppointment = () => {
                     hasReachedAppointmentLimit
                   }
                   onClick={() =>
-                    setHasMedicalConditions("yes")
+                    setHasMedicalConditions(
+                      "yes"
+                    )
                   }
                   className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
-                    hasMedicalConditions === "yes"
+                    hasMedicalConditions ===
+                    "yes"
                       ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
                       : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                   }`}
                 >
-                  {isArabic ? "نعم" : "Yes"}
+                  {isArabic
+                    ? "نعم"
+                    : "Yes"}
                 </button>
 
               </div>
 
-              {hasMedicalConditions === "yes" && (
+              {hasMedicalConditions ===
+                "yes" && (
                 <div className="mt-3">
 
                   <textarea
-                    value={medicalConditionsDetails}
+                    value={
+                      medicalConditionsDetails
+                    }
                     onChange={(e) =>
                       setMedicalConditionsDetails(
                         e.target.value
@@ -1042,8 +1321,6 @@ const BookAppointment = () => {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
-                {/* Checkup */}
-
                 <button
                   type="button"
                   disabled={
@@ -1061,7 +1338,6 @@ const BookAppointment = () => {
                       : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                   }`}
                 >
-
                   <Stethoscope className="mx-auto mb-2 h-7 w-7" />
 
                   <span className="block font-semibold">
@@ -1079,10 +1355,7 @@ const BookAppointment = () => {
                         : "Selected"}
                     </span>
                   )}
-
                 </button>
-
-                {/* X-Ray */}
 
                 <button
                   type="button"
@@ -1101,7 +1374,6 @@ const BookAppointment = () => {
                       : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                   }`}
                 >
-
                   <ScanLine className="mx-auto mb-2 h-7 w-7" />
 
                   <span className="block font-semibold">
@@ -1119,12 +1391,9 @@ const BookAppointment = () => {
                         : "Selected"}
                     </span>
                   )}
-
                 </button>
 
               </div>
-
-              {/* Selected Type */}
 
               <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70">
 
@@ -1148,8 +1417,6 @@ const BookAppointment = () => {
 
             <div className="grid gap-5 md:grid-cols-2">
 
-              {/* Date */}
-
               <div>
 
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -1170,11 +1437,15 @@ const BookAppointment = () => {
 
                   <input
                     type="date"
-                    value={appointmentDate}
+                    value={
+                      appointmentDate
+                    }
                     min={
                       new Date()
                         .toISOString()
-                        .split("T")[0]
+                        .split(
+                          "T"
+                        )[0]
                     }
                     onChange={(e) =>
                       setAppointmentDate(
@@ -1196,8 +1467,6 @@ const BookAppointment = () => {
 
               </div>
 
-              {/* Time */}
-
               <div>
 
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -1218,7 +1487,9 @@ const BookAppointment = () => {
 
                   <input
                     type="time"
-                    value={appointmentTime}
+                    value={
+                      appointmentTime
+                    }
                     onChange={(e) =>
                       setAppointmentTime(
                         e.target.value
@@ -1254,7 +1525,9 @@ const BookAppointment = () => {
               <textarea
                 value={notes}
                 onChange={(e) =>
-                  setNotes(e.target.value)
+                  setNotes(
+                    e.target.value
+                  )
                 }
                 placeholder={
                   isArabic
@@ -1294,6 +1567,7 @@ const BookAppointment = () => {
             </button>
 
           </form>
+
         </div>
       </div>
     </div>
@@ -1301,6 +1575,8 @@ const BookAppointment = () => {
 };
 
 export default BookAppointment;
+
+
 
 
 

@@ -16,6 +16,13 @@ import {
   ShieldPlus,
   ArrowLeft,
   ArrowRight,
+  X,
+  Phone,
+  MessageCircle,
+  Facebook,
+  Calendar,
+  LogIn,
+  Edit,
 } from "lucide-react";
 import { supabase } from "../supabase";
 
@@ -25,9 +32,12 @@ type SupabaseClinic = {
   logo_url: string | null;
   phone: string | null;
   whatsapp: string | null;
+  facebook?: string | null;
   address: string | null;
   description: string | null;
   slug: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   rating?: number | null;
   doctors_count?: number | null;
   services_count?: number | null;
@@ -41,6 +51,36 @@ const Home = () => {
   );
   const [clinics, setClinics] = useState<SupabaseClinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
+
+  // ✅ بيانات المودال (نافذة تفاصيل العيادة)
+  const [selectedClinic, setSelectedClinic] = useState<SupabaseClinic | null>(
+    null
+  );
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // ✅ هل المريض مسجل دخول ولا لأ (عشان نتحكم في زرار الحجز)
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      setIsLoggedIn(!!data.session);
+      setCheckingAuth(false);
+    };
+
+    checkSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setIsLoggedIn(!!session);
+      }
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const updateLanguage = () => {
@@ -62,6 +102,14 @@ const Home = () => {
     document.documentElement.dir = isArabic ? "rtl" : "ltr";
   }, [isArabic]);
 
+  // ✅ منع تمرير الصفحة اللي وراء المودال لما يبقى مفتوح
+  useEffect(() => {
+    document.body.style.overflow = isModalOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isModalOpen]);
+
   useEffect(() => {
     const loadClinics = async () => {
       setLoadingClinics(true);
@@ -69,7 +117,7 @@ const Home = () => {
       const { data, error } = await supabase
         .from("clinics")
         .select(
-          "id, name, logo_url, phone, whatsapp, address, description, slug"
+          "id, name, logo_url, phone, whatsapp, facebook, address, description, slug, latitude, longitude"
         )
         .order("name", { ascending: true })
         .limit(4);
@@ -114,52 +162,74 @@ const Home = () => {
   ];
 
   // بيانات تجريبية تظهر لحد ما العيادات الحقيقية تتحمل من قاعدة البيانات
-  const fallbackClinics = [
+  const fallbackClinics: SupabaseClinic[] = [
     {
       id: "demo-1",
       name: isArabic ? "عيادة سمايل لطب الأسنان" : "Smile Dental Clinic",
+      logo_url: null,
+      phone: null,
+      whatsapp: null,
+      facebook: null,
       address: isArabic ? "الشيخ زايد - الجيزة" : "Sheikh Zayed - Giza",
+      description: null,
+      slug: null,
+      latitude: null,
+      longitude: null,
       rating: 4.8,
-      doctors: 5,
-      services: 12,
+      doctors_count: 5,
+      services_count: 12,
     },
     {
       id: "demo-2",
       name: isArabic ? "عيادة د. أحمد عادل" : "Dr. Ahmed Adel Clinic",
+      logo_url: null,
+      phone: null,
+      whatsapp: null,
+      facebook: null,
       address: isArabic ? "مدينة نصر - القاهرة" : "Nasr City - Cairo",
+      description: null,
+      slug: null,
+      latitude: null,
+      longitude: null,
       rating: 4.6,
-      doctors: 3,
-      services: 8,
+      doctors_count: 3,
+      services_count: 8,
     },
     {
       id: "demo-3",
       name: isArabic ? "عيادة د. مروة مصطفى" : "Dr. Marwa Mostafa Clinic",
+      logo_url: null,
+      phone: null,
+      whatsapp: null,
+      facebook: null,
       address: isArabic ? "التجمع الخامس - القاهرة" : "Fifth Settlement - Cairo",
+      description: null,
+      slug: null,
+      latitude: null,
+      longitude: null,
       rating: 4.7,
-      doctors: 4,
-      services: 10,
+      doctors_count: 4,
+      services_count: 10,
     },
     {
       id: "demo-4",
       name: isArabic ? "عيادة إيليت لطب الأسنان" : "Elite Dental Clinic",
+      logo_url: null,
+      phone: null,
+      whatsapp: null,
+      facebook: null,
       address: isArabic ? "6 أكتوبر - الجيزة" : "6 October - Giza",
+      description: null,
+      slug: null,
+      latitude: null,
+      longitude: null,
       rating: 4.5,
-      doctors: 3,
-      services: 7,
+      doctors_count: 3,
+      services_count: 7,
     },
   ];
 
-  const clinicsToShow =
-    clinics.length > 0
-      ? clinics.map((c) => ({
-          id: c.id,
-          name: c.name,
-          address: c.address || "",
-          rating: c.rating ?? 4.7,
-          doctors: c.doctors_count ?? 3,
-          services: c.services_count ?? 8,
-        }))
-      : fallbackClinics;
+  const clinicsToShow = clinics.length > 0 ? clinics : fallbackClinics;
 
   const doctorFeatures = [
     { icon: CalendarCheck, label: isArabic ? "إدارة المواعيد بسهولة" : "Easy appointment management" },
@@ -168,14 +238,70 @@ const Home = () => {
     { icon: ShieldCheck, label: isArabic ? "بدون عمولات عالية" : "No high commissions" },
   ];
 
+  // ✅ فتح مودال تفاصيل العيادة بدل الانتقال لصفحة تانية
+  const openClinicModal = (clinic: SupabaseClinic) => {
+    setSelectedClinic(clinic);
+    setIsModalOpen(true);
+  };
+
+  const closeClinicModal = () => {
+    setIsModalOpen(false);
+    setSelectedClinic(null);
+  };
+
+  const whatsappNumber = selectedClinic?.whatsapp
+    ? selectedClinic.whatsapp.replace(/\D/g, "")
+    : "";
+
+  const googleMapsUrl = selectedClinic
+    ? selectedClinic.latitude != null && selectedClinic.longitude != null
+      ? `https://www.google.com/maps/search/?api=1&query=${selectedClinic.latitude},${selectedClinic.longitude}`
+      : selectedClinic.address
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            selectedClinic.address
+          )}`
+        : ""
+    : "";
+
   return (
-    <div
-      dir={isArabic ? "rtl" : "ltr"}
-      className="bg-white pt-16 transition-colors duration-300 dark:bg-slate-950 lg:pt-20"
-    >
-      {/* ============================================
-          Hero Section
-          ============================================ */}
+      <div
+        dir={isArabic ? "rtl" : "ltr"}
+        className="bg-white pt-16 transition-colors duration-300 dark:bg-slate-950 lg:pt-20"
+      >
+        {/* ============================================
+            Top Patient Auth Bar (Login / Sign Up)
+            ============================================ */}
+        {!isLoggedIn && (
+          <div className="bg-blue-50 dark:bg-blue-950/20">
+            <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 px-4 py-3 sm:px-6 sm:flex-row sm:justify-between lg:px-8">
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                {isArabic ? "عندك حساب بالفعل؟" : "Already have an account?"}
+              </p>
+  
+              <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-4">
+                <Link
+                  to="/patient/login"
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition-all duration-300 hover:bg-blue-700"
+                >
+                  <LogIn className="h-4 w-4" />
+                  {isArabic ? "تسجيل الدخول كمريض" : "Patient Login"}
+                </Link>
+  
+                <Link
+                  to="/patient/register"
+                  className="flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-6 py-2.5 text-sm font-semibold text-blue-600 transition-all duration-300 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-900/20"
+                >
+                  <Edit className="h-4 w-4" />
+                  {isArabic ? "إنشاء حساب مريض" : "Create Patient Account"}
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+  
+        {/* ============================================
+            Hero Section
+            ============================================ */}
       <section className="relative overflow-hidden bg-gradient-to-b from-blue-50/60 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-slate-950">
         <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:min-h-[560px] lg:px-8 lg:py-0">
 
@@ -355,9 +481,11 @@ const Home = () => {
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {clinicsToShow.map((clinic) => (
-                <div
+                <button
                   key={clinic.id}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
+                  type="button"
+                  onClick={() => openClinicModal(clinic)}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-right shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
                 >
                   <div className="flex h-24 items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-500 dark:from-slate-800 dark:to-slate-800 dark:text-blue-400">
                     <Stethoscope className="h-8 w-8" />
@@ -366,7 +494,7 @@ const Home = () => {
                   <div className="p-4">
                     <div className="mb-2 flex items-center gap-1 text-sm font-bold text-amber-500">
                       <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                      {clinic.rating}
+                      {clinic.rating ?? 4.7}
                     </div>
 
                     <h3 className="mb-1 truncate text-base font-bold text-slate-800 dark:text-white">
@@ -381,23 +509,16 @@ const Home = () => {
                     <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span className="flex items-center gap-1">
                         <Users2 className="h-3.5 w-3.5" />
-                        {clinic.doctors} {isArabic ? "أطباء" : "doctors"}
+                        {clinic.doctors_count ?? 3} {isArabic ? "أطباء" : "doctors"}
                       </span>
                       <span className="flex items-center gap-1">
                         <ShieldPlus className="h-3.5 w-3.5" />
-                        {clinic.services} {isArabic ? "خدمة" : "services"}
+                        {clinic.services_count ?? 8} {isArabic ? "خدمة" : "services"}
                       </span>
                     </div>
 
-                    <Link
-                      to="/clinics"
-                      className="flex w-full items-center justify-center gap-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                    >
-                      {isArabic ? "عرض التفاصيل" : "View details"}
-                      <ArrowIcon className="h-3.5 w-3.5" />
-                    </Link>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -471,6 +592,183 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* ============================================
+          Clinic Details Modal
+          ============================================ */}
+      {isModalOpen && selectedClinic && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={closeClinicModal}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 p-5 dark:border-slate-800">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                {isArabic ? "تفاصيل العيادة" : "Clinic Details"}
+              </h3>
+              <button
+                type="button"
+                onClick={closeClinicModal}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              <div className="mb-5 flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 text-blue-500 dark:from-slate-800 dark:to-slate-800 dark:text-blue-400">
+                  {selectedClinic.logo_url ? (
+                    <img
+                      src={selectedClinic.logo_url}
+                      alt={selectedClinic.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Stethoscope className="h-8 w-8" />
+                  )}
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center gap-1 text-sm font-bold text-amber-500">
+                    <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                    {selectedClinic.rating ?? 4.7}
+                  </div>
+                  <h4 className="text-xl font-bold text-slate-800 dark:text-white">
+                    {selectedClinic.name}
+                  </h4>
+                </div>
+              </div>
+
+              {selectedClinic.address && (
+                <p className="mb-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <MapPin className="h-4 w-4 shrink-0 text-blue-500" />
+                  {selectedClinic.address}
+                </p>
+              )}
+
+              <div className="mb-5 flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1">
+                  <Users2 className="h-4 w-4" />
+                  {selectedClinic.doctors_count ?? 3} {isArabic ? "أطباء" : "doctors"}
+                </span>
+                <span className="flex items-center gap-1">
+                  <ShieldPlus className="h-4 w-4" />
+                  {selectedClinic.services_count ?? 8} {isArabic ? "خدمة" : "services"}
+                </span>
+              </div>
+
+              <div className="mb-6">
+                <h5 className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                  {isArabic ? "نبذة عن العيادة" : "About the clinic"}
+                </h5>
+                <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {selectedClinic.description ||
+                    (isArabic
+                      ? "لا يوجد وصف متاح لهذه العيادة حاليًا."
+                      : "No description available for this clinic yet.")}
+                </p>
+              </div>
+
+              {/* Contact info */}
+              <div className="mb-6 space-y-2">
+                {selectedClinic.phone && (
+                  <a
+                    href={`tel:${selectedClinic.phone}`}
+                    className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  >
+                    <Phone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {selectedClinic.phone}
+                    </span>
+                  </a>
+                )}
+
+                {whatsappNumber && (
+                  <a
+                    href={`https://wa.me/${whatsappNumber}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  >
+                    <MessageCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {selectedClinic.whatsapp}
+                    </span>
+                  </a>
+                )}
+
+                {selectedClinic.facebook && (
+                  <a
+                    href={selectedClinic.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  >
+                    <Facebook className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {isArabic ? "صفحة الفيسبوك" : "Facebook page"}
+                    </span>
+                  </a>
+                )}
+
+                {selectedClinic.address && googleMapsUrl && (
+                  <a
+                    href={googleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700"
+                  >
+                    <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {isArabic ? "فتح في Google Maps" : "Open in Google Maps"}
+                    </span>
+                  </a>
+                )}
+              </div>
+
+              {/* Booking — متاح بس للمريض اللي عامل حساب وداخل بيه */}
+              {!selectedClinic.id.startsWith("demo-") && (
+                <>
+                  {checkingAuth ? (
+                    <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-400 dark:bg-slate-800">
+                      {isArabic ? "جاري التحقق..." : "Checking..."}
+                    </div>
+                  ) : isLoggedIn ? (
+                    <Link
+                      to={`/clinics/${selectedClinic.id}/book`}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 hover:bg-blue-700"
+                    >
+                      <Calendar className="h-4 w-4" />
+                      {isArabic ? "احجز موعد الآن" : "Book Appointment Now"}
+                    </Link>
+                  ) : (
+                    <div className="rounded-xl bg-amber-50 p-4 text-center dark:bg-amber-950/30">
+                      <p className="mb-3 text-sm font-medium text-amber-700 dark:text-amber-400">
+                        {isArabic
+                          ? "لازم يكون عندك حساب عشان تقدر تحجز موعد."
+                          : "You need an account to book an appointment."}
+                      </p>
+                      <Link
+                        to="/register"
+                        onClick={closeClinicModal}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 hover:bg-blue-700"
+                      >
+                        <Calendar className="h-4 w-4" />
+                        {isArabic ? "سجّل / سجّل دخول الآن" : "Sign up / Log in"}
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

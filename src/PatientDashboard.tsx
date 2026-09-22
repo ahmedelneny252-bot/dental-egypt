@@ -177,6 +177,11 @@ const PatientDashboard = () => {
   const [totalTreatmentValue, setTotalTreatmentValue] = useState(0);
   const [monthlyPayments, setMonthlyPayments] = useState<{ label: string; total: number }[]>([]);
 
+  // إجمالي عدد المواعيد (كل الحالات) للمريض في العيادة المختارة حاليًا.
+  // بنستخدمه عشان نعرف هل ده أول موعد للمريض في العيادة دي ولا لأ،
+  // عشان نظهر/نخفي بانر "احجز موعدك الأول الآن".
+  const [totalAppointmentsCount, setTotalAppointmentsCount] = useState(0);
+
   const [searchValue, setSearchValue] = useState("");
 
   // هل الـ Sidebar (الرئيسية / مواعيدي / ملفي الطبي / ... إلخ) ظاهر؟
@@ -355,6 +360,7 @@ const PatientDashboard = () => {
         setTotalPaid(0);
         setTotalTreatmentValue(0);
         setMonthlyPayments([]);
+        setTotalAppointmentsCount(0);
         setLoading(false);
         return;
       }
@@ -374,6 +380,7 @@ const PatientDashboard = () => {
         setTotalPaid(0);
         setTotalTreatmentValue(0);
         setMonthlyPayments([]);
+        setTotalAppointmentsCount(0);
         setLoading(false);
         return;
       }
@@ -395,6 +402,7 @@ const PatientDashboard = () => {
 
       if (appointmentsError) {
         console.error("Appointments load error:", appointmentsError);
+        setTotalAppointmentsCount(0);
       } else {
         const rows: AppointmentRow[] = (appointmentsData || []).map((a: any) => ({
           id: a.id,
@@ -404,6 +412,10 @@ const PatientDashboard = () => {
           appointment_type: a.appointment_type,
           clinics: Array.isArray(a.clinics) ? a.clinics[0] || null : a.clinics || null,
         }));
+
+        // إجمالي عدد مواعيد المريض في العيادة دي (أي حالة) — ده اللي
+        // بيتحكم في ظهور/اختفاء بانر "احجز موعدك الأول الآن"
+        setTotalAppointmentsCount(rows.length);
 
         const today = getEgyptToday();
 
@@ -527,6 +539,13 @@ const PatientDashboard = () => {
     () => notifications.filter((n) => !n.is_read).length,
     [notifications]
   );
+
+  // هل نظهر بانر "احجز موعدك الأول الآن"؟
+  // بيظهر لما يكون فيه عيادة مختارة والمريض لسه مالوش ولا موعد
+  // (بأي حالة) في العيادة دي. بيختفي أول ما يحجز أول موعد، وبيرجع
+  // يظهر تاني لو غيّر لعيادة تانية لسه ما حجزش فيها.
+  const showFirstBookingBanner =
+    !loading && Boolean(selectedClinicId) && totalAppointmentsCount === 0;
 
   // ============================================
   // خطة العلاج الحالية (Placeholder — شوف الملاحظة فوق)
@@ -809,6 +828,38 @@ const PatientDashboard = () => {
                 ))}
               </select>
             </div>
+
+            {/* بانر "احجز موعدك الأول الآن" — بيظهر بس لما المريض
+                لسه ملوش ولا موعد (بأي حالة) في العيادة المختارة
+                حاليًا. أول ما يحجز أول موعد بيختفي، ولو غيّر لعيادة
+                تانية لسه ما حجزش فيها بيظهر تاني تلقائيًا. */}
+            {showFirstBookingBanner && (
+              <Link
+                to={selectedClinicId ? `/clinics/${selectedClinicId}/book` : "/clinics"}
+                className="group flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl bg-gradient-to-l from-teal-500 to-teal-600 p-6 text-white shadow-sm transition hover:shadow-md sm:flex-row"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                    <CalendarPlus className="h-6 w-6" />
+                  </span>
+                  <div>
+                    <p className="text-lg font-bold">
+                      {isArabic ? "احجز موعدك الأول الآن" : "Book your first appointment now"}
+                    </p>
+                    <p className="mt-1 text-sm text-white/90">
+                      {isArabic
+                        ? "لسه معندكش أي موعد في العيادة دي — احجز أول موعد وابدأ رحلة علاجك."
+                        : "You don't have any appointments at this clinic yet — book your first one to get started."}
+                    </p>
+                  </div>
+                </div>
+
+                <span className="flex shrink-0 items-center gap-1 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-teal-700 transition group-hover:bg-teal-50">
+                  {isArabic ? "احجز الآن" : "Book now"}
+                  <ChevronIcon className="h-4 w-4" />
+                </span>
+              </Link>
+            )}
 
             {/* Stat cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
