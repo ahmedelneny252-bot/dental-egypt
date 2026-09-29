@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import {
   Link,
@@ -12,6 +11,9 @@ import {
   Clock,
   Stethoscope,
   ScanLine,
+  Languages,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import {
@@ -128,11 +130,23 @@ const BookAppointment = () => {
         : "ar";
     });
 
+  const [theme, setTheme] =
+    useState<"light" | "dark">(() => {
+      const savedTheme =
+        localStorage.getItem(
+          "dentalcare-theme"
+        );
+
+      return savedTheme === "dark"
+        ? "dark"
+        : "light";
+    });
+
   const isArabic = language === "ar";
   const t = translations[language];
 
   // ============================================================
-  // Language Change
+  // Language + Theme Change
   // ============================================================
 
   useEffect(() => {
@@ -149,14 +163,37 @@ const BookAppointment = () => {
       );
     };
 
+    const handleThemeChange = () => {
+      const savedTheme =
+        localStorage.getItem(
+          "dentalcare-theme"
+        );
+
+      setTheme(
+        savedTheme === "dark"
+          ? "dark"
+          : "light"
+      );
+    };
+
     window.addEventListener(
       "dentalcare-language-change",
       handleLanguageChange
     );
 
     window.addEventListener(
+      "dentalcare-theme-change",
+      handleThemeChange
+    );
+
+    window.addEventListener(
       "storage",
       handleLanguageChange
+    );
+
+    window.addEventListener(
+      "storage",
+      handleThemeChange
     );
 
     return () => {
@@ -166,11 +203,76 @@ const BookAppointment = () => {
       );
 
       window.removeEventListener(
+        "dentalcare-theme-change",
+        handleThemeChange
+      );
+
+      window.removeEventListener(
         "storage",
         handleLanguageChange
       );
+
+      window.removeEventListener(
+        "storage",
+        handleThemeChange
+      );
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle(
+      "dark",
+      theme === "dark"
+    );
+  }, [theme]);
+
+  const toggleLanguage = () => {
+    const next =
+      language === "ar"
+        ? "en"
+        : "ar";
+
+    localStorage.setItem(
+      "dentalcare-language",
+      next
+    );
+
+    setLanguage(next);
+
+    window.dispatchEvent(
+      new Event(
+        "dentalcare-language-change"
+      )
+    );
+  };
+
+  const toggleTheme = () => {
+    const next =
+      theme === "light"
+        ? "dark"
+        : "light";
+
+    localStorage.setItem(
+      "dentalcare-theme",
+      next
+    );
+
+    setTheme(next);
+
+    window.dispatchEvent(
+      new Event(
+        "dentalcare-theme-change"
+      )
+    );
+  };
+
+  // ============================================================
+  // Back To Patient Dashboard
+  // ============================================================
+
+  const handleBackToDashboard = () => {
+    navigate("/patient/dashboard");
+  };
 
   // ============================================================
   // Protect Booking Page
@@ -221,10 +323,6 @@ const BookAppointment = () => {
           // ------------------------------------------------------
           // Verify Patient Account
           // ------------------------------------------------------
-          //
-          // مجرد وجود Supabase session مش كفاية.
-          // لازم يكون المستخدم مرتبط بسجل Patient.
-          //
 
           const {
             data: patientRecord,
@@ -868,6 +966,17 @@ const BookAppointment = () => {
       setAppointmentDate("");
       setAppointmentTime("");
       setNotes("");
+
+      // ========================================================
+      // Return to Patient Dashboard
+      // ========================================================
+
+      navigate(
+        "/patient/dashboard",
+        {
+          replace: true,
+        }
+      );
     } catch (err: any) {
       console.error(
         "Booking error:",
@@ -886,6 +995,88 @@ const BookAppointment = () => {
   };
 
   // ============================================================
+  // Booking Header
+  // ============================================================
+
+  const BookingHeader = () => (
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div className="mx-auto flex min-h-[68px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+
+        {/* DentalCare Logo */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-600 text-2xl text-white shadow-sm">
+            🦷
+          </div>
+
+          <div>
+            <div className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+              DentalCare
+            </div>
+
+            <div className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
+              {isArabic
+                ? "منصة رعاية الأسنان"
+                : "Dental Care Platform"}
+            </div>
+          </div>
+        </div>
+
+        {/* Header Controls */}
+        <div className="flex items-center gap-2">
+
+          {/* Language */}
+          <button
+            type="button"
+            onClick={
+              toggleLanguage
+            }
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:text-teal-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-teal-700 dark:hover:text-teal-400"
+            aria-label={
+              isArabic
+                ? "Change language"
+                : "تغيير اللغة"
+            }
+          >
+            <Languages className="h-4 w-4" />
+
+            <span>
+              {isArabic
+                ? "EN"
+                : "عربي"}
+            </span>
+          </button>
+
+          {/* Theme */}
+          <button
+            type="button"
+            onClick={
+              toggleTheme
+            }
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-teal-300 hover:text-teal-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-teal-700 dark:hover:text-teal-400"
+            aria-label={
+              theme === "light"
+                ? isArabic
+                  ? "تفعيل الوضع الداكن"
+                  : "Enable dark mode"
+                : isArabic
+                  ? "تفعيل الوضع الفاتح"
+                  : "Enable light mode"
+            }
+          >
+            {theme ===
+            "light" ? (
+              <Moon className="h-5 w-5" />
+            ) : (
+              <Sun className="h-5 w-5" />
+            )}
+          </button>
+
+        </div>
+      </div>
+    </header>
+  );
+
+  // ============================================================
   // Loading
   // ============================================================
 
@@ -897,13 +1088,17 @@ const BookAppointment = () => {
             ? "rtl"
             : "ltr"
         }
-        className="flex min-h-screen items-center justify-center bg-slate-50 px-6 pt-24 dark:bg-slate-950"
+        className="min-h-screen bg-slate-50 dark:bg-slate-950"
       >
-        <p className="text-slate-600 dark:text-slate-300">
-          {isArabic
-            ? "جاري التحقق من الحساب..."
-            : "Checking your account..."}
-        </p>
+        <BookingHeader />
+
+        <div className="flex min-h-[calc(100vh-68px)] items-center justify-center px-6">
+          <p className="text-slate-600 dark:text-slate-300">
+            {isArabic
+              ? "جاري التحقق من الحساب..."
+              : "Checking your account..."}
+          </p>
+        </div>
       </div>
     );
   }
@@ -923,35 +1118,39 @@ const BookAppointment = () => {
             ? "rtl"
             : "ltr"
         }
-        className="flex min-h-screen items-center justify-center bg-slate-50 px-6 pt-24 dark:bg-slate-950"
+        className="min-h-screen bg-slate-50 dark:bg-slate-950"
       >
-        <div className="text-center">
+        <BookingHeader />
 
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
-            {isArabic
-              ? "العيادة غير موجودة"
-              : "Clinic not found"}
-          </h2>
+        <div className="flex min-h-[calc(100vh-68px)] items-center justify-center px-6">
+          <div className="text-center">
 
-          <Link
-            to="/clinics"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-teal-600 px-6 py-3 font-semibold text-white transition hover:bg-teal-700"
-          >
-            {isArabic ? (
-              <>
-                العودة إلى العيادات
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
+              {isArabic
+                ? "العيادة غير موجودة"
+                : "Clinic not found"}
+            </h2>
 
-                <ArrowLeft className="h-5 w-5 rotate-180" />
-              </>
-            ) : (
-              <>
-                <ArrowLeft className="h-5 w-5" />
+            <Link
+              to="/clinics"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-teal-600 px-6 py-3 font-semibold text-white transition hover:bg-teal-700"
+            >
+              {isArabic ? (
+                <>
+                  العودة إلى العيادات
 
-                Back to Clinics
-              </>
-            )}
-          </Link>
+                  <ArrowLeft className="h-5 w-5 rotate-180" />
+                </>
+              ) : (
+                <>
+                  <ArrowLeft className="h-5 w-5" />
 
+                  Back to Clinics
+                </>
+              )}
+            </Link>
+
+          </div>
         </div>
       </div>
     );
@@ -968,30 +1167,11 @@ const BookAppointment = () => {
           ? "rtl"
           : "ltr"
       }
-      className="min-h-screen bg-slate-50 pt-24 dark:bg-slate-950"
+      className="min-h-screen bg-slate-50 dark:bg-slate-950"
     >
-      <div className="mx-auto max-w-3xl px-6 py-10">
+      <BookingHeader />
 
-        {/* Back */}
-
-        <Link
-          to={`/clinics/${id}`}
-          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-teal-600 dark:text-slate-300 dark:hover:text-teal-400"
-        >
-          {isArabic ? (
-            <>
-              {t.common.back}
-
-              <ArrowLeft className="h-4 w-4 rotate-180" />
-            </>
-          ) : (
-            <>
-              <ArrowLeft className="h-4 w-4" />
-
-              Back to Clinic
-            </>
-          )}
-        </Link>
+      <div className="mx-auto max-w-3xl px-6 py-6">
 
         <div className="rounded-2xl bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
 
@@ -999,11 +1179,37 @@ const BookAppointment = () => {
 
           <div className="mb-8">
 
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-              {isArabic
-                ? "حجز موعد"
-                : "Book an Appointment"}
-            </h1>
+            <div className="flex items-center gap-3">
+
+              {/* Back To Patient Dashboard - Arrow Only */}
+              <button
+                type="button"
+                onClick={
+                  handleBackToDashboard
+                }
+                aria-label={
+                  isArabic
+                    ? "الرجوع للوحة التحكم"
+                    : "Back to dashboard"
+                }
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-teal-300 hover:text-teal-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-teal-700 dark:hover:text-teal-400"
+              >
+                <ArrowLeft
+                  className={`h-5 w-5 ${
+                    isArabic
+                      ? "rotate-180"
+                      : ""
+                  }`}
+                />
+              </button>
+
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                {isArabic
+                  ? "حجز موعد"
+                  : "Book an Appointment"}
+              </h1>
+
+            </div>
 
             <p className="mt-2 text-slate-600 dark:text-slate-300">
               {clinic?.name}
@@ -1015,7 +1221,7 @@ const BookAppointment = () => {
                 : "Enter the information of the person you are booking the appointment for."}
             </p>
 
-            {isFreePlan ? (
+            {isFreePlan && (
               <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
 
                 {isArabic
@@ -1038,22 +1244,6 @@ const BookAppointment = () => {
                 {isArabic
                   ? "موعدًا هذا الشهر"
                   : "appointments this month"}
-
-              </p>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-
-                {clinic?.subscription_plan}{" "}
-
-                {isArabic
-                  ? "الباقة:"
-                  : "plan:"}{" "}
-
-                <span className="font-semibold text-teal-600 dark:text-teal-400">
-                  {isArabic
-                    ? "مواعيد غير محدودة"
-                    : "Unlimited appointments"}
-                </span>
 
               </p>
             )}

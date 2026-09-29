@@ -1,5 +1,13 @@
-
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Languages,
+  Moon,
+  Sun,
+  Activity,
+} from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
 
@@ -17,12 +25,22 @@ type Clinic = {
 };
 
 export default function ClinicProfile() {
+  const navigate = useNavigate();
+
   const [language, setLanguage] = useState<Language>(() => {
-    const savedLanguage = localStorage.getItem("dentalcare-language");
+    const savedLanguage = localStorage.getItem(
+      "dentalcare-language"
+    );
+
     return savedLanguage === "en" ? "en" : "ar";
   });
 
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return document.documentElement.classList.contains("dark");
+  });
+
   const isArabic = language === "ar";
+  const t = translations[language];
 
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [clinic, setClinic] = useState<Clinic | null>(null);
@@ -43,9 +61,16 @@ export default function ClinicProfile() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
+  // ============================================
+  // Language
+  // ============================================
+
   useEffect(() => {
     const handleLanguageChange = () => {
-      const savedLanguage = localStorage.getItem("dentalcare-language");
+      const savedLanguage = localStorage.getItem(
+        "dentalcare-language"
+      );
+
       setLanguage(savedLanguage === "en" ? "en" : "ar");
     };
 
@@ -53,16 +78,86 @@ export default function ClinicProfile() {
       "dentalcare-language-change",
       handleLanguageChange
     );
-    window.addEventListener("storage", handleLanguageChange);
+
+    window.addEventListener(
+      "storage",
+      handleLanguageChange
+    );
 
     return () => {
       window.removeEventListener(
         "dentalcare-language-change",
         handleLanguageChange
       );
-      window.removeEventListener("storage", handleLanguageChange);
+
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
     };
   }, []);
+
+  // ============================================
+  // Theme
+  // ============================================
+
+  useEffect(() => {
+    const handleThemeChange = () => {
+      setIsDarkMode(
+        document.documentElement.classList.contains("dark")
+      );
+    };
+
+    window.addEventListener(
+      "dentalcare-theme-change",
+      handleThemeChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "dentalcare-theme-change",
+        handleThemeChange
+      );
+    };
+  }, []);
+
+  const toggleLanguage = () => {
+    const nextLanguage: Language =
+      language === "ar" ? "en" : "ar";
+
+    localStorage.setItem(
+      "dentalcare-language",
+      nextLanguage
+    );
+
+    setLanguage(nextLanguage);
+
+    window.dispatchEvent(
+      new Event("dentalcare-language-change")
+    );
+  };
+
+  const toggleTheme = () => {
+    const root = document.documentElement;
+    const nextDarkMode = !root.classList.contains("dark");
+
+    root.classList.toggle("dark", nextDarkMode);
+
+    localStorage.setItem(
+      "dentalcare-theme",
+      nextDarkMode ? "dark" : "light"
+    );
+
+    setIsDarkMode(nextDarkMode);
+
+    window.dispatchEvent(
+      new Event("dentalcare-theme-change")
+    );
+  };
+
+  // ============================================
+  // Load Clinic
+  // ============================================
 
   useEffect(() => {
     loadClinic();
@@ -176,13 +271,15 @@ export default function ClinicProfile() {
       setDescription(clinicData.description || "");
 
       setLatitude(
-        clinicData.latitude !== null && clinicData.latitude !== undefined
+        clinicData.latitude !== null &&
+          clinicData.latitude !== undefined
           ? String(clinicData.latitude)
           : ""
       );
 
       setLongitude(
-        clinicData.longitude !== null && clinicData.longitude !== undefined
+        clinicData.longitude !== null &&
+          clinicData.longitude !== undefined
           ? String(clinicData.longitude)
           : ""
       );
@@ -198,7 +295,9 @@ export default function ClinicProfile() {
     }
   };
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
 
     if (!file) return;
@@ -343,19 +442,22 @@ export default function ClinicProfile() {
     }
   };
 
-  const isSuccessMessage = message === getMessageText("saved");
+  const isSuccessMessage =
+    message === getMessageText("saved");
 
   if (loading) {
     return (
       <div
         dir={isArabic ? "rtl" : "ltr"}
-        className="min-h-screen pt-32 flex items-center justify-center bg-gray-50 dark:bg-slate-950"
+        className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950"
       >
-        <p className="text-gray-600 dark:text-gray-300">
-          {isArabic
-            ? "جاري تحميل ملف العيادة..."
-            : "Loading clinic profile..."}
-        </p>
+        <div className="rounded-2xl bg-white px-10 py-8 shadow-lg dark:bg-slate-900">
+          <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">
+            {isArabic
+              ? "جاري تحميل ملف العيادة..."
+              : "Loading clinic profile..."}
+          </p>
+        </div>
       </div>
     );
   }
@@ -363,12 +465,132 @@ export default function ClinicProfile() {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-gray-50 dark:bg-slate-950 pt-32 px-4 pb-12"
+      className="min-h-screen bg-slate-50 pb-12 dark:bg-slate-950"
     >
-      <div className="max-w-4xl mx-auto">
+      {/* ========================================
+          Clinic Header
+      ======================================== */}
+
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+
+          {/* Back + Clinic Logo + Clinic Name */}
+
+          <div className="flex items-center gap-3">
+
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              aria-label={
+                isArabic
+                  ? "رجوع"
+                  : "Go back"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {isArabic ? (
+                <ArrowRight className="h-5 w-5" />
+              ) : (
+                <ArrowLeft className="h-5 w-5" />
+              )}
+            </button>
+
+            {/* Clinic Logo */}
+
+            <div className="flex items-center gap-2.5">
+
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-teal-600 text-white shadow-sm">
+                {clinic?.logo_url ? (
+                  <img
+                    src={clinic.logo_url}
+                    alt={clinic.name || "Clinic Logo"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Activity className="h-5 w-5" />
+                )}
+              </div>
+
+              {/* Clinic Name */}
+
+              <div className="leading-tight">
+                <p className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                  {clinic?.name ||
+                    (isArabic
+                      ? "العيادة"
+                      : "Clinic")}
+                </p>
+
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  {isArabic
+                    ? "ملف العيادة"
+                    : "Clinic Profile"}
+                </p>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Language + Theme */}
+
+          <div className="flex items-center gap-2">
+
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              aria-label={
+                isArabic
+                  ? "تغيير اللغة"
+                  : "Change language"
+              }
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Languages className="h-4 w-4" />
+
+              <span className="hidden sm:inline">
+                {isArabic
+                  ? "English"
+                  : "العربية"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                isDarkMode
+                  ? isArabic
+                    ? "الوضع الفاتح"
+                    : "Light mode"
+                  : isArabic
+                  ? "الوضع الداكن"
+                  : "Dark mode"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {isDarkMode ? (
+                <Sun className="h-5 w-5" />
+              ) : (
+                <Moon className="h-5 w-5" />
+              )}
+            </button>
+
+          </div>
+        </div>
+      </header>
+
+      {/* ========================================
+          Page Content
+      ======================================== */}
+
+      <main className="mx-auto max-w-4xl px-4 pt-6 sm:px-6">
+
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 md:p-8">
+
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            {isArabic ? "ملف العيادة" : "Clinic Profile"}
+            {isArabic
+              ? "ملف العيادة"
+              : "Clinic Profile"}
           </h1>
 
           <p className="text-gray-500 dark:text-gray-400 mb-8">
@@ -378,32 +600,48 @@ export default function ClinicProfile() {
           </p>
 
           {/* Logo Section */}
+
           <div className="mb-8">
+
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              {isArabic ? "لوجو العيادة" : "Clinic Logo"}
+              {isArabic
+                ? "لوجو العيادة"
+                : "Clinic Logo"}
             </h2>
 
             <div className="flex flex-col md:flex-row items-start gap-6">
+
               <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-center overflow-hidden">
+
                 {logoPreview ? (
                   <img
                     src={logoPreview}
-                    alt={isArabic ? "لوجو العيادة" : "Clinic Logo"}
+                    alt={
+                      isArabic
+                        ? "لوجو العيادة"
+                        : "Clinic Logo"
+                    }
                     className="w-full h-full object-cover"
                   />
                 ) : (
                   <span className="text-gray-400 text-sm text-center px-3">
-                    {isArabic ? "لا يوجد لوجو" : "No Logo"}
+                    {isArabic
+                      ? "لا يوجد لوجو"
+                      : "No Logo"}
                   </span>
                 )}
+
               </div>
 
               <div>
+
                 <label
                   htmlFor="logo-upload"
                   className="inline-block cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-lg font-medium transition"
                 >
-                  {isArabic ? "اختيار صورة" : "Choose Image"}
+                  {isArabic
+                    ? "اختيار صورة"
+                    : "Choose Image"}
                 </label>
 
                 <input
@@ -426,51 +664,71 @@ export default function ClinicProfile() {
 
                 {logoFile && (
                   <p className="text-sm text-green-600 dark:text-green-400 mt-2">
-                    {isArabic ? "تم اختيار: " : "Selected: "}
+                    {isArabic
+                      ? "تم اختيار: "
+                      : "Selected: "}
                     {logoFile.name}
                   </p>
                 )}
+
               </div>
             </div>
           </div>
 
           {/* Clinic Information */}
+
           <div className="space-y-5">
+
             {/* Clinic Name */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {isArabic ? "اسم العيادة *" : "Clinic Name *"}
+                {isArabic
+                  ? "اسم العيادة *"
+                  : "Clinic Name *"}
               </label>
 
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) =>
+                  setName(e.target.value)
+                }
                 placeholder={
-                  isArabic ? "أدخل اسم العيادة" : "Enter clinic name"
+                  isArabic
+                    ? "أدخل اسم العيادة"
+                    : "Enter clinic name"
                 }
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
             </div>
 
             {/* Phone */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {isArabic ? "رقم الهاتف" : "Phone"}
+                {isArabic
+                  ? "رقم الهاتف"
+                  : "Phone"}
               </label>
 
               <input
                 type="text"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) =>
+                  setPhone(e.target.value)
+                }
                 placeholder={
-                  isArabic ? "أدخل رقم الهاتف" : "Enter phone number"
+                  isArabic
+                    ? "أدخل رقم الهاتف"
+                    : "Enter phone number"
                 }
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
             </div>
 
             {/* WhatsApp */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 WhatsApp
@@ -479,7 +737,9 @@ export default function ClinicProfile() {
               <input
                 type="text"
                 value={whatsapp}
-                onChange={(e) => setWhatsapp(e.target.value)}
+                onChange={(e) =>
+                  setWhatsapp(e.target.value)
+                }
                 placeholder={
                   isArabic
                     ? "أدخل رقم واتساب"
@@ -490,6 +750,7 @@ export default function ClinicProfile() {
             </div>
 
             {/* Facebook */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Facebook
@@ -498,7 +759,9 @@ export default function ClinicProfile() {
               <input
                 type="url"
                 value={facebook}
-                onChange={(e) => setFacebook(e.target.value)}
+                onChange={(e) =>
+                  setFacebook(e.target.value)
+                }
                 placeholder={
                   isArabic
                     ? "ضع رابط صفحة العيادة على Facebook"
@@ -515,26 +778,36 @@ export default function ClinicProfile() {
             </div>
 
             {/* Address */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {isArabic ? "العنوان" : "Address"}
+                {isArabic
+                  ? "العنوان"
+                  : "Address"}
               </label>
 
               <input
                 type="text"
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChange={(e) =>
+                  setAddress(e.target.value)
+                }
                 placeholder={
-                  isArabic ? "أدخل عنوان العيادة" : "Enter clinic address"
+                  isArabic
+                    ? "أدخل عنوان العيادة"
+                    : "Enter clinic address"
                 }
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
             </div>
 
             {/* Location */}
+
             <div>
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                {isArabic ? "موقع العيادة على الخريطة" : "Clinic Map Location"}
+                {isArabic
+                  ? "موقع العيادة على الخريطة"
+                  : "Clinic Map Location"}
               </h2>
 
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -544,7 +817,9 @@ export default function ClinicProfile() {
               </p>
 
               <div className="grid gap-5 md:grid-cols-2">
+
                 {/* Latitude */}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Latitude
@@ -554,13 +829,16 @@ export default function ClinicProfile() {
                     type="text"
                     inputMode="decimal"
                     value={latitude}
-                    onChange={(e) => setLatitude(e.target.value)}
+                    onChange={(e) =>
+                      setLatitude(e.target.value)
+                    }
                     placeholder="Example: 30.0444"
                     className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
                 </div>
 
                 {/* Longitude */}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Longitude
@@ -570,11 +848,14 @@ export default function ClinicProfile() {
                     type="text"
                     inputMode="decimal"
                     value={longitude}
-                    onChange={(e) => setLongitude(e.target.value)}
+                    onChange={(e) =>
+                      setLongitude(e.target.value)
+                    }
                     placeholder="Example: 31.2357"
                     className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
                 </div>
+
               </div>
 
               <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
@@ -585,14 +866,19 @@ export default function ClinicProfile() {
             </div>
 
             {/* Description */}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                {isArabic ? "وصف العيادة" : "Clinic Description"}
+                {isArabic
+                  ? "وصف العيادة"
+                  : "Clinic Description"}
               </label>
 
               <textarea
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) =>
+                  setDescription(e.target.value)
+                }
                 placeholder={
                   isArabic
                     ? "اكتب وصفاً مختصراً عن عيادتك..."
@@ -602,9 +888,11 @@ export default function ClinicProfile() {
                 className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
             </div>
+
           </div>
 
           {/* Message */}
+
           {message && (
             <div
               className={`mt-6 p-4 rounded-lg ${
@@ -618,6 +906,7 @@ export default function ClinicProfile() {
           )}
 
           {/* Save Button */}
+
           <div className="mt-8">
             <button
               onClick={handleSave}
@@ -633,9 +922,9 @@ export default function ClinicProfile() {
                 : "Save Changes"}
             </button>
           </div>
+
         </div>
-      </div>
+      </main>
     </div>
   );
 }
-

@@ -1,4 +1,13 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Languages,
+  Moon,
+  Sun,
+  Activity,
+} from "lucide-react";
 import { supabase } from "./supabase";
 import type { Language } from "./i18n";
 
@@ -11,9 +20,22 @@ type Notification = {
   appointment_id: string | null;
 };
 
+type Patient = {
+  id: string;
+  name: string;
+};
+
 const PatientNotifications = () => {
+  const navigate = useNavigate();
+
   const [notifications, setNotifications] =
     useState<Notification[]>([]);
+
+  const [patients, setPatients] =
+    useState<Patient[]>([]);
+
+  const [selectedPatientId, setSelectedPatientId] =
+    useState("");
 
   const [loading, setLoading] =
     useState(true);
@@ -33,11 +55,31 @@ const PatientNotifications = () => {
         : "ar";
     });
 
+  const [isDarkMode, setIsDarkMode] =
+    useState(() => {
+      const savedTheme =
+        localStorage.getItem(
+          "dentalcare-theme"
+        );
+
+      if (savedTheme === "dark") {
+        return true;
+      }
+
+      if (savedTheme === "light") {
+        return false;
+      }
+
+      return document.documentElement.classList.contains(
+        "dark"
+      );
+    });
+
   const isArabic =
     language === "ar";
 
   // =========================
-  // Language
+  // Language & Theme
   // =========================
 
   useEffect(() => {
@@ -54,6 +96,20 @@ const PatientNotifications = () => {
       );
     };
 
+    const handleThemeChange = () => {
+      const savedTheme =
+        localStorage.getItem(
+          "dentalcare-theme"
+        );
+
+      setIsDarkMode(
+        savedTheme === "dark" ||
+          document.documentElement.classList.contains(
+            "dark"
+          )
+      );
+    };
+
     window.addEventListener(
       "dentalcare-language-change",
       handleLanguageChange
@@ -62,6 +118,16 @@ const PatientNotifications = () => {
     window.addEventListener(
       "storage",
       handleLanguageChange
+    );
+
+    window.addEventListener(
+      "dentalcare-theme-change",
+      handleThemeChange
+    );
+
+    window.addEventListener(
+      "storage",
+      handleThemeChange
     );
 
     return () => {
@@ -74,15 +140,72 @@ const PatientNotifications = () => {
         "storage",
         handleLanguageChange
       );
+
+      window.removeEventListener(
+        "dentalcare-theme-change",
+        handleThemeChange
+      );
+
+      window.removeEventListener(
+        "storage",
+        handleThemeChange
+      );
     };
   }, []);
+
+  const toggleLanguage = () => {
+    const nextLanguage =
+      language === "ar"
+        ? "en"
+        : "ar";
+
+    setLanguage(nextLanguage);
+
+    localStorage.setItem(
+      "dentalcare-language",
+      nextLanguage
+    );
+
+    window.dispatchEvent(
+      new Event(
+        "dentalcare-language-change"
+      )
+    );
+  };
+
+  const toggleTheme = () => {
+    const nextDarkMode =
+      !isDarkMode;
+
+    setIsDarkMode(nextDarkMode);
+
+    localStorage.setItem(
+      "dentalcare-theme",
+      nextDarkMode
+        ? "dark"
+        : "light"
+    );
+
+    document.documentElement.classList.toggle(
+      "dark",
+      nextDarkMode
+    );
+
+    window.dispatchEvent(
+      new Event(
+        "dentalcare-theme-change"
+      )
+    );
+  };
 
   // =========================
   // Load Notifications
   // =========================
 
   const loadNotifications =
-    async () => {
+    async (
+      patientId?: string
+    ) => {
       setLoading(true);
       setError("");
 
@@ -102,15 +225,21 @@ const PatientNotifications = () => {
       // =========================
 
       const {
-        data: patients,
+        data: patientData,
         error:
           patientsError,
       } = await supabase
         .from("patients")
-        .select("id")
+        .select("id, name")
         .eq(
           "user_id",
           user.id
+        )
+        .order(
+          "created_at",
+          {
+            ascending: true,
+          }
         );
 
       if (patientsError) {
@@ -126,19 +255,50 @@ const PatientNotifications = () => {
         return;
       }
 
-      const patientIds =
-        (patients ?? []).map(
-          (patient) =>
-            patient.id
-        );
+      const patientList =
+        patientData ?? [];
+
+      setPatients(
+        patientList
+      );
 
       if (
-        patientIds.length === 0
+        patientList.length === 0
       ) {
+        setSelectedPatientId("");
         setNotifications([]);
         setLoading(false);
         return;
       }
+
+      // =========================
+      // Select Patient
+      // =========================
+
+      const savedPatientId =
+        localStorage.getItem(
+          "dentalcare-selected-patient"
+        );
+
+      const currentPatientId =
+        patientId ||
+        (savedPatientId &&
+        patientList.some(
+          (patient) =>
+            patient.id ===
+            savedPatientId
+        )
+          ? savedPatientId
+          : patientList[0].id);
+
+      setSelectedPatientId(
+        currentPatientId
+      );
+
+      localStorage.setItem(
+        "dentalcare-selected-patient",
+        currentPatientId
+      );
 
       // =========================
       // Get Patient Notifications
@@ -158,9 +318,9 @@ const PatientNotifications = () => {
           created_at,
           appointment_id
         `)
-        .in(
+        .eq(
           "patient_id",
-          patientIds
+          currentPatientId
         )
         .eq(
           "recipient_type",
@@ -213,6 +373,27 @@ const PatientNotifications = () => {
   useEffect(() => {
     loadNotifications();
   }, []);
+
+  // =========================
+  // Change Selected Patient
+  // =========================
+
+  const handlePatientChange = (
+    patientId: string
+  ) => {
+    setSelectedPatientId(
+      patientId
+    );
+
+    localStorage.setItem(
+      "dentalcare-selected-patient",
+      patientId
+    );
+
+    loadNotifications(
+      patientId
+    );
+  };
 
   // =========================
   // Mark Notification As Read
@@ -364,7 +545,7 @@ const PatientNotifications = () => {
             ? "rtl"
             : "ltr"
         }
-        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center pt-28"
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center"
       >
         <p className="text-slate-600 dark:text-slate-300">
           {isArabic
@@ -386,14 +567,103 @@ const PatientNotifications = () => {
           ? "rtl"
           : "ltr"
       }
-      className="min-h-screen bg-slate-50 dark:bg-slate-950 pt-32 pb-12 px-6"
+      className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-12"
     >
-      <div className="mx-auto max-w-4xl">
+      {/* Header */}
 
-        {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                navigate(-1)
+              }
+              aria-label={
+                isArabic
+                  ? "رجوع"
+                  : "Go back"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {isArabic ? (
+                <ArrowRight className="h-5 w-5" />
+              ) : (
+                <ArrowLeft className="h-5 w-5" />
+              )}
+            </button>
+
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-600 text-white shadow-sm">
+                <Activity className="h-5 w-5" />
+              </div>
+
+              <div className="leading-tight">
+                <p className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                  DentalCare
+                </p>
+
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  {isArabic
+                    ? "رعاية أسنانك"
+                    : "Dental Care Platform"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={
+                toggleLanguage
+              }
+              aria-label={
+                isArabic
+                  ? "تغيير اللغة"
+                  : "Change language"
+              }
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Languages className="h-4 w-4" />
+
+              <span className="hidden sm:inline">
+                {isArabic
+                  ? "English"
+                  : "العربية"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                toggleTheme
+              }
+              aria-label={
+                isDarkMode
+                  ? isArabic
+                    ? "الوضع الفاتح"
+                    : "Light mode"
+                  : isArabic
+                  ? "الوضع الداكن"
+                  : "Dark mode"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {isDarkMode ? (
+                <Sun className="h-5 w-5" />
+              ) : (
+                <Moon className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-4xl px-4 pt-4 sm:px-6">
+        {/* Page Header */}
 
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-
           <div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
               {isArabic
@@ -422,13 +692,51 @@ const PatientNotifications = () => {
                 : "Mark All as Read"}
             </button>
           )}
-
         </div>
+
+        {/* Patient Selector */}
+
+        {patients.length > 1 && (
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+              {isArabic
+                ? "اختر الملف الطبي"
+                : "Select medical file"}
+            </label>
+
+            <select
+              value={
+                selectedPatientId
+              }
+              onChange={(event) =>
+                handlePatientChange(
+                  event.target.value
+                )
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-teal-900"
+            >
+              {patients.map(
+                (patient) => (
+                  <option
+                    key={
+                      patient.id
+                    }
+                    value={
+                      patient.id
+                    }
+                  >
+                    {patient.name}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+        )}
 
         {/* Error */}
 
         {error && (
-          <div className="mb-5 rounded-xl bg-red-50 dark:bg-red-950/30 p-4 text-red-600 dark:text-red-400">
+          <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-600 dark:bg-red-950/30 dark:text-red-400">
             {error}
           </div>
         )}
@@ -437,7 +745,7 @@ const PatientNotifications = () => {
 
         {unreadCount >
           0 && (
-          <div className="mb-6 rounded-xl bg-teal-50 dark:bg-teal-950/30 p-4 text-teal-700 dark:text-teal-300">
+          <div className="mb-6 rounded-xl bg-teal-50 p-4 text-teal-700 dark:bg-teal-950/30 dark:text-teal-300">
             {isArabic
               ? `لديك ${unreadCount} إشعار غير مقروء.`
               : `You have ${unreadCount} unread notification(s).`}
@@ -447,17 +755,14 @@ const PatientNotifications = () => {
         {/* Notifications */}
 
         <div className="space-y-4">
-
           {notifications.length ===
           0 ? (
-            <div className="rounded-2xl bg-white dark:bg-slate-900 p-12 text-center shadow-sm">
-
+            <div className="rounded-2xl bg-white p-12 text-center shadow-sm dark:bg-slate-900">
               <p className="text-slate-500 dark:text-slate-400">
                 {isArabic
                   ? "لا توجد إشعارات حتى الآن."
                   : "No notifications yet."}
               </p>
-
             </div>
           ) : (
             notifications.map(
@@ -468,19 +773,15 @@ const PatientNotifications = () => {
                   key={
                     notification.id
                   }
-                  className={`rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-sm transition ${
+                  className={`rounded-2xl bg-white p-6 shadow-sm transition dark:bg-slate-900 ${
                     !notification.is_read
                       ? "border-2 border-teal-500"
                       : "border border-slate-100 dark:border-slate-800"
                   }`}
                 >
-
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-
                     <div className="flex-1">
-
                       <div className="flex items-center gap-3">
-
                         <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                           {
                             notification.title
@@ -494,7 +795,6 @@ const PatientNotifications = () => {
                               : "New"}
                           </span>
                         )}
-
                       </div>
 
                       <p className="mt-3 leading-7 text-slate-600 dark:text-slate-300">
@@ -508,7 +808,6 @@ const PatientNotifications = () => {
                           notification.created_at
                         )}
                       </p>
-
                     </div>
 
                     {!notification.is_read && (
@@ -526,22 +825,17 @@ const PatientNotifications = () => {
                           : "Mark as Read"}
                       </button>
                     )}
-
                   </div>
-
                 </div>
               )
             )
           )}
-
         </div>
-
-      </div>
+      </main>
     </div>
   );
 };
 
 export default PatientNotifications;
-
 
 

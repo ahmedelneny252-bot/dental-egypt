@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -722,11 +721,11 @@ const DoctorDashboard = () => {
       label: isArabic ? "التقارير" : "Reports",
       to: "/doctor/reports",
     },
-   // {
-   //   icon: PackageSearch,
-    //  label: isArabic ? "المخزون" : "Inventory",
-    //  to: "/doctor/inventory",
-   // },
+    // {
+    //   icon: PackageSearch,
+    //   label: isArabic ? "المخزون" : "Inventory",
+    //   to: "/doctor/inventory",
+    // },
     {
       icon: SettingsIcon,
       label: isArabic ? "الإعدادات" : "Settings",
@@ -752,11 +751,11 @@ const DoctorDashboard = () => {
       label: isArabic ? "التقارير" : "Reports",
       to: "/doctor/reports",
     },
-   // {
-   //   icon: PackageSearch,
-   //   label: isArabic ? "المخزون" : "Inventory",
-    //  to: "/doctor/inventory",
-  //  },
+    // {
+    //   icon: PackageSearch,
+    //   label: isArabic ? "المخزون" : "Inventory",
+    //   to: "/doctor/inventory",
+    // },
     {
       icon: Search,
       label: isArabic ? "بحث عن مريض" : "Find patient",
@@ -1110,6 +1109,7 @@ const DoctorDashboard = () => {
                 }
               >
                 <Languages className="h-4 w-4" />
+
                 <span>
                   {isArabic ? "العربية" : "English"}
                 </span>
@@ -1228,6 +1228,7 @@ const DoctorDashboard = () => {
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
                     <Pencil className="h-4 w-4" />
+
                     {isArabic
                       ? "تعديل البيانات"
                       : "Edit profile"}
@@ -1238,6 +1239,7 @@ const DoctorDashboard = () => {
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
                     <SettingsIcon className="h-4 w-4" />
+
                     {isArabic
                       ? "الإعدادات"
                       : "Settings"}
@@ -1374,7 +1376,7 @@ const DoctorDashboard = () => {
                   </h2>
 
                   <Link
-                    to="/doctor/appointments"
+                    to="/doctor/today-appointments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
                     {isArabic
@@ -1490,7 +1492,7 @@ const DoctorDashboard = () => {
                   </h2>
 
                   <Link
-                    to="/doctor/appointments"
+                    to="/doctor/week-appointments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
                     {isArabic
@@ -1514,6 +1516,7 @@ const DoctorDashboard = () => {
                       }`}
                     >
                       <span>{day.label}</span>
+
                       <span className="mt-0.5">
                         {day.dayNumber}
                       </span>

@@ -9,7 +9,7 @@ import {
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 
-// Public Pages
+// Public
 import Home from "./pages/Home";
 import Clinics from "./pages/Clinics";
 import ClinicDetail from "./pages/ClinicDetail";
@@ -18,17 +18,17 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import PublicServices from "./pages/Services";
 
-// Doctor Pages
+// Doctor
 import DoctorDashboard from "./DoctorDashboard";
 import DoctorRegister from "./DoctorRegister";
 import DoctorLogin from "./DoctorLogin";
 import DoctorSettings from "./DoctorSettings";
 import Subscription from "./Subscription";
-
 import Patients from "./Patients";
 import PatientDetails from "./PatientDetails";
 import PrescriptionPrint from "./PrescriptionPrint";
 import Appointments from "./Appointments";
+import TodayAppointments from "./TodayAppointments";
 import DoctorServices from "./Services";
 import ClinicProfile from "./ClinicProfile";
 import Reviews from "./Reviews";
@@ -36,62 +36,54 @@ import DoctorNotifications from "./DoctorNotifications";
 import Payments from "./Payments";
 import Reports from "./Reports";
 
-// Patient Pages
+// Patient
 import PatientRegister from "./PatientRegister";
 import PatientLogin from "./PatientLogin";
 import PatientDashboard from "./PatientDashboard";
-//import PatientAppointments from "./PatientAppointments";
+import PatientAppointments from "./PatientAppointments";
 import PatientNotifications from "./PatientNotifications";
 import PatientPayments from "./PatientPayments";
+import PatientMedicalFile from "./PatientMedicalFile";
 
-// ============================================================
-// مسارات الداشبورد بتاعت الدكتور (كل مسارات /doctor/* ما عدا
-// صفحات تسجيل الدخول/إنشاء الحساب)، وكمان صفحة داشبورد المريض
-// الجديدة (/patient/dashboard) عندهم هيدر وSidebar خاص بيهم.
-// الـ Navbar العام مايترندرش خالص في الـ DOM في الصفحات دي (مش
-// بس بيرجع null من جواه) عشان نضمن إنه مايغطيش أي حاجة زي
-// السايدبار الثابت (fixed) اللي فوقه في الـ z-index.
-// ============================================================
-const DOCTOR_STANDALONE_LAYOUT_PATHS = ["/doctor/register", "/doctor/login"];
+const DOCTOR_STANDALONE_LAYOUT_PATHS = [
+  "/doctor/register",
+  "/doctor/login",
+];
 
-const STANDALONE_DASHBOARD_PATHS = ["/patient/dashboard"];
+const STANDALONE_DASHBOARD_PATHS = [
+  "/patient/dashboard",
+];
+
+const STANDALONE_DASHBOARD_PATTERNS = [
+  /^\/clinics\/[^/]+\/book$/,
+];
 
 const isStandaloneDashboardPath = (pathname: string) =>
   (pathname.startsWith("/doctor/") &&
     !DOCTOR_STANDALONE_LAYOUT_PATHS.includes(pathname)) ||
-  STANDALONE_DASHBOARD_PATHS.includes(pathname);
+  STANDALONE_DASHBOARD_PATHS.includes(pathname) ||
+  STANDALONE_DASHBOARD_PATTERNS.some((pattern) =>
+    pattern.test(pathname)
+  );
 
-// ============================================================
-// AppLayout: بيقرر يعرض الـ Navbar والـ Footer العامين ولا لأ
-// حسب المسار الحالي. لازم يكون جوه الـ Router عشان يقدر
-// يستخدم useLocation.
-// ============================================================
-const AppLayout = () => {
+function AppLayout() {
   const location = useLocation();
-  const hideGlobalChrome = isStandaloneDashboardPath(location.pathname);
+
+  const isStandalone = isStandaloneDashboardPath(
+    location.pathname
+  );
 
   return (
-    <div className="min-h-screen bg-white">
-      {!hideGlobalChrome && (
-        <div className="print:hidden">
-          <Navbar />
-        </div>
-      )}
+    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-950 dark:text-white">
+      {!isStandalone && <Navbar />}
 
-      <main className="flex-1">
+      <main>
         <Routes>
+          {/* ==================== Public ==================== */}
 
-          {/* ==================== PUBLIC ROUTES ==================== */}
+          <Route path="/" element={<Home />} />
 
-          <Route
-            path="/"
-            element={<Home />}
-          />
-
-          <Route
-            path="/clinics"
-            element={<Clinics />}
-          />
+          <Route path="/clinics" element={<Clinics />} />
 
           <Route
             path="/clinics/:id"
@@ -103,22 +95,16 @@ const AppLayout = () => {
             element={<BookAppointment />}
           />
 
-          <Route
-            path="/about"
-            element={<About />}
-          />
+          <Route path="/about" element={<About />} />
 
-          <Route
-            path="/contact"
-            element={<Contact />}
-          />
+          <Route path="/contact" element={<Contact />} />
 
           <Route
             path="/services"
             element={<PublicServices />}
           />
 
-          {/* ==================== DOCTOR ROUTES ==================== */}
+          {/* ==================== Doctor ==================== */}
 
           <Route
             path="/doctor/register"
@@ -141,6 +127,11 @@ const AppLayout = () => {
           />
 
           <Route
+            path="/doctor/subscription"
+            element={<Subscription />}
+          />
+
+          <Route
             path="/doctor/patients"
             element={<Patients />}
           />
@@ -155,8 +146,21 @@ const AppLayout = () => {
             element={<PrescriptionPrint />}
           />
 
+          {/* صفحة المواعيد الرئيسية */}
           <Route
             path="/doctor/appointments"
+            element={<Appointments />}
+          />
+
+          {/* مواعيد اليوم - صفحة مستقلة */}
+          <Route
+            path="/doctor/today-appointments"
+            element={<TodayAppointments />}
+          />
+
+          {/* مواعيد هذا الأسبوع */}
+          <Route
+            path="/doctor/week-appointments"
             element={<Appointments />}
           />
 
@@ -185,36 +189,12 @@ const AppLayout = () => {
             element={<Payments />}
           />
 
-          {/* الراوت ده كان ناقص، وهو سبب إن زرار "التقارير" في
-              الداشبورد كان بيرجّع المستخدم للصفحة الرئيسية بدل ما
-              يفتح صفحة التقارير (لأنه كان بيقع تحت الـ "*" في الآخر) */}
           <Route
             path="/doctor/reports"
             element={<Reports />}
           />
 
-          <Route
-            path="/doctor/subscription"
-            element={<Subscription />}
-          />
-
-          {/* ==================== PATIENT ROUTES ==================== */}
-          {/*
-            ملاحظة: صفحة الحجز الخاصة بالمريض بقت جوه
-            /patient/appointments بتبويباتها الأربعة
-            (مواعيدي - حجز موعد - العيادات - عروض خاصة)
-            فبالتالي شلنا Patientbookappointment والراوت
-            الخاص بيها ("/patient/book" و "/offers")
-            عشان محتوى مكرر خلاص.
-
-            صفحة /patient/appointments نفسها لسه ملفها
-            (PatientAppointments) متعلق، فسبنا الراوت بتاعها
-            متعلق برضه لحد ما يترفع الملف.
-          */}
-          {/* <Route
-            path="/patient/appointments"
-            element={<PatientAppointments />}
-          /> */}
+          {/* ==================== Patient ==================== */}
 
           <Route
             path="/patient/register"
@@ -232,6 +212,11 @@ const AppLayout = () => {
           />
 
           <Route
+            path="/patient/appointments"
+            element={<PatientAppointments />}
+          />
+
+          <Route
             path="/patient/notifications"
             element={<PatientNotifications />}
           />
@@ -241,35 +226,47 @@ const AppLayout = () => {
             element={<PatientPayments />}
           />
 
-          {/* أي رابط قديم بيوجه لـ /patient/book أو /offers يرجع تلقائيًا لصفحة المواعيد */}
+          {/* Patient Medical File */}
+          <Route
+            path="/patient/medical-file"
+            element={<PatientMedicalFile />}
+          />
+
+          {/* ==================== Redirects ==================== */}
+
           <Route
             path="/patient/book"
-            element={<Navigate to="/patient/appointments" replace />}
+            element={
+              <Navigate
+                to="/patient/appointments"
+                replace
+              />
+            }
           />
 
           <Route
             path="/offers"
-            element={<Navigate to="/patient/appointments" replace />}
+            element={
+              <Navigate
+                to="/patient/appointments"
+                replace
+              />
+            }
           />
 
-          {/* ==================== UNKNOWN ROUTE ==================== */}
+          {/* ==================== 404 ==================== */}
 
           <Route
             path="*"
             element={<Navigate to="/" replace />}
           />
-
         </Routes>
       </main>
 
-      {!hideGlobalChrome && (
-        <div className="print:hidden">
-          <Footer />
-        </div>
-      )}
+      {!isStandalone && <Footer />}
     </div>
   );
-};
+}
 
 function App() {
   return (
@@ -280,7 +277,6 @@ function App() {
 }
 
 export default App;
-
 
 
 

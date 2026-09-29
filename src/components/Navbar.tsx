@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Languages,
   LogOut,
+  LogIn,
   UserPlus,
   Stethoscope,
   CreditCard,
@@ -50,6 +51,9 @@ const Navbar = () => {
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [role, setRole] = useState<UserRole>("guest");
+
+  // ✅ فتح/قفل قائمة "تسجيل الدخول / إنشاء حساب" المنسدلة (ديسكتوب)
+  const [isAuthMenuOpen, setIsAuthMenuOpen] = useState(false);
 
   const [language, setLanguage] = useState<Language>(() => {
     const savedLanguage = localStorage.getItem("dentalcare-language");
@@ -95,6 +99,21 @@ const Navbar = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // ✅ قفل قائمة تسجيل الدخول/إنشاء الحساب المنسدلة لو المستخدم ضغط برّه
+  useEffect(() => {
+    if (!isAuthMenuOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-auth-menu]")) {
+        setIsAuthMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isAuthMenuOpen]);
 
   const loadUnreadNotifications = async () => {
     try {
@@ -308,13 +327,48 @@ const Navbar = () => {
                   </button>
                 </>
               ) : (
-                <Link
-                  to={patientRegisterPath}
-                  className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  {isArabic ? "إنشاء حساب كمريض" : "Sign Up as Patient"}
-                </Link>
+                // ✅ زرار "تسجيل الدخول" وجواه Dropdown فيه:
+                // 1) تسجيل الدخول  2) إنشاء حساب كمريض
+                <div className="relative" data-auth-menu>
+                  <button
+                    type="button"
+                    onClick={() => setIsAuthMenuOpen((prev) => !prev)}
+                    className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    {isArabic ? "تسجيل الدخول" : "Login"}
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${
+                        isAuthMenuOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {isAuthMenuOpen && (
+                    <div
+                      className={`absolute top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900 ${
+                        isArabic ? "right-0" : "left-0"
+                      }`}
+                    >
+                      <Link
+                        to="/patient/login"
+                        onClick={() => setIsAuthMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                      >
+                        <LogIn className="h-4 w-4" />
+                        {isArabic ? "تسجيل الدخول" : "Log in"}
+                      </Link>
+                      <Link
+                        to={patientRegisterPath}
+                        onClick={() => setIsAuthMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        {isArabic ? "إنشاء حساب كمريض" : "Sign up as patient"}
+                      </Link>
+                    </div>
+                  )}
+                </div>
               )
             )}
           </div>
@@ -505,7 +559,17 @@ const Navbar = () => {
                 </button>
               ) : (
                 !hideAuthButtons && (
+                  // ✅ في الموبايل بنعرض الزرارين واضحين تحت بعض:
+                  // "تسجيل الدخول" و "إنشاء حساب كمريض"
                   <div className="mx-4 mt-2 flex flex-col gap-2">
+                    <Link
+                      to="/patient/login"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-5 py-3 font-semibold text-blue-600 dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      <LogIn className="h-5 w-5" />
+                      {isArabic ? "تسجيل الدخول" : "Log in"}
+                    </Link>
                     <Link
                       to={patientRegisterPath}
                       onClick={() => setIsMobileMenuOpen(false)}

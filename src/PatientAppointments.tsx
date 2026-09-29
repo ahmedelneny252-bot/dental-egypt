@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
-  Bell,
-  Building2,
-  CalendarPlus,
-  LogOut,
-  MapPin,
-  RefreshCcw,
-  Search,
-  Sparkles,
-  Stethoscope,
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  Languages,
+  Moon,
+  Sun,
+  Activity,
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
@@ -20,17 +18,14 @@ type Appointment = {
   appointment_time: string;
   status: string;
   notes: string | null;
+  appointment_type: string | null;
+  created_by: string | null;
   clinics?: {
     name: string;
   } | null;
 };
 
 type Patient = {
-  id: string;
-  name: string;
-};
-
-type Clinic = {
   id: string;
   name: string;
 };
@@ -45,21 +40,23 @@ type FilterType =
 const PatientAppointments = () => {
   const navigate = useNavigate();
 
-  const [patient, setPatient] = useState<Patient | null>(null);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
 
-  const [nearbyClinics, setNearbyClinics] = useState<Clinic[]>([]);
-  const [loadingClinics, setLoadingClinics] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-
   const [language, setLanguage] = useState<Language>(() => {
-    const savedLanguage = localStorage.getItem("dentalcare-language");
+    const savedLanguage = localStorage.getItem(
+      "dentalcare-language"
+    );
 
     return savedLanguage === "en" ? "en" : "ar";
+  });
+
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return document.documentElement.classList.contains("dark");
   });
 
   const isArabic = language === "ar";
@@ -83,7 +80,10 @@ const PatientAppointments = () => {
       handleLanguageChange
     );
 
-    window.addEventListener("storage", handleLanguageChange);
+    window.addEventListener(
+      "storage",
+      handleLanguageChange
+    );
 
     return () => {
       window.removeEventListener(
@@ -91,30 +91,77 @@ const PatientAppointments = () => {
         handleLanguageChange
       );
 
-      window.removeEventListener("storage", handleLanguageChange);
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
     };
   }, []);
 
   // ============================================
-  // Load appointments
+  // Theme
   // ============================================
 
-  const loadPatientAppointments = async (
-    showRefreshLoader = false
-  ) => {
-    if (showRefreshLoader) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  useEffect(() => {
+    const handleThemeChange = () => {
+      setIsDarkMode(
+        document.documentElement.classList.contains("dark")
+      );
+    };
 
-    setError("");
+    window.addEventListener(
+      "dentalcare-theme-change",
+      handleThemeChange
+    );
 
+    return () => {
+      window.removeEventListener(
+        "dentalcare-theme-change",
+        handleThemeChange
+      );
+    };
+  }, []);
+
+  const toggleLanguage = () => {
+    const nextLanguage: Language =
+      language === "ar" ? "en" : "ar";
+
+    localStorage.setItem(
+      "dentalcare-language",
+      nextLanguage
+    );
+
+    setLanguage(nextLanguage);
+
+    window.dispatchEvent(
+      new Event("dentalcare-language-change")
+    );
+  };
+
+  const toggleTheme = () => {
+    const root = document.documentElement;
+    const nextDarkMode = !root.classList.contains("dark");
+
+    root.classList.toggle("dark", nextDarkMode);
+
+    localStorage.setItem(
+      "dentalcare-theme",
+      nextDarkMode ? "dark" : "light"
+    );
+
+    setIsDarkMode(nextDarkMode);
+
+    window.dispatchEvent(
+      new Event("dentalcare-theme-change")
+    );
+  };
+
+  // ============================================
+  // Load patient records
+  // ============================================
+
+  const loadPatients = async () => {
     try {
-      // ==========================================
-      // Get logged-in user
-      // ==========================================
-
       const {
         data: { user },
         error: userError,
@@ -133,19 +180,12 @@ const PatientAppointments = () => {
       }
 
       if (!user) {
-        window.location.href = "/patient/login";
+        navigate("/patient/login", {
+          replace: true,
+        });
+
         return;
       }
-
-      // ==========================================
-      // Get ALL patient records for this user
-      // ==========================================
-      //
-      // IMPORTANT:
-      // Do NOT use .single() or .maybeSingle()
-      // because one user can have multiple patient
-      // records due to previous bookings.
-      //
 
       const {
         data: patientData,
@@ -170,11 +210,11 @@ const PatientAppointments = () => {
         return;
       }
 
-      // ==========================================
-      // No patient records
-      // ==========================================
-
       if (!patientData || patientData.length === 0) {
+        setPatients([]);
+        setSelectedPatientId("");
+        setAppointments([]);
+
         setError(
           isArabic
             ? "حساب المريض الخاص بك غير مرتبط بسجل مريض."
@@ -184,24 +224,50 @@ const PatientAppointments = () => {
         return;
       }
 
-      // ==========================================
-      // Keep the first patient as the displayed name
-      // ==========================================
+      const patientList = patientData as Patient[];
 
-      setPatient(patientData[0]);
+      setPatients(patientList);
 
-      // ==========================================
-      // Get ALL patient IDs
-      // ==========================================
+      setSelectedPatientId((currentSelectedId) => {
+        if (
+          currentSelectedId &&
+          patientList.some(
+            (patient) => patient.id === currentSelectedId
+          )
+        ) {
+          return currentSelectedId;
+        }
 
-      const patientIds = patientData.map(
-        (patient) => patient.id
+        return patientList[0].id;
+      });
+    } catch (error) {
+      console.error(error);
+
+      setError(
+        isArabic
+          ? "حدث خطأ أثناء تحميل بيانات المريض."
+          : "An error occurred while loading patient data."
       );
+    }
+  };
 
-      // ==========================================
-      // Load ALL appointments for all patient records
-      // ==========================================
+  // ============================================
+  // Load selected patient's appointments
+  // ============================================
 
+  const loadPatientAppointments = async (
+    patientId: string
+  ) => {
+    if (!patientId) {
+      setAppointments([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
       const {
         data: appointmentData,
         error: appointmentError,
@@ -213,11 +279,13 @@ const PatientAppointments = () => {
           appointment_time,
           status,
           notes,
+          appointment_type,
+          created_by,
           clinics (
             name
           )
         `)
-        .in("patient_id", patientIds)
+        .eq("patient_id", patientId)
         .order("appointment_date", {
           ascending: false,
         })
@@ -234,12 +302,9 @@ const PatientAppointments = () => {
             : `Could not load appointments: ${appointmentError.message}`
         );
 
+        setAppointments([]);
         return;
       }
-
-      // ==========================================
-      // Format appointments
-      // ==========================================
 
       const formattedAppointments: Appointment[] =
         (appointmentData || []).map(
@@ -253,6 +318,10 @@ const PatientAppointments = () => {
               appointment.status,
             notes:
               appointment.notes,
+            appointment_type:
+              appointment.appointment_type,
+            created_by:
+              appointment.created_by,
             clinics:
               Array.isArray(
                 appointment.clinics
@@ -271,39 +340,11 @@ const PatientAppointments = () => {
           ? "حدث خطأ أثناء تحميل المواعيد."
           : "An error occurred while loading appointments."
       );
+
+      setAppointments([]);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  };
-
-  // ============================================
-  // Load nearby / suggested clinics
-  //
-  // NOTE: this just pulls the most recent clinics
-  // from the "clinics" table as a simple starting
-  // point. Swap the query for real distance-based
-  // sorting once you have patient/clinic locations.
-  // ============================================
-
-  const loadNearbyClinics = async () => {
-    setLoadingClinics(true);
-
-    const { data, error: clinicsError } = await supabase
-      .from("clinics")
-      .select("id, name")
-      .order("created_at", { ascending: false })
-      .limit(3);
-
-    if (clinicsError) {
-      console.error("Nearby clinics error:", clinicsError);
-      setNearbyClinics([]);
-      setLoadingClinics(false);
-      return;
-    }
-
-    setNearbyClinics(data || []);
-    setLoadingClinics(false);
   };
 
   // ============================================
@@ -311,9 +352,18 @@ const PatientAppointments = () => {
   // ============================================
 
   useEffect(() => {
-    loadPatientAppointments();
-    loadNearbyClinics();
+    loadPatients();
   }, []);
+
+  // ============================================
+  // Load appointments when selected patient changes
+  // ============================================
+
+  useEffect(() => {
+    if (selectedPatientId) {
+      loadPatientAppointments(selectedPatientId);
+    }
+  }, [selectedPatientId]);
 
   // ============================================
   // Clear error after language change
@@ -322,33 +372,6 @@ const PatientAppointments = () => {
   useEffect(() => {
     setError("");
   }, [language]);
-
-  // ============================================
-  // Logout
-  // ============================================
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-
-    window.location.href = "/patient/login";
-  };
-
-  // ============================================
-  // Search — sends the patient to the clinics
-  // page with their search term
-  // ============================================
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const trimmedQuery = searchQuery.trim();
-
-    navigate(
-      trimmedQuery
-        ? `/clinics?query=${encodeURIComponent(trimmedQuery)}`
-        : "/clinics"
-    );
-  };
 
   // ============================================
   // Status style
@@ -397,6 +420,42 @@ const PatientAppointments = () => {
   };
 
   // ============================================
+  // Appointment type
+  // ============================================
+
+  const formatAppointmentType = (
+    type: string | null,
+    createdBy: string | null
+  ) => {
+    if (
+      type === "follow_up" ||
+      createdBy === "doctor"
+    ) {
+      return isArabic
+        ? "متابعة"
+        : "Follow-up";
+    }
+
+    return isArabic
+      ? "حجز كشف"
+      : "Booking";
+  };
+
+  const getAppointmentTypeStyle = (
+    type: string | null,
+    createdBy: string | null
+  ) => {
+    if (
+      type === "follow_up" ||
+      createdBy === "doctor"
+    ) {
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300";
+    }
+
+    return "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300";
+  };
+
+  // ============================================
   // Date formatting
   // ============================================
 
@@ -405,7 +464,9 @@ const PatientAppointments = () => {
       return "-";
     }
 
-    const parsedDate = new Date(`${date}T00:00:00`);
+    const parsedDate = new Date(
+      `${date}T00:00:00`
+    );
 
     if (Number.isNaN(parsedDate.getTime())) {
       return date;
@@ -470,20 +531,6 @@ const PatientAppointments = () => {
   }, [appointments, filter]);
 
   // ============================================
-  // Upcoming appointment — shown in the hero
-  // ============================================
-
-  const nextAppointment = useMemo(() => {
-    return (
-      appointments.find(
-        (appointment) =>
-          appointment.status === "pending" ||
-          appointment.status === "confirmed"
-      ) || null
-    );
-  }, [appointments]);
-
-  // ============================================
   // Appointment counts
   // ============================================
 
@@ -517,43 +564,24 @@ const PatientAppointments = () => {
   // Filter labels
   // ============================================
 
-  const filterLabels: Record<FilterType, string> = {
+  const filterLabels: Record<
+    FilterType,
+    string
+  > = {
     all: isArabic ? "الكل" : "All",
-    pending: isArabic ? "قيد الانتظار" : "Pending",
-    confirmed: isArabic ? "مؤكد" : "Confirmed",
-    completed: isArabic ? "مكتمل" : "Completed",
-    cancelled: isArabic ? "ملغي" : "Cancelled",
+    pending: isArabic
+      ? "قيد الانتظار"
+      : "Pending",
+    confirmed: isArabic
+      ? "مؤكد"
+      : "Confirmed",
+    completed: isArabic
+      ? "مكتمل"
+      : "Completed",
+    cancelled: isArabic
+      ? "ملغي"
+      : "Cancelled",
   };
-
-  // ============================================
-  // Quick action tiles
-  //
-  // NOTE: adjust these routes ("/offers", "/doctors")
-  // to match whatever you actually named them.
-  // ============================================
-
-  const quickActions = [
-    {
-      to: "/offers",
-      label: isArabic ? "عروض خاصة" : "Special Offers",
-      icon: Sparkles,
-    },
-    {
-      to: "/clinics",
-      label: isArabic ? "العيادات" : "Clinics",
-      icon: Building2,
-    },
-    {
-      to: "/doctors",
-      label: isArabic ? "أطباء الأسنان" : "Dentists",
-      icon: Stethoscope,
-    },
-    {
-      to: "/clinics",
-      label: isArabic ? "حجز موعد" : "Book Appointment",
-      icon: CalendarPlus,
-    },
-  ];
 
   // ============================================
   // Loading
@@ -563,7 +591,7 @@ const PatientAppointments = () => {
     return (
       <div
         dir={isArabic ? "rtl" : "ltr"}
-        className="flex min-h-screen items-center justify-center bg-slate-50 px-4 pt-24 dark:bg-slate-950"
+        className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950"
       >
         <div className="rounded-2xl bg-white px-10 py-8 shadow-lg dark:bg-slate-900">
           <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">
@@ -583,107 +611,112 @@ const PatientAppointments = () => {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-slate-50 px-4 pb-12 pt-28 dark:bg-slate-950 sm:px-6"
+      className="min-h-screen bg-slate-50 pb-12 dark:bg-slate-950"
     >
-      <div className="mx-auto max-w-6xl">
+      {/* ========================================
+          Simple Patient Header
+      ======================================== */}
 
-        {/* Hero / Welcome */}
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
 
-        <div className="mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-teal-600 to-teal-800 p-6 text-white shadow-sm sm:p-8">
+          {/* Back + Logo */}
 
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-center gap-3">
 
-            <div>
-              <p className="text-sm font-semibold text-teal-100">
-                {isArabic ? "بوابة المريض" : "Patient Portal"}
-              </p>
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              aria-label={
+                isArabic
+                  ? "رجوع"
+                  : "Go back"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {isArabic ? (
+                <ArrowRight className="h-5 w-5" />
+              ) : (
+                <ArrowLeft className="h-5 w-5" />
+              )}
+            </button>
 
-              <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
-                {isArabic ? "مرحباً بك" : "Welcome"}
-                {patient ? `، ${patient.name}` : ""} 👋
-              </h1>
+            {/* DentalCare Logo */}
 
-              <p className="mt-2 max-w-md text-teal-50">
-                {nextAppointment
-                  ? isArabic
-                    ? `موعدك القادم يوم ${formatDate(
-                        nextAppointment.appointment_date
-                      )} الساعة ${formatTime(
-                        nextAppointment.appointment_time
-                      )}.`
-                    : `Your next appointment is on ${formatDate(
-                        nextAppointment.appointment_date
-                      )} at ${formatTime(
-                        nextAppointment.appointment_time
-                      )}.`
-                  : isArabic
-                    ? "ابحث عن أقرب عيادة وأنت جاهز لحجز موعدك."
-                    : "Find a nearby clinic and you're ready to book."}
-              </p>
-            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-600 text-white shadow-sm">
+                <Activity className="h-5 w-5" />
+              </div>
 
-            {/* Top-right quick icons */}
-            <div className="flex items-center gap-2">
-              <Link
-                to="/patient/notifications"
-                aria-label={t.common.notifications}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 text-white transition hover:bg-white/25"
-              >
-                <Bell className="h-5 w-5" />
-              </Link>
+              <div className="leading-tight">
+                <p className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                  DentalCare
+                </p>
 
-              <button
-                type="button"
-                onClick={() => loadPatientAppointments(true)}
-                disabled={refreshing}
-                aria-label={isArabic ? "تحديث" : "Refresh"}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <RefreshCcw
-                  className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
-                />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                aria-label={t.auth.logout}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 text-white transition hover:bg-white/25"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  {isArabic
+                    ? "رعاية أسنانك"
+                    : "Dental Care Platform"}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Search */}
-          <form
-            onSubmit={handleSearch}
-            className="mt-6 flex items-center gap-2 rounded-2xl bg-white/95 p-2 shadow-sm dark:bg-slate-900/95"
-          >
-            <Search className="ms-2 h-5 w-5 shrink-0 text-slate-400" />
+          {/* Language + Theme */}
 
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                isArabic
-                  ? "ابحث عن عيادة أو تخصص"
-                  : "Search for a clinic or specialty"
-              }
-              className="w-full bg-transparent px-1 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
-            />
+          <div className="flex items-center gap-2">
 
             <button
-              type="submit"
-              className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
+              type="button"
+              onClick={toggleLanguage}
+              aria-label={
+                isArabic
+                  ? "تغيير اللغة"
+                  : "Change language"
+              }
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
-              {isArabic ? "بحث" : "Search"}
-            </button>
-          </form>
-        </div>
+              <Languages className="h-4 w-4" />
 
-        {/* Error */}
+              <span className="hidden sm:inline">
+                {isArabic ? "English" : "العربية"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={
+                isDarkMode
+                  ? isArabic
+                    ? "الوضع الفاتح"
+                    : "Light mode"
+                  : isArabic
+                  ? "الوضع الداكن"
+                  : "Dark mode"
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {isDarkMode ? (
+                <Sun className="h-5 w-5" />
+              ) : (
+                <Moon className="h-5 w-5" />
+              )}
+            </button>
+
+          </div>
+        </div>
+      </header>
+
+      {/* ========================================
+          Page Content
+      ======================================== */}
+
+      <main className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
+
+        {/* ========================================
+            Error
+        ======================================== */}
 
         {error && (
           <div
@@ -697,135 +730,132 @@ const PatientAppointments = () => {
           </div>
         )}
 
-        {/* Quick actions */}
+        {/* ========================================
+            Patient Selector
+        ======================================== */}
 
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {quickActions.map((action) => (
-            <Link
-              key={action.label}
-              to={action.to}
-              className="flex flex-col items-center gap-2 rounded-2xl bg-white p-5 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900"
+        {patients.length >= 2 && (
+          <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
+            <label
+              className={`mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300 ${
+                isArabic
+                  ? "text-right"
+                  : "text-left"
+              }`}
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400">
-                <action.icon className="h-5 w-5" />
-              </span>
-
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                {action.label}
-              </span>
-            </Link>
-          ))}
-        </div>
-
-        {/* Nearby clinics */}
-
-        <div className="mb-8">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-              {isArabic ? "أقرب العيادات لك" : "Clinics near you"}
-            </h2>
-
-            <Link
-              to="/clinics"
-              className="text-sm font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
-            >
-              {isArabic ? "عرض الكل" : "View all"}
-            </Link>
-          </div>
-
-          {loadingClinics ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {isArabic ? "جاري التحميل..." : "Loading..."}
-            </p>
-          ) : nearbyClinics.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
               {isArabic
-                ? "لا توجد عيادات لعرضها حاليًا."
-                : "No clinics to show right now."}
-            </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-3">
-              {nearbyClinics.map((clinic) => (
-                <Link
-                  key={clinic.id}
-                  to={`/clinics/${clinic.id}`}
-                  className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900"
+                ? "اختر الملف الطبي"
+                : "Select medical file"}
+            </label>
+
+            <select
+              value={selectedPatientId}
+              onChange={(event) => {
+                setSelectedPatientId(
+                  event.target.value
+                );
+                setFilter("all");
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-teal-900"
+            >
+              {patients.map((patient) => (
+                <option
+                  key={patient.id}
+                  value={patient.id}
                 >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/50 dark:text-teal-400">
-                    <MapPin className="h-5 w-5" />
-                  </span>
-
-                  <span className="font-semibold text-slate-800 dark:text-white">
-                    {clinic.name}
-                  </span>
-                </Link>
+                  {patient.name}
+                </option>
               ))}
-            </div>
-          )}
+            </select>
+          </div>
+        )}
+
+        {/* ========================================
+            Status Filters
+        ======================================== */}
+
+        <div className="mb-6">
+
+          <h2
+            className={`mb-3 text-lg font-semibold text-slate-900 dark:text-white ${
+              isArabic
+                ? "text-right"
+                : "text-left"
+            }`}
+          >
+            {isArabic
+              ? "حالة المواعيد"
+              : "Appointment Status"}
+          </h2>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+
+            {(
+              [
+                "all",
+                "pending",
+                "confirmed",
+                "completed",
+                "cancelled",
+              ] as FilterType[]
+            ).map((status) => {
+
+              const active =
+                filter === status;
+
+              const activeClasses: Record<
+                FilterType,
+                string
+              > = {
+                all:
+                  "bg-teal-600 text-white",
+                pending:
+                  "bg-yellow-500 text-white",
+                confirmed:
+                  "bg-green-600 text-white",
+                completed:
+                  "bg-blue-600 text-white",
+                cancelled:
+                  "bg-red-600 text-white",
+              };
+
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() =>
+                    setFilter(status)
+                  }
+                  className={`rounded-2xl p-4 shadow-sm transition ${
+                    isArabic
+                      ? "text-right"
+                      : "text-left"
+                  } ${
+                    active
+                      ? activeClasses[status]
+                      : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <p className="text-sm font-medium">
+                    {filterLabels[status]}
+                  </p>
+
+                  <p className="mt-1 text-2xl font-bold">
+                    {counts[status]}
+                  </p>
+                </button>
+              );
+            })}
+
+          </div>
         </div>
 
-        {/* Status Filters */}
-
-        <h2 className="mb-3 text-lg font-semibold text-slate-900 dark:text-white">
-          {isArabic ? "مواعيدك" : "Your Appointments"}
-        </h2>
-
-        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {(
-            [
-              "all",
-              "pending",
-              "confirmed",
-              "completed",
-              "cancelled",
-            ] as FilterType[]
-          ).map((status) => {
-            const active =
-              filter === status;
-
-            const activeClasses: Record<
-              FilterType,
-              string
-            > = {
-              all: "bg-teal-600 text-white",
-              pending: "bg-yellow-500 text-white",
-              confirmed: "bg-green-600 text-white",
-              completed: "bg-blue-600 text-white",
-              cancelled: "bg-red-600 text-white",
-            };
-
-            return (
-              <button
-                key={status}
-                type="button"
-                onClick={() =>
-                  setFilter(status)
-                }
-                className={`rounded-2xl p-4 shadow-sm transition ${
-                  isArabic
-                    ? "text-right"
-                    : "text-left"
-                } ${
-                  active
-                    ? activeClasses[status]
-                    : "bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                }`}
-              >
-                <p className="text-sm font-medium">
-                  {filterLabels[status]}
-                </p>
-
-                <p className="mt-1 text-2xl font-bold">
-                  {counts[status]}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Appointments Card */}
+        {/* ========================================
+            Appointments Card
+        ======================================== */}
 
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-900">
+
           <div
             className={`flex flex-col gap-2 border-b border-slate-200 p-6 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between ${
               isArabic
@@ -842,38 +872,47 @@ const PatientAppointments = () => {
 
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {isArabic
-                  ? "عرض حالة وتفاصيل مواعيدك."
-                  : "View the status and details of your appointments."}
+                  ? "هنا تظهر المواعيد الخاصة بك فقط، سواء حجزتها بنفسك أو حددها لك الطبيب."
+                  : "Only your appointments are shown here, whether you booked them yourself or your doctor scheduled them for you."}
               </p>
             </div>
 
             <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {isArabic
-                ? `عرض ${filteredAppointments.length} ${
-                    filteredAppointments.length === 1
+                ? `عرض ${
+                    filteredAppointments.length
+                  } ${
+                    filteredAppointments.length ===
+                    1
                       ? "موعد"
                       : "مواعيد"
                   }`
-                : `Showing ${filteredAppointments.length} appointment${
-                    filteredAppointments.length !== 1
+                : `Showing ${
+                    filteredAppointments.length
+                  } appointment${
+                    filteredAppointments.length !==
+                    1
                       ? "s"
                       : ""
                   }`}
             </div>
           </div>
 
-          {/* No Appointments */}
+          {/* ========================================
+              No Appointments
+          ======================================== */}
 
-          {filteredAppointments.length === 0 ? (
+          {filteredAppointments.length ===
+          0 ? (
             <div className="p-12 text-center">
+
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                <span className="text-2xl">
-                  📅
-                </span>
+                <Calendar className="h-7 w-7 text-slate-400" />
               </div>
 
               <h3 className="font-semibold text-slate-800 dark:text-white">
-                {appointments.length === 0
+                {appointments.length ===
+                0
                   ? isArabic
                     ? "لا توجد مواعيد بعد"
                     : "No appointments yet"
@@ -883,29 +922,26 @@ const PatientAppointments = () => {
               </h3>
 
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                {appointments.length === 0
+                {appointments.length ===
+                0
                   ? isArabic
-                    ? "ليس لديك أي مواعيد حتى الآن."
-                    : "You don't have any appointments yet."
+                    ? "لا توجد مواعيد مرتبطة بحسابك حاليًا."
+                    : "There are currently no appointments linked to your account."
                   : isArabic
                   ? "لا توجد مواعيد بهذه الحالة."
                   : "There are no appointments with this status."}
               </p>
 
-              {appointments.length === 0 && (
-                <Link
-                  to="/clinics"
-                  className="mt-5 inline-block rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white transition hover:bg-teal-700"
-                >
-                  {t.common.findClinic}
-                </Link>
-              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
+
               <table className="w-full min-w-[850px]">
+
                 <thead className="bg-slate-50 dark:bg-slate-800/60">
+
                   <tr>
+
                     <th
                       className={`px-6 py-4 ${
                         isArabic
@@ -950,6 +986,18 @@ const PatientAppointments = () => {
                       } text-sm font-semibold text-slate-600 dark:text-slate-300`}
                     >
                       {isArabic
+                        ? "نوع الموعد"
+                        : "Type"}
+                    </th>
+
+                    <th
+                      className={`px-6 py-4 ${
+                        isArabic
+                          ? "text-right"
+                          : "text-left"
+                      } text-sm font-semibold text-slate-600 dark:text-slate-300`}
+                    >
+                      {isArabic
                         ? "الحالة"
                         : "Status"}
                     </th>
@@ -965,16 +1013,20 @@ const PatientAppointments = () => {
                         ? "ملاحظات"
                         : "Notes"}
                     </th>
+
                   </tr>
+
                 </thead>
 
                 <tbody>
+
                   {filteredAppointments.map(
                     (appointment) => (
                       <tr
                         key={appointment.id}
                         className="border-t border-slate-100 transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40"
                       >
+
                         <td
                           className={`px-6 py-5 font-semibold text-slate-900 dark:text-white ${
                             isArabic
@@ -982,8 +1034,10 @@ const PatientAppointments = () => {
                               : "text-left"
                           }`}
                         >
-                          {appointment.clinics?.name ||
-                            t.common.dentalClinic}
+                          {appointment.clinics
+                            ?.name ||
+                            t.common
+                              .dentalClinic}
                         </td>
 
                         <td
@@ -1018,6 +1072,26 @@ const PatientAppointments = () => {
                           }`}
                         >
                           <span
+                            className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getAppointmentTypeStyle(
+                              appointment.appointment_type,
+                              appointment.created_by
+                            )}`}
+                          >
+                            {formatAppointmentType(
+                              appointment.appointment_type,
+                              appointment.created_by
+                            )}
+                          </span>
+                        </td>
+
+                        <td
+                          className={`px-6 py-5 ${
+                            isArabic
+                              ? "text-right"
+                              : "text-left"
+                          }`}
+                        >
+                          <span
                             className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${getStatusStyle(
                               appointment.status
                             )}`}
@@ -1035,17 +1109,23 @@ const PatientAppointments = () => {
                               : "text-left"
                           }`}
                         >
-                          {appointment.notes || "-"}
+                          {appointment.notes ||
+                            "-"}
                         </td>
+
                       </tr>
                     )
                   )}
+
                 </tbody>
+
               </table>
+
             </div>
           )}
+
         </div>
-      </div>
+      </main>
     </div>
   );
 };
