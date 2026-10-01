@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -46,6 +47,9 @@ type Appointment = {
   appointment_type: AppointmentType;
   created_by: CreatedBy;
   updated_at: string | null;
+  patient_age: number | null;
+  is_paid: boolean;
+  price: number | null;
   patient: PatientInfo | null;
 };
 
@@ -53,13 +57,17 @@ type Patient = {
   id: string;
   name: string;
   phone: string | null;
+  address: string | null;
 };
 
 type DoctorProfile = {
   name: string;
   specialty: string | null;
   avatar_url: string | null;
+  checkup_price: number | null;
 };
+
+type PaymentAnswer = "" | "paid" | "unpaid";
 
 type MedicalConditionsAnswer = "" | "no" | "yes";
 
@@ -104,7 +112,7 @@ const formatTime = (time: string) => {
 
 const cleanName = (name: string) => name.trim().replace(/\s+/g, " ");
 
-// يوحّد الحروف العربية عشان المقارنة تبقى دقيقة (أحمد = احمد، فاطمة = فاطمه)
+// يوحّد الحروف العربية عشان المقارنة تبقى دقيقة
 const normalizeName = (name: string) =>
   cleanName(name)
     .toLowerCase()
@@ -117,6 +125,27 @@ const isFullName = (name: string) => {
   const parts = cleanName(name).split(" ");
   return parts.length >= 3 && parts.every((part) => part.length >= 2);
 };
+
+// يحوّل الأرقام العربية (٠١٢...) لإنجليزي
+const toEnglishDigits = (value: string) =>
+  value.replace(/[٠-٩]/g, (d) =>
+    String("٠١٢٣٤٥٦٧٨٩".indexOf(d))
+  );
+
+// يوحّد الصيغة: +2010... أو 002010... أو 2010... => 010...
+const normalizePhone = (phone: string) => {
+  let p = toEnglishDigits(phone).replace(/[\s\-()]/g, "");
+
+  if (p.startsWith("+20")) p = "0" + p.slice(3);
+  else if (p.startsWith("0020")) p = "0" + p.slice(4);
+  else if (p.startsWith("20") && p.length === 12) p = "0" + p.slice(2);
+
+  return p;
+};
+
+// موبايل مصري صحيح: 11 رقم ويبدأ بـ 010 / 011 / 012 / 015
+const isValidEgyptianPhone = (phone: string) =>
+  /^01[0125][0-9]{8}$/.test(normalizePhone(phone));
 
 function TodayAppointments() {
   const navigate = useNavigate();
@@ -153,6 +182,8 @@ function TodayAppointments() {
 
   const [checkupPatientName, setCheckupPatientName] = useState("");
 
+  const [checkupPhone, setCheckupPhone] = useState("");
+
   const [checkupType, setCheckupType] = useState<"new_checkup" | "xray">(
     "new_checkup"
   );
@@ -172,6 +203,19 @@ function TodayAppointments() {
   const [checkupNotes, setCheckupNotes] = useState("");
 
   const [checkupLoading, setCheckupLoading] = useState(false);
+
+  const [checkupAge, setCheckupAge] = useState("");
+
+  const [checkupAddress, setCheckupAddress] = useState("");
+
+  const [checkupPayment, setCheckupPayment] =
+    useState<PaymentAnswer>("");
+
+  // سعر الكشف الثابت للدكتور
+  const [doctorPrice, setDoctorPrice] = useState<number | null>(null);
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceInput, setPriceInput] = useState("");
+  const [priceSaving, setPriceSaving] = useState(false);
 
   // ============================================================
   // Follow-up Modal
@@ -206,6 +250,7 @@ function TodayAppointments() {
   });
 
   const isArabic = language === "ar";
+  const currency = isArabic ? "ج.م" : "EGP";
   const todayDate = getTodayDate();
 
   useEffect(() => {
@@ -220,7 +265,6 @@ function TodayAppointments() {
     localStorage.setItem("dentalcare-theme", theme);
   }, [theme]);
 
-  // منع سكرول الصفحة الخلفية أثناء فتح أي نافذة
   useEffect(() => {
     if (showCheckupModal || showFollowUpModal) {
       const previousOverflow = document.body.style.overflow;
@@ -261,7 +305,7 @@ function TodayAppointments() {
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("clinic_id, name, specialty, avatar_url")
+        .select("clinic_id, name, specialty, avatar_url, checkup_price")
         .eq("id", userId)
         .single();
 
@@ -283,7 +327,19 @@ function TodayAppointments() {
         name: profile.name || "",
         specialty: profile.specialty || null,
         avatar_url: profile.avatar_url || null,
+        checkup_price:
+          profile.checkup_price !== null &&
+          profile.checkup_price !== undefined
+            ? Number(profile.checkup_price)
+            : null,
       });
+
+      setDoctorPrice(
+        profile.checkup_price !== null &&
+          profile.checkup_price !== undefined
+          ? Number(profile.checkup_price)
+          : null
+      );
 
       const [clinicResult, appointmentsResult, patientsResult] =
         await Promise.all([
@@ -307,6 +363,9 @@ function TodayAppointments() {
             appointment_type,
             created_by,
             updated_at,
+            patient_age,
+            is_paid,
+            price,
             patient:patients (
               name,
               phone
@@ -319,7 +378,7 @@ function TodayAppointments() {
 
           supabase
             .from("patients")
-            .select("id, name, phone")
+            .select("id, name, phone, address")
             .eq("clinic_id", profile.clinic_id)
             .order("name", { ascending: true }),
         ]);
@@ -362,8 +421,15 @@ function TodayAppointments() {
           patient_id: item.patient_id,
           clinic_id: item.clinic_id,
           appointment_type: appointmentType,
-          created_by: item.created_by === "doctor" ? "doctor" : "patient",
+          created_by:
+            item.created_by === "doctor" ? "doctor" : "patient",
           updated_at: item.updated_at,
+          patient_age: item.patient_age ?? null,
+          is_paid: Boolean(item.is_paid),
+          price:
+            item.price !== null && item.price !== undefined
+              ? Number(item.price)
+              : null,
           patient: Array.isArray(item.patient)
             ? item.patient[0] || null
             : item.patient || null,
@@ -398,8 +464,13 @@ function TodayAppointments() {
 
   const todayAppointments = useMemo(() => {
     return appointments
-      .filter((appointment) => appointment.appointment_date === todayDate)
-      .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+      .filter(
+        (appointment) =>
+          appointment.appointment_date === todayDate
+      )
+      .sort((a, b) =>
+        a.appointment_time.localeCompare(b.appointment_time)
+      );
   }, [appointments, todayDate]);
 
   const selectedAppointment = useMemo(() => {
@@ -408,8 +479,10 @@ function TodayAppointments() {
     );
   }, [todayAppointments, selectedAppointmentId]);
 
-  const pendingCount = todayAppointments.filter(
-    (appointment) => appointment.status === "pending"
+  const waitingCount = todayAppointments.filter(
+    (appointment) =>
+      appointment.status === "pending" ||
+      appointment.status === "confirmed"
   ).length;
 
   const confirmedCount = todayAppointments.filter(
@@ -481,18 +554,22 @@ function TodayAppointments() {
     setSuccess("");
 
     setCheckupPatientName("");
-
+    setCheckupPhone("");
     setCheckupType("new_checkup");
 
     setCheckupMedicalConditions("");
-
     setCheckupMedicalConditionsDetails("");
 
     setCheckupDate(getTodayDate());
-
     setCheckupTime("");
-
     setCheckupNotes("");
+
+    setCheckupAge("");
+    setCheckupAddress("");
+
+    setCheckupPayment("");
+
+    setEditingPrice(false);
 
     setShowCheckupModal(true);
   };
@@ -517,7 +594,10 @@ function TodayAppointments() {
   // Appointment Conflict
   // ============================================================
 
-  const checkAppointmentConflict = async (date: string, time: string) => {
+  const checkAppointmentConflict = async (
+    date: string,
+    time: string
+  ) => {
     if (!clinicId) {
       return {
         error: null,
@@ -535,7 +615,10 @@ function TodayAppointments() {
       .limit(1);
 
     if (conflictError) {
-      console.error("Conflict check error:", conflictError);
+      console.error(
+        "Conflict check error:",
+        conflictError
+      );
 
       return {
         error: conflictError,
@@ -547,6 +630,66 @@ function TodayAppointments() {
       error: null,
       conflict: (data?.length ?? 0) > 0,
     };
+  };
+
+  // ============================================================
+  // Save Doctor Checkup Price
+  // ============================================================
+
+  const handleSavePrice = async () => {
+    const value = Number(priceInput);
+
+    if (
+      !priceInput.trim() ||
+      Number.isNaN(value) ||
+      value <= 0
+    ) {
+      setError(
+        isArabic
+          ? "من فضلك اكتب سعر كشف صحيح."
+          : "Please enter a valid checkup price."
+      );
+      return;
+    }
+
+    setPriceSaving(true);
+    setError("");
+
+    try {
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser();
+
+      if (userError || !userData.user) {
+        throw new Error(
+          isArabic
+            ? "يجب تسجيل الدخول أولًا."
+            : "You must be logged in first."
+        );
+      }
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ checkup_price: value })
+        .eq("id", userData.user.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setDoctorPrice(value);
+      setEditingPrice(false);
+    } catch (err: any) {
+      console.error(err);
+
+      setError(
+        err?.message ||
+          (isArabic
+            ? "تعذر حفظ سعر الكشف."
+            : "Failed to save checkup price.")
+      );
+    } finally {
+      setPriceSaving(false);
+    }
   };
 
   // ============================================================
@@ -572,6 +715,34 @@ function TodayAppointments() {
         isArabic
           ? "من فضلك اكتب اسم المريض ثلاثيًا على الأقل."
           : "Please enter the patient's full name (at least three names)."
+      );
+      return;
+    }
+
+    if (
+      !checkupPhone.trim() ||
+      !isValidEgyptianPhone(checkupPhone)
+    ) {
+      setError(
+        isArabic
+          ? "من فضلك اكتب رقم موبايل مصري صحيح (11 رقم يبدأ بـ 010 أو 011 أو 012 أو 015)."
+          : "Please enter a valid Egyptian mobile number (11 digits starting with 010, 011, 012 or 015)."
+      );
+      return;
+    }
+
+    const patientAge = Number(checkupAge);
+
+    if (
+      !checkupAge.trim() ||
+      !Number.isInteger(patientAge) ||
+      patientAge < 1 ||
+      patientAge > 120
+    ) {
+      setError(
+        isArabic
+          ? "من فضلك اكتب عمر المريض بشكل صحيح (من 1 إلى 120)."
+          : "Please enter a valid patient age (1 to 120)."
       );
       return;
     }
@@ -606,14 +777,38 @@ function TodayAppointments() {
       return;
     }
 
+    if (doctorPrice === null) {
+      setError(
+        isArabic
+          ? "من فضلك حدد سعر الكشف أولًا."
+          : "Please set the checkup price first."
+      );
+      return;
+    }
+
+    if (!checkupPayment) {
+      setError(
+        isArabic
+          ? "من فضلك حدد هل تم دفع الكشف أم لا."
+          : "Please specify whether the checkup is paid."
+      );
+      return;
+    }
+
     setCheckupLoading(true);
     setError("");
     setSuccess("");
 
     try {
+      // ============================================================
       // Check Conflict
+      // ============================================================
+
       const { conflict, error: conflictError } =
-        await checkAppointmentConflict(checkupDate, checkupTime);
+        await checkAppointmentConflict(
+          checkupDate,
+          checkupTime
+        );
 
       if (conflictError) {
         setError(
@@ -633,38 +828,10 @@ function TodayAppointments() {
         return;
       }
 
-      // Find existing patient by name, or create a new one
-      let patientId: string;
-
-      const existingPatient = patients.find(
-        (patient) => normalizeName(patient.name) === normalizeName(patientName)
-      );
-
-      if (existingPatient) {
-        patientId = existingPatient.id;
-      } else {
-        const { data: newPatient, error: patientError } = await supabase
-          .from("patients")
-          .insert({
-            clinic_id: clinicId,
-            name: patientName,
-          })
-          .select("id, name, phone")
-          .single();
-
-        if (patientError || !newPatient) {
-          throw (
-            patientError ||
-            new Error(
-              isArabic ? "تعذر إضافة المريض." : "Could not create patient."
-            )
-          );
-        }
-
-        patientId = newPatient.id;
-      }
-
+      // ============================================================
       // Medical Condition Text
+      // ============================================================
+
       const medicalConditionText =
         checkupMedicalConditions === "yes"
           ? isArabic
@@ -674,38 +841,132 @@ function TodayAppointments() {
           ? "لا يعاني المريض من أي أمراض"
           : "No known medical conditions";
 
-      const finalNotes = [medicalConditionText, checkupNotes.trim()]
+      const finalNotes = [
+        medicalConditionText,
+        checkupNotes.trim(),
+      ]
         .filter(Boolean)
         .join("\n");
 
+      // ============================================================
+      // Create Patient For The First Time
+      // ============================================================
+
+      const patientPhone = normalizePhone(checkupPhone);
+
+      const { data: newPatient, error: patientInsertError } =
+        await supabase
+          .from("patients")
+          .insert({
+            clinic_id: clinicId,
+            name: patientName,
+            phone: patientPhone,
+            age: patientAge,
+            address: checkupAddress.trim() || null,
+            medical_notes: finalNotes || null,
+            user_id: null,
+          })
+          .select("id, name, phone")
+          .single();
+
+      if (patientInsertError || !newPatient) {
+        throw (
+          patientInsertError ||
+          new Error(
+            isArabic
+              ? "تعذر إضافة المريض."
+              : "Could not create the patient."
+          )
+        );
+      }
+
+      const patientId = newPatient.id;
+
+      // ============================================================
       // Create Appointment
-      const { data: newAppointment, error: insertError } = await supabase
-        .from("appointments")
-        .insert({
-          clinic_id: clinicId,
-          patient_id: patientId,
-          appointment_date: checkupDate,
-          appointment_time: checkupTime,
-          status: "confirmed",
-          notes: finalNotes || null,
-          appointment_type: checkupType,
-          created_by: "doctor",
-          updated_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
+      // ============================================================
+
+      const { data: newAppointment, error: insertError } =
+        await supabase
+          .from("appointments")
+          .insert({
+            clinic_id: clinicId,
+            patient_id: patientId,
+            appointment_date: checkupDate,
+            appointment_time: checkupTime,
+            status: "confirmed",
+            notes: finalNotes || null,
+            appointment_type: checkupType,
+            patient_age: patientAge,
+            is_paid: checkupPayment === "paid",
+            price: doctorPrice,
+            created_by: "doctor",
+            updated_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
 
       if (insertError || !newAppointment) {
         throw (
           insertError ||
           new Error(
-            isArabic ? "تعذر إنشاء الكشف." : "Could not create checkup."
+            isArabic
+              ? "تعذر إنشاء الكشف."
+              : "Could not create checkup."
           )
         );
       }
 
+      // ============================================================
+      // Add Payment
+      // ============================================================
+
+      let paymentFailed = false;
+      let paymentErrorMessage = "";
+
+      if (
+        checkupPayment === "paid" &&
+        doctorPrice !== null
+      ) {
+        const { error: paymentError } =
+          await supabase.from("payments").insert({
+            clinic_id: clinicId,
+            patient_id: patientId,
+            amount: doctorPrice,
+            payment_method: "cash",
+            payment_date: checkupDate,
+            description:
+              checkupType === "xray"
+                ? isArabic
+                  ? "أشعة"
+                  : "X-ray"
+                : isArabic
+                ? "كشف"
+                : "Checkup",
+            notes: finalNotes || null,
+          });
+
+        if (paymentError) {
+          console.error(
+            "Payment error:",
+            paymentError
+          );
+
+          paymentFailed = true;
+          paymentErrorMessage =
+            paymentError.message || "";
+        }
+      }
+
+      // ============================================================
       // Notification
-      const formattedDate = formatDate(checkupDate, isArabic);
+      // ============================================================
+
+      const formattedDate = formatDate(
+        checkupDate,
+        isArabic
+      );
+
       const isXray = checkupType === "xray";
 
       const appointmentLabel = isXray
@@ -716,9 +977,8 @@ function TodayAppointments() {
         ? "كشف"
         : "Checkup";
 
-      const { error: notificationError } = await supabase
-        .from("notifications")
-        .insert({
+      const { error: notificationError } =
+        await supabase.from("notifications").insert({
           clinic_id: clinicId,
           patient_id: patientId,
           appointment_id: newAppointment.id,
@@ -726,10 +986,10 @@ function TodayAppointments() {
             ? `تم تحديد موعد ${appointmentLabel}`
             : `${appointmentLabel} Appointment Scheduled`,
           message: isArabic
-            ? `مرحبًا ${patientName}، قام الطبيب بتحديد موعد ${appointmentLabel} لك يوم ${formattedDate} الساعة ${formatTime(
+            ? `مرحبًا ${newPatient.name}، قام الطبيب بتحديد موعد ${appointmentLabel} لك يوم ${formattedDate} الساعة ${formatTime(
                 checkupTime
               )}.`
-            : `Hello ${patientName}, your doctor scheduled a ${appointmentLabel} appointment for ${formattedDate} at ${formatTime(
+            : `Hello ${newPatient.name}, your doctor scheduled a ${appointmentLabel} appointment for ${formattedDate} at ${formatTime(
                 checkupTime
               )}.`,
           is_read: false,
@@ -738,19 +998,32 @@ function TodayAppointments() {
         });
 
       if (notificationError) {
-        console.error("Notification error:", notificationError);
+        console.error(
+          "Notification error:",
+          notificationError
+        );
       }
 
       setSuccess(
         isArabic
-          ? `تم إنشاء ${appointmentLabel} بنجاح.`
-          : `${appointmentLabel} created successfully.`
+          ? `تم إضافة المريض وإنشاء ${appointmentLabel} بنجاح.`
+          : `Patient added and ${appointmentLabel} created successfully.`
       );
 
       setShowCheckupModal(false);
+
       await loadData(true);
+
+      if (paymentFailed) {
+        setError(
+          isArabic
+            ? `تم إنشاء الكشف لكن تعذر تسجيل المبلغ في المدفوعات. (${paymentErrorMessage})`
+            : `The checkup was created but the payment could not be recorded. (${paymentErrorMessage})`
+        );
+      }
     } catch (err: any) {
       console.error(err);
+
       setError(
         err?.message ||
           (isArabic
@@ -771,13 +1044,16 @@ function TodayAppointments() {
       return;
     }
 
-    if (!followUpPatientId || !followUpDate || !followUpTime) {
+    if (
+      !followUpPatientId ||
+      !followUpDate ||
+      !followUpTime
+    ) {
       setError(
         isArabic
           ? "من فضلك اختر المريض والتاريخ والوقت."
           : "Please select the patient, date and time."
       );
-
       return;
     }
 
@@ -789,7 +1065,6 @@ function TodayAppointments() {
           ? "لا يمكن اختيار تاريخ قديم."
           : "You cannot select a past date."
       );
-
       return;
     }
 
@@ -799,7 +1074,10 @@ function TodayAppointments() {
 
     try {
       const { conflict, error: conflictError } =
-        await checkAppointmentConflict(followUpDate, followUpTime);
+        await checkAppointmentConflict(
+          followUpDate,
+          followUpTime
+        );
 
       if (conflictError) {
         setError(
@@ -807,7 +1085,6 @@ function TodayAppointments() {
             ? "تعذر التحقق من توفر الموعد."
             : "Could not check appointment availability."
         );
-
         return;
       }
 
@@ -817,25 +1094,25 @@ function TodayAppointments() {
             ? "هذا الوقت محجوز بالفعل. من فضلك اختر وقتًا آخر."
             : "This time is already booked. Please choose another time."
         );
-
         return;
       }
 
-      const { data: newAppointment, error: insertError } = await supabase
-        .from("appointments")
-        .insert({
-          clinic_id: clinicId,
-          patient_id: followUpPatientId,
-          appointment_date: followUpDate,
-          appointment_time: followUpTime,
-          status: "confirmed",
-          notes: followUpNotes.trim() || null,
-          appointment_type: "follow_up",
-          created_by: "doctor",
-          updated_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
+      const { data: newAppointment, error: insertError } =
+        await supabase
+          .from("appointments")
+          .insert({
+            clinic_id: clinicId,
+            patient_id: followUpPatientId,
+            appointment_date: followUpDate,
+            appointment_time: followUpTime,
+            status: "confirmed",
+            notes: followUpNotes.trim() || null,
+            appointment_type: "follow_up",
+            created_by: "doctor",
+            updated_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
 
       if (insertError || !newAppointment) {
         throw (
@@ -849,17 +1126,21 @@ function TodayAppointments() {
       }
 
       const selectedPatient = patients.find(
-        (patient) => patient.id === followUpPatientId
+        (patient) =>
+          patient.id === followUpPatientId
       );
 
       const patientName =
-        selectedPatient?.name || (isArabic ? "المريض" : "Patient");
+        selectedPatient?.name ||
+        (isArabic ? "المريض" : "Patient");
 
-      const formattedDate = formatDate(followUpDate, isArabic);
+      const formattedDate = formatDate(
+        followUpDate,
+        isArabic
+      );
 
-      const { error: notificationError } = await supabase
-        .from("notifications")
-        .insert({
+      const { error: notificationError } =
+        await supabase.from("notifications").insert({
           clinic_id: clinicId,
           patient_id: followUpPatientId,
           appointment_id: newAppointment.id,
@@ -879,7 +1160,10 @@ function TodayAppointments() {
         });
 
       if (notificationError) {
-        console.error("Notification error:", notificationError);
+        console.error(
+          "Notification error:",
+          notificationError
+        );
       }
 
       setSuccess(
@@ -909,23 +1193,25 @@ function TodayAppointments() {
   // Confirm
   // ============================================================
 
-  const handleConfirm = async (appointment: Appointment) => {
+  const handleConfirm = async (
+    appointment: Appointment
+  ) => {
     if (!clinicId) return;
 
     setActionLoading(appointment.id);
-
     setError("");
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("appointments")
-        .update({
-          status: "confirmed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointment.id)
-        .eq("clinic_id", clinicId);
+      const { error: updateError } =
+        await supabase
+          .from("appointments")
+          .update({
+            status: "confirmed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", appointment.id)
+          .eq("clinic_id", clinicId);
 
       if (updateError) {
         throw updateError;
@@ -935,16 +1221,22 @@ function TodayAppointments() {
         clinic_id: clinicId,
         patient_id: appointment.patient_id,
         appointment_id: appointment.id,
-        title: isArabic ? "تم تأكيد موعدك" : "Your Appointment Is Confirmed",
+        title: isArabic
+          ? "تم تأكيد موعدك"
+          : "Your Appointment Is Confirmed",
         message: isArabic
           ? `تم تأكيد موعدك يوم ${formatDate(
               appointment.appointment_date,
               true
-            )} الساعة ${formatTime(appointment.appointment_time)}.`
+            )} الساعة ${formatTime(
+              appointment.appointment_time
+            )}.`
           : `Your appointment on ${formatDate(
               appointment.appointment_date,
               false
-            )} at ${formatTime(appointment.appointment_time)} has been confirmed.`,
+            )} at ${formatTime(
+              appointment.appointment_time
+            )} has been confirmed.`,
         is_read: false,
         recipient_type: "patient",
         notification_type: "appointment_confirmed",
@@ -959,7 +1251,10 @@ function TodayAppointments() {
         .eq("appointment_id", appointment.id)
         .eq("clinic_id", clinicId)
         .eq("recipient_type", "doctor")
-        .eq("notification_type", "appointment_request");
+        .eq(
+          "notification_type",
+          "appointment_request"
+        );
 
       setSuccess(
         isArabic
@@ -986,23 +1281,25 @@ function TodayAppointments() {
   // Reject
   // ============================================================
 
-  const handleReject = async (appointment: Appointment) => {
+  const handleReject = async (
+    appointment: Appointment
+  ) => {
     if (!clinicId) return;
 
     setActionLoading(appointment.id);
-
     setError("");
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("appointments")
-        .update({
-          status: "cancelled",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointment.id)
-        .eq("clinic_id", clinicId);
+      const { error: updateError } =
+        await supabase
+          .from("appointments")
+          .update({
+            status: "cancelled",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", appointment.id)
+          .eq("clinic_id", clinicId);
 
       if (updateError) {
         throw updateError;
@@ -1012,16 +1309,22 @@ function TodayAppointments() {
         clinic_id: clinicId,
         patient_id: appointment.patient_id,
         appointment_id: appointment.id,
-        title: isArabic ? "تم رفض موعدك" : "Your Appointment Was Rejected",
+        title: isArabic
+          ? "تم رفض موعدك"
+          : "Your Appointment Was Rejected",
         message: isArabic
           ? `تم رفض طلب حجز الموعد يوم ${formatDate(
               appointment.appointment_date,
               true
-            )} الساعة ${formatTime(appointment.appointment_time)}.`
+            )} الساعة ${formatTime(
+              appointment.appointment_time
+            )}.`
           : `Your appointment request for ${formatDate(
               appointment.appointment_date,
               false
-            )} at ${formatTime(appointment.appointment_time)} was rejected.`,
+            )} at ${formatTime(
+              appointment.appointment_time
+            )} was rejected.`,
         is_read: false,
         recipient_type: "patient",
         notification_type: "appointment_rejected",
@@ -1036,9 +1339,16 @@ function TodayAppointments() {
         .eq("appointment_id", appointment.id)
         .eq("clinic_id", clinicId)
         .eq("recipient_type", "doctor")
-        .eq("notification_type", "appointment_request");
+        .eq(
+          "notification_type",
+          "appointment_request"
+        );
 
-      setSuccess(isArabic ? "تم رفض الموعد." : "Appointment rejected.");
+      setSuccess(
+        isArabic
+          ? "تم رفض الموعد."
+          : "Appointment rejected."
+      );
 
       await loadData(true);
     } catch (err: any) {
@@ -1059,23 +1369,25 @@ function TodayAppointments() {
   // Complete
   // ============================================================
 
-  const handleComplete = async (appointment: Appointment) => {
+  const handleComplete = async (
+    appointment: Appointment
+  ) => {
     if (!clinicId) return;
 
     setActionLoading(appointment.id);
-
     setError("");
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("appointments")
-        .update({
-          status: "completed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointment.id)
-        .eq("clinic_id", clinicId);
+      const { error: updateError } =
+        await supabase
+          .from("appointments")
+          .update({
+            status: "completed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", appointment.id)
+          .eq("clinic_id", clinicId);
 
       if (updateError) {
         throw updateError;
@@ -1106,7 +1418,9 @@ function TodayAppointments() {
   // Cancel Follow-up
   // ============================================================
 
-  const handleCancelFollowUp = async (appointment: Appointment) => {
+  const handleCancelFollowUp = async (
+    appointment: Appointment
+  ) => {
     if (!clinicId) return;
 
     const confirmed = window.confirm(
@@ -1123,15 +1437,16 @@ function TodayAppointments() {
     setSuccess("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("appointments")
-        .update({
-          status: "cancelled",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointment.id)
-        .eq("clinic_id", clinicId)
-        .eq("appointment_type", "follow_up");
+      const { error: updateError } =
+        await supabase
+          .from("appointments")
+          .update({
+            status: "cancelled",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", appointment.id)
+          .eq("clinic_id", clinicId)
+          .eq("appointment_type", "follow_up");
 
       if (updateError) {
         throw updateError;
@@ -1190,9 +1505,13 @@ function TodayAppointments() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate("/doctor/dashboard")}
+              onClick={() =>
+                navigate("/doctor/dashboard")
+              }
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              aria-label={isArabic ? "العودة" : "Back"}
+              aria-label={
+                isArabic ? "العودة" : "Back"
+              }
             >
               {isArabic ? (
                 <ArrowRight className="h-5 w-5" />
@@ -1220,7 +1539,10 @@ function TodayAppointments() {
                 </p>
 
                 <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-                  {clinicName || (isArabic ? "عيادتي" : "My Clinic")}
+                  {clinicName ||
+                    (isArabic
+                      ? "عيادتي"
+                      : "My Clinic")}
                 </h1>
               </div>
             </div>
@@ -1230,25 +1552,42 @@ function TodayAppointments() {
             <Link
               to="/doctor/notifications"
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              title={isArabic ? "الإشعارات" : "Notifications"}
+              title={
+                isArabic
+                  ? "الإشعارات"
+                  : "Notifications"
+              }
             >
               <Bell className="h-5 w-5" />
             </Link>
 
             <button
               type="button"
-              onClick={() => setLanguage(isArabic ? "en" : "ar")}
+              onClick={() =>
+                setLanguage(isArabic ? "en" : "ar")
+              }
               className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <Languages className="h-4 w-4" />
+
               {isArabic ? "EN" : "عربي"}
             </button>
 
             <button
               type="button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={() =>
+                setTheme(
+                  theme === "dark"
+                    ? "light"
+                    : "dark"
+                )
+              }
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              title={theme === "dark" ? "Light mode" : "Dark mode"}
+              title={
+                theme === "dark"
+                  ? "Light mode"
+                  : "Dark mode"
+              }
             >
               {theme === "dark" ? (
                 <Sun className="h-5 w-5" />
@@ -1267,11 +1606,18 @@ function TodayAppointments() {
             <div className="mb-2 flex items-center gap-2 text-sm text-teal-600 dark:text-teal-400">
               <Calendar className="h-4 w-4" />
 
-              <span>{formatDate(todayDate, isArabic)}</span>
+              <span>
+                {formatDate(
+                  todayDate,
+                  isArabic
+                )}
+              </span>
             </div>
 
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white">
-              {isArabic ? "مواعيد اليوم" : "Today's Appointments"}
+              {isArabic
+                ? "مواعيد اليوم"
+                : "Today's Appointments"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -1282,7 +1628,6 @@ function TodayAppointments() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Add New Checkup */}
             <button
               type="button"
               onClick={openCheckupModal}
@@ -1290,10 +1635,11 @@ function TodayAppointments() {
             >
               <Calendar className="h-4 w-4" />
 
-              {isArabic ? "إضافة كشف جديد" : "Add New Checkup"}
+              {isArabic
+                ? "إضافة كشف جديد"
+                : "Add New Checkup"}
             </button>
 
-            {/* Add Follow-up */}
             <button
               type="button"
               onClick={openFollowUpModal}
@@ -1301,7 +1647,9 @@ function TodayAppointments() {
             >
               <Clock className="h-4 w-4" />
 
-              {isArabic ? "إضافة موعد متابعة" : "Add Follow-up"}
+              {isArabic
+                ? "إضافة موعد متابعة"
+                : "Add Follow-up"}
             </button>
 
             <button
@@ -1309,10 +1657,16 @@ function TodayAppointments() {
               onClick={() => loadData(true)}
               disabled={refreshing}
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              title={isArabic ? "تحديث" : "Refresh"}
+              title={
+                isArabic ? "تحديث" : "Refresh"
+              }
             >
               <RefreshCcw
-                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                className={`h-4 w-4 ${
+                  refreshing
+                    ? "animate-spin"
+                    : ""
+                }`}
               />
             </button>
           </div>
@@ -1322,6 +1676,7 @@ function TodayAppointments() {
         {error && (
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
             <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
             <span>{error}</span>
           </div>
         )}
@@ -1329,12 +1684,13 @@ function TodayAppointments() {
         {success && (
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+
             <span>{success}</span>
           </div>
         )}
 
         {/* Doctor + Stats */}
-        <div className="mb-6 grid gap-4 lg:grid-cols-4">
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex items-center gap-4">
               {doctorProfile?.avatar_url ? (
@@ -1351,11 +1707,16 @@ function TodayAppointments() {
 
               <div className="min-w-0">
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {isArabic ? "الطبيب" : "Doctor"}
+                  {isArabic
+                    ? "الطبيب"
+                    : "Doctor"}
                 </p>
 
                 <h3 className="truncate font-bold text-slate-900 dark:text-white">
-                  {doctorProfile?.name || (isArabic ? "الطبيب" : "Doctor")}
+                  {doctorProfile?.name ||
+                    (isArabic
+                      ? "الطبيب"
+                      : "Doctor")}
                 </h3>
 
                 {doctorProfile?.specialty && (
@@ -1369,7 +1730,9 @@ function TodayAppointments() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {isArabic ? "إجمالي مواعيد اليوم" : "Today's Appointments"}
+              {isArabic
+                ? "إجمالي مواعيد اليوم"
+                : "Today's Appointments"}
             </p>
 
             <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
@@ -1379,7 +1742,9 @@ function TodayAppointments() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {isArabic ? "مواعيد مؤكدة" : "Confirmed"}
+              {isArabic
+                ? "مواعيد مؤكدة"
+                : "Confirmed"}
             </p>
 
             <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">
@@ -1387,13 +1752,27 @@ function TodayAppointments() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-900 dark:bg-slate-900">
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {isArabic ? "في الانتظار" : "Pending"}
+              {isArabic
+                ? "في الانتظار"
+                : "Pending"}
             </p>
 
             <p className="mt-2 text-3xl font-bold text-amber-600 dark:text-amber-400">
-              {pendingCount}
+              {waitingCount}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "مواعيد مكتملة"
+                : "Completed"}
+            </p>
+
+            <p className="mt-2 text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+              {completedCount}
             </p>
           </div>
         </div>
@@ -1403,7 +1782,9 @@ function TodayAppointments() {
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
             <div>
               <h3 className="font-bold text-slate-900 dark:text-white">
-                {isArabic ? "جدول مواعيد اليوم" : "Today's Schedule"}
+                {isArabic
+                  ? "جدول مواعيد اليوم"
+                  : "Today's Schedule"}
               </h3>
 
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -1441,7 +1822,9 @@ function TodayAppointments() {
               </div>
 
               <h4 className="text-lg font-bold text-slate-900 dark:text-white">
-                {isArabic ? "لا توجد مواعيد اليوم" : "No appointments today"}
+                {isArabic
+                  ? "لا توجد مواعيد اليوم"
+                  : "No appointments today"}
               </h4>
 
               <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
@@ -1458,7 +1841,9 @@ function TodayAppointments() {
                 >
                   <Calendar className="h-4 w-4" />
 
-                  {isArabic ? "إضافة كشف جديد" : "Add New Checkup"}
+                  {isArabic
+                    ? "إضافة كشف جديد"
+                    : "Add New Checkup"}
                 </button>
 
                 <button
@@ -1468,13 +1853,15 @@ function TodayAppointments() {
                 >
                   <Clock className="h-4 w-4" />
 
-                  {isArabic ? "إضافة موعد متابعة" : "Add Follow-up"}
+                  {isArabic
+                    ? "إضافة موعد متابعة"
+                    : "Add Follow-up"}
                 </button>
               </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px]">
+              <table className="w-full min-w-[950px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
                     <th className="px-5 py-4 text-start">
@@ -1482,200 +1869,309 @@ function TodayAppointments() {
                     </th>
 
                     <th className="px-5 py-4 text-start">
-                      {isArabic ? "المريض" : "Patient"}
+                      {isArabic
+                        ? "المريض"
+                        : "Patient"}
                     </th>
 
                     <th className="px-5 py-4 text-start">
-                      {isArabic ? "نوع الموعد" : "Type"}
+                      {isArabic
+                        ? "نوع الموعد"
+                        : "Type"}
                     </th>
 
                     <th className="px-5 py-4 text-start">
-                      {isArabic ? "الحالة" : "Status"}
+                      {isArabic
+                        ? "الدفع"
+                        : "Payment"}
                     </th>
 
                     <th className="px-5 py-4 text-start">
-                      {isArabic ? "المصدر" : "Source"}
+                      {isArabic
+                        ? "الحالة"
+                        : "Status"}
+                    </th>
+
+                    <th className="px-5 py-4 text-start">
+                      {isArabic
+                        ? "المصدر"
+                        : "Source"}
                     </th>
 
                     <th className="px-5 py-4 text-end">
-                      {isArabic ? "الإجراءات" : "Actions"}
+                      {isArabic
+                        ? "الإجراءات"
+                        : "Actions"}
                     </th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {todayAppointments.map((appointment) => {
-                    const isActionLoading = actionLoading === appointment.id;
+                  {todayAppointments.map(
+                    (appointment) => {
+                      const isActionLoading =
+                        actionLoading ===
+                        appointment.id;
 
-                    return (
-                      <tr
-                        key={appointment.id}
-                        onClick={() =>
-                          setSelectedAppointmentId(appointment.id)
-                        }
-                        className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50 ${
-                          selectedAppointmentId === appointment.id
-                            ? "bg-teal-50/60 dark:bg-teal-950/20"
-                            : ""
-                        }`}
-                      >
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white">
-                            <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                      return (
+                        <tr
+                          key={appointment.id}
+                          onClick={() =>
+                            setSelectedAppointmentId(
+                              appointment.id
+                            )
+                          }
+                          className={`cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50 ${
+                            selectedAppointmentId ===
+                            appointment.id
+                              ? "bg-teal-50/60 dark:bg-teal-950/20"
+                              : ""
+                          }`}
+                        >
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white">
+                              <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
 
-                            {formatTime(appointment.appointment_time)}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                              <User className="h-5 w-5" />
-                            </div>
-
-                            <div>
-                              <p className="font-semibold text-slate-900 dark:text-white">
-                                {appointment.patient?.name ||
-                                  (isArabic ? "مريض" : "Patient")}
-                              </p>
-
-                              {appointment.patient?.phone && (
-                                <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                                  <Phone className="h-3 w-3" />
-
-                                  {appointment.patient.phone}
-                                </p>
+                              {formatTime(
+                                appointment.appointment_time
                               )}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                            {appointment.appointment_type === "xray" && (
-                              <ScanLine className="h-3.5 w-3.5" />
-                            )}
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                <User className="h-5 w-5" />
+                              </div>
 
-                            {appointment.appointment_type ===
-                              "new_checkup" && (
-                              <Stethoscope className="h-3.5 w-3.5" />
-                            )}
+                              <div>
+                                <p className="font-semibold text-slate-900 dark:text-white">
+                                  {appointment.patient
+                                    ?.name ||
+                                    (isArabic
+                                      ? "مريض"
+                                      : "Patient")}
+                                </p>
 
-                            {appointment.appointment_type === "follow_up" && (
-                              <Clock className="h-3.5 w-3.5" />
-                            )}
+                                {appointment.patient
+                                  ?.phone && (
+                                  <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                                    <Phone className="h-3 w-3" />
 
-                            {getTypeLabel(appointment.appointment_type)}
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getStatusClasses(
-                              appointment.status
-                            )}`}
-                          >
-                            {getStatusLabel(appointment.status)}
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
-                            {appointment.created_by === "patient"
-                              ? isArabic
-                                ? "المريض"
-                                : "Patient"
-                              : isArabic
-                              ? "الطبيب"
-                              : "Doctor"}
-                          </span>
-                        </td>
-
-                        <td
-                          className="px-5 py-4 text-end"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-end gap-2">
-                            {appointment.status === "pending" && (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={isActionLoading}
-                                  onClick={() => handleConfirm(appointment)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                                >
-                                  <Check className="h-3.5 w-3.5" />
-
-                                  {isArabic ? "تأكيد" : "Confirm"}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  disabled={isActionLoading}
-                                  onClick={() => handleReject(appointment)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950/30"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-
-                                  {isArabic ? "رفض" : "Reject"}
-                                </button>
-                              </>
-                            )}
-
-                            {appointment.status === "confirmed" && (
-                              <button
-                                type="button"
-                                disabled={isActionLoading}
-                                onClick={() => handleComplete(appointment)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-
-                                {isArabic ? "مكتمل" : "Complete"}
-                              </button>
-                            )}
-
-                            {appointment.appointment_type === "follow_up" && (
-                              <div className="relative">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setOpenMenuId(
-                                      openMenuId === appointment.id
-                                        ? null
-                                        : appointment.id
-                                    )
-                                  }
-                                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </button>
-
-                                {openMenuId === appointment.id && (
-                                  <div className="absolute end-0 top-11 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 text-start shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleCancelFollowUp(appointment)
-                                      }
-                                      disabled={isActionLoading}
-                                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                                    >
-                                      <XCircle className="h-4 w-4" />
-
-                                      {isArabic
-                                        ? "إلغاء الموعد"
-                                        : "Cancel Appointment"}
-                                    </button>
-                                  </div>
+                                    {
+                                      appointment
+                                        .patient
+                                        .phone
+                                    }
+                                  </p>
                                 )}
                               </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              {appointment.appointment_type ===
+                                "xray" && (
+                                <ScanLine className="h-3.5 w-3.5" />
+                              )}
+
+                              {appointment.appointment_type ===
+                                "new_checkup" && (
+                                <Stethoscope className="h-3.5 w-3.5" />
+                              )}
+
+                              {appointment.appointment_type ===
+                                "follow_up" && (
+                                <Clock className="h-3.5 w-3.5" />
+                              )}
+
+                              {getTypeLabel(
+                                appointment.appointment_type
+                              )}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {appointment.price !==
+                            null ? (
+                              <div className="flex flex-col items-start gap-1">
+                                <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                                  {
+                                    appointment.price
+                                  }{" "}
+                                  {currency}
+                                </span>
+
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                                    appointment.is_paid
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                      : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+                                  }`}
+                                >
+                                  {appointment.is_paid
+                                    ? isArabic
+                                      ? "مدفوع"
+                                      : "Paid"
+                                    : isArabic
+                                    ? "غير مدفوع"
+                                    : "Unpaid"}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                —
+                              </span>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                                appointment.status
+                              )}`}
+                            >
+                              {getStatusLabel(
+                                appointment.status
+                              )}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                              {appointment.created_by ===
+                              "patient"
+                                ? isArabic
+                                  ? "المريض"
+                                  : "Patient"
+                                : isArabic
+                                ? "الطبيب"
+                                : "Doctor"}
+                            </span>
+                          </td>
+
+                          <td
+                            className="px-5 py-4 text-end"
+                            onClick={(event) =>
+                              event.stopPropagation()
+                            }
+                          >
+                            <div className="flex items-center justify-end gap-2">
+                              {appointment.status ===
+                                "pending" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isActionLoading
+                                    }
+                                    onClick={() =>
+                                      handleConfirm(
+                                        appointment
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+
+                                    {isArabic
+                                      ? "تأكيد"
+                                      : "Confirm"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isActionLoading
+                                    }
+                                    onClick={() =>
+                                      handleReject(
+                                        appointment
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+
+                                    {isArabic
+                                      ? "رفض"
+                                      : "Reject"}
+                                  </button>
+                                </>
+                              )}
+
+                              {appointment.status ===
+                                "confirmed" && (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isActionLoading
+                                  }
+                                  onClick={() =>
+                                    handleComplete(
+                                      appointment
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+
+                                  {isArabic
+                                    ? "مكتمل"
+                                    : "Complete"}
+                                </button>
+                              )}
+
+                              {appointment.appointment_type ===
+                                "follow_up" && (
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setOpenMenuId(
+                                        openMenuId ===
+                                          appointment.id
+                                          ? null
+                                          : appointment.id
+                                      )
+                                    }
+                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
+
+                                  {openMenuId ===
+                                    appointment.id && (
+                                    <div className="absolute end-0 top-11 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 text-start shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleCancelFollowUp(
+                                            appointment
+                                          )
+                                        }
+                                        disabled={
+                                          isActionLoading
+                                        }
+                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                                      >
+                                        <XCircle className="h-4 w-4" />
+
+                                        {isArabic
+                                          ? "إلغاء الموعد"
+                                          : "Cancel Appointment"}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1688,12 +2184,17 @@ function TodayAppointments() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold text-teal-600 dark:text-teal-400">
-                  {isArabic ? "الموعد المحدد" : "Selected Appointment"}
+                  {isArabic
+                    ? "الموعد المحدد"
+                    : "Selected Appointment"}
                 </p>
 
                 <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
-                  {selectedAppointment.patient?.name ||
-                    (isArabic ? "مريض" : "Patient")}
+                  {selectedAppointment.patient
+                    ?.name ||
+                    (isArabic
+                      ? "مريض"
+                      : "Patient")}
                 </h3>
               </div>
 
@@ -1701,32 +2202,97 @@ function TodayAppointments() {
                 <span className="flex items-center gap-1.5">
                   <Calendar className="h-4 w-4 text-teal-600" />
 
-                  {formatDate(selectedAppointment.appointment_date, isArabic)}
+                  {formatDate(
+                    selectedAppointment.appointment_date,
+                    isArabic
+                  )}
                 </span>
 
                 <span className="flex items-center gap-1.5">
                   <Clock className="h-4 w-4 text-teal-600" />
 
-                  {formatTime(selectedAppointment.appointment_time)}
+                  {formatTime(
+                    selectedAppointment.appointment_time
+                  )}
                 </span>
 
-                {selectedAppointment.patient?.phone && (
+                {selectedAppointment.patient
+                  ?.phone && (
                   <a
                     href={`tel:${selectedAppointment.patient.phone}`}
                     className="flex items-center gap-1.5 text-teal-700 hover:underline dark:text-teal-300"
                   >
                     <Phone className="h-4 w-4" />
 
-                    {selectedAppointment.patient.phone}
+                    {
+                      selectedAppointment.patient
+                        .phone
+                    }
                   </a>
                 )}
               </div>
             </div>
 
+            {(selectedAppointment.patient_age !==
+              null ||
+              selectedAppointment.price !== null) && (
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
+                {selectedAppointment.patient_age !==
+                  null && (
+                  <span>
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {isArabic
+                        ? "العمر:"
+                        : "Age:"}
+                    </span>{" "}
+                    {
+                      selectedAppointment.patient_age
+                    }
+                  </span>
+                )}
+
+                {selectedAppointment.price !==
+                  null && (
+                  <span>
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      {isArabic
+                        ? "سعر الكشف:"
+                        : "Price:"}
+                    </span>{" "}
+                    {
+                      selectedAppointment.price
+                    }{" "}
+                    {currency}
+                  </span>
+                )}
+
+                {selectedAppointment.price !==
+                  null && (
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                      selectedAppointment.is_paid
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+                    }`}
+                  >
+                    {selectedAppointment.is_paid
+                      ? isArabic
+                        ? "مدفوع"
+                        : "Paid"
+                      : isArabic
+                      ? "غير مدفوع"
+                      : "Unpaid"}
+                  </span>
+                )}
+              </div>
+            )}
+
             {selectedAppointment.notes && (
               <div className="mt-4 rounded-xl border border-teal-100 bg-white p-4 text-sm text-slate-600 dark:border-teal-900 dark:bg-slate-900 dark:text-slate-300">
                 <span className="font-semibold text-slate-900 dark:text-white">
-                  {isArabic ? "ملاحظات:" : "Notes:"}
+                  {isArabic
+                    ? "ملاحظات:"
+                    : "Notes:"}
                 </span>{" "}
                 {selectedAppointment.notes}
               </div>
@@ -1737,8 +2303,6 @@ function TodayAppointments() {
 
       {/* ========================================================
           Add New Checkup Modal
-          (الحاوية الخارجية بتعمل scroll، والداخلية
-           min-h-full + items-center عشان الأعلى ميتقصش)
          ======================================================== */}
 
       {showCheckupModal && (
@@ -1748,12 +2312,16 @@ function TodayAppointments() {
               <div className="border-b border-slate-200 p-6 dark:border-slate-700">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "إضافة كشف جديد" : "Add New Checkup"}
+                    {isArabic
+                      ? "إضافة كشف جديد"
+                      : "Add New Checkup"}
                   </h2>
 
                   <button
                     type="button"
-                    onClick={() => setShowCheckupModal(false)}
+                    onClick={() =>
+                      setShowCheckupModal(false)
+                    }
                     className="text-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     ×
@@ -1762,20 +2330,21 @@ function TodayAppointments() {
               </div>
 
               <div className="space-y-5 p-6">
-                {/* Patient */}
+                {/* New Patient */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
-                      ? "اسم المريض (ثلاثي على الأقل)"
-                      : "Patient Name (at least 3 names)"}
+                      ? "اسم المريض الجديد (ثلاثي على الأقل)"
+                      : "New Patient Name (at least 3 names)"}
                   </label>
 
                   <input
                     type="text"
-                    list="patients-suggestions"
                     value={checkupPatientName}
                     onChange={(event) =>
-                      setCheckupPatientName(event.target.value)
+                      setCheckupPatientName(
+                        event.target.value
+                      )
                     }
                     placeholder={
                       isArabic
@@ -1785,15 +2354,10 @@ function TodayAppointments() {
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
 
-                  {/* اقتراحات من المرضى المسجلين (اختياري) */}
-                  <datalist id="patients-suggestions">
-                    {patients.map((patient) => (
-                      <option key={patient.id} value={patient.name} />
-                    ))}
-                  </datalist>
-
                   {checkupPatientName.trim() &&
-                    !isFullName(checkupPatientName) && (
+                    !isFullName(
+                      checkupPatientName
+                    ) && (
                       <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
                         {isArabic
                           ? "الاسم لازم يكون ثلاثي على الأقل."
@@ -1802,18 +2366,120 @@ function TodayAppointments() {
                     )}
                 </div>
 
+                {/* Phone */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "رقم موبايل المريض"
+                      : "Patient Mobile Number"}
+                  </label>
+
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    dir="ltr"
+                    maxLength={14}
+                    value={checkupPhone}
+                    onChange={(event) =>
+                      setCheckupPhone(
+                        event.target.value
+                      )
+                    }
+                    placeholder="01012345678"
+                    className={`w-full rounded-xl border bg-white px-4 py-3 text-slate-900 outline-none dark:bg-slate-800 dark:text-white ${
+                      checkupPhone.trim() &&
+                      !isValidEgyptianPhone(
+                        checkupPhone
+                      )
+                        ? "border-amber-400 focus:border-amber-500"
+                        : "border-slate-300 focus:border-teal-500 dark:border-slate-700"
+                    }`}
+                  />
+
+                  {checkupPhone.trim() &&
+                    !isValidEgyptianPhone(
+                      checkupPhone
+                    ) && (
+                      <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                        {isArabic
+                          ? "الرقم لازم يكون 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015."
+                          : "Number must be 11 digits starting with 010, 011, 012 or 015."}
+                      </p>
+                    )}
+                </div>
+
+                {/* Age */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "عمر المريض"
+                      : "Patient Age"}
+                  </label>
+
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={120}
+                    value={checkupAge}
+                    onChange={(event) =>
+                      setCheckupAge(
+                        event.target.value
+                      )
+                    }
+                    placeholder={
+                      isArabic
+                        ? "مثال: 28"
+                        : "Example: 28"
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+
+                {/* Patient Address */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "عنوان المريض"
+                      : "Patient Address"}
+                  </label>
+
+                  <input
+                    type="text"
+                    value={checkupAddress}
+                    onChange={(event) =>
+                      setCheckupAddress(
+                        event.target.value
+                      )
+                    }
+                    placeholder={
+                      isArabic
+                        ? "مثال: شارع الجيش، طنطا"
+                        : "Example: El Geish Street, Tanta"
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  />
+                </div>
+
                 {/* Appointment Type */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "نوع الموعد" : "Appointment Type"}
+                    {isArabic
+                      ? "نوع الموعد"
+                      : "Appointment Type"}
                   </label>
 
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setCheckupType("new_checkup")}
+                      onClick={() =>
+                        setCheckupType(
+                          "new_checkup"
+                        )
+                      }
                       className={`rounded-xl border-2 p-4 text-center transition ${
-                        checkupType === "new_checkup"
+                        checkupType ===
+                        "new_checkup"
                           ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
                           : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                       }`}
@@ -1821,19 +2487,27 @@ function TodayAppointments() {
                       <Stethoscope className="mx-auto mb-2 h-6 w-6" />
 
                       <span className="block font-semibold">
-                        {isArabic ? "كشف" : "Checkup"}
+                        {isArabic
+                          ? "كشف"
+                          : "Checkup"}
                       </span>
 
-                      {checkupType === "new_checkup" && (
+                      {checkupType ===
+                        "new_checkup" && (
                         <span className="mt-1 block text-xs">
-                          ✓ {isArabic ? "تم الاختيار" : "Selected"}
+                          ✓{" "}
+                          {isArabic
+                            ? "تم الاختيار"
+                            : "Selected"}
                         </span>
                       )}
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => setCheckupType("xray")}
+                      onClick={() =>
+                        setCheckupType("xray")
+                      }
                       className={`rounded-xl border-2 p-4 text-center transition ${
                         checkupType === "xray"
                           ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
@@ -1843,12 +2517,18 @@ function TodayAppointments() {
                       <ScanLine className="mx-auto mb-2 h-6 w-6" />
 
                       <span className="block font-semibold">
-                        {isArabic ? "أشعة" : "X-ray"}
+                        {isArabic
+                          ? "أشعة"
+                          : "X-ray"}
                       </span>
 
-                      {checkupType === "xray" && (
+                      {checkupType ===
+                        "xray" && (
                         <span className="mt-1 block text-xs">
-                          ✓ {isArabic ? "تم الاختيار" : "Selected"}
+                          ✓{" "}
+                          {isArabic
+                            ? "تم الاختيار"
+                            : "Selected"}
                         </span>
                       )}
                     </button>
@@ -1867,12 +2547,17 @@ function TodayAppointments() {
                     <button
                       type="button"
                       onClick={() => {
-                        setCheckupMedicalConditions("no");
+                        setCheckupMedicalConditions(
+                          "no"
+                        );
 
-                        setCheckupMedicalConditionsDetails("");
+                        setCheckupMedicalConditionsDetails(
+                          ""
+                        );
                       }}
                       className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
-                        checkupMedicalConditions === "no"
+                        checkupMedicalConditions ===
+                        "no"
                           ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
                           : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                       }`}
@@ -1882,21 +2567,31 @@ function TodayAppointments() {
 
                     <button
                       type="button"
-                      onClick={() => setCheckupMedicalConditions("yes")}
+                      onClick={() =>
+                        setCheckupMedicalConditions(
+                          "yes"
+                        )
+                      }
                       className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
-                        checkupMedicalConditions === "yes"
+                        checkupMedicalConditions ===
+                        "yes"
                           ? "border-teal-500 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
                           : "border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-teal-700"
                       }`}
                     >
-                      {isArabic ? "نعم" : "Yes"}
+                      {isArabic
+                        ? "نعم"
+                        : "Yes"}
                     </button>
                   </div>
 
-                  {checkupMedicalConditions === "yes" && (
+                  {checkupMedicalConditions ===
+                    "yes" && (
                     <div className="mt-3">
                       <textarea
-                        value={checkupMedicalConditionsDetails}
+                        value={
+                          checkupMedicalConditionsDetails
+                        }
                         onChange={(event) =>
                           setCheckupMedicalConditionsDetails(
                             event.target.value
@@ -1917,14 +2612,20 @@ function TodayAppointments() {
                 {/* Date */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "التاريخ" : "Date"}
+                    {isArabic
+                      ? "التاريخ"
+                      : "Date"}
                   </label>
 
                   <input
                     type="date"
                     value={checkupDate}
                     min={getTodayDate()}
-                    onChange={(event) => setCheckupDate(event.target.value)}
+                    onChange={(event) =>
+                      setCheckupDate(
+                        event.target.value
+                      )
+                    }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                 </div>
@@ -1932,13 +2633,19 @@ function TodayAppointments() {
                 {/* Time */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "الوقت" : "Time"}
+                    {isArabic
+                      ? "الوقت"
+                      : "Time"}
                   </label>
 
                   <input
                     type="time"
                     value={checkupTime}
-                    onChange={(event) => setCheckupTime(event.target.value)}
+                    onChange={(event) =>
+                      setCheckupTime(
+                        event.target.value
+                      )
+                    }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                 </div>
@@ -1946,12 +2653,18 @@ function TodayAppointments() {
                 {/* Notes */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "ملاحظات" : "Notes"}
+                    {isArabic
+                      ? "ملاحظات"
+                      : "Notes"}
                   </label>
 
                   <textarea
                     value={checkupNotes}
-                    onChange={(event) => setCheckupNotes(event.target.value)}
+                    onChange={(event) =>
+                      setCheckupNotes(
+                        event.target.value
+                      )
+                    }
                     rows={3}
                     placeholder={
                       isArabic
@@ -1962,28 +2675,188 @@ function TodayAppointments() {
                   />
                 </div>
 
+                {/* Price + Payment */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {isArabic
+                          ? "سعر الكشف"
+                          : "Checkup Price"}
+                      </p>
+
+                      {!editingPrice && (
+                        <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                          {doctorPrice !==
+                          null
+                            ? `${doctorPrice} ${currency}`
+                            : isArabic
+                            ? "لم يتم تحديد السعر"
+                            : "Price not set"}
+                        </p>
+                      )}
+                    </div>
+
+                    {!editingPrice && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPriceInput(
+                            doctorPrice !==
+                              null
+                              ? String(
+                                  doctorPrice
+                                )
+                              : ""
+                          );
+
+                          setEditingPrice(
+                            true
+                          );
+                        }}
+                        className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-xs font-semibold text-teal-700 hover:bg-teal-50 dark:border-teal-900 dark:bg-slate-900 dark:text-teal-300 dark:hover:bg-teal-950/40"
+                      >
+                        {doctorPrice !==
+                        null
+                          ? isArabic
+                            ? "تعديل السعر"
+                            : "Edit Price"
+                          : isArabic
+                          ? "تحديد السعر"
+                          : "Set Price"}
+                      </button>
+                    )}
+                  </div>
+
+                  {editingPrice && (
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={1}
+                        value={priceInput}
+                        onChange={(event) =>
+                          setPriceInput(
+                            event.target.value
+                          )
+                        }
+                        placeholder={
+                          isArabic
+                            ? "سعر الكشف"
+                            : "Checkup price"
+                        }
+                        className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={priceSaving}
+                        onClick={
+                          handleSavePrice
+                        }
+                        className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        {priceSaving
+                          ? "..."
+                          : isArabic
+                          ? "حفظ"
+                          : "Save"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={priceSaving}
+                        onClick={() =>
+                          setEditingPrice(
+                            false
+                          )
+                        }
+                        className="rounded-xl bg-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200"
+                      >
+                        {isArabic
+                          ? "إلغاء"
+                          : "Cancel"}
+                      </button>
+                    </div>
+                  )}
+
+                  <label className="mb-2 mt-4 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    {isArabic
+                      ? "هل تم دفع الكشف؟"
+                      : "Is the checkup paid?"}
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCheckupPayment(
+                          "paid"
+                        )
+                      }
+                      className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
+                        checkupPayment ===
+                        "paid"
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-300"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-emerald-700"
+                      }`}
+                    >
+                      {isArabic
+                        ? "مدفوع"
+                        : "Paid"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCheckupPayment(
+                          "unpaid"
+                        )
+                      }
+                      className={`rounded-xl border-2 px-4 py-3 text-center font-semibold transition ${
+                        checkupPayment ===
+                        "unpaid"
+                          ? "border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-300"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-amber-700"
+                      }`}
+                    >
+                      {isArabic
+                        ? "غير مدفوع"
+                        : "Unpaid"}
+                    </button>
+                  </div>
+                </div>
+
                 {/* Buttons */}
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
                     disabled={checkupLoading}
-                    onClick={handleCreateCheckup}
+                    onClick={
+                      handleCreateCheckup
+                    }
                     className="flex-1 rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {checkupLoading
                       ? "..."
                       : isArabic
-                      ? "إنشاء الكشف"
-                      : "Create Checkup"}
+                      ? "إضافة المريض وإنشاء الكشف"
+                      : "Add Patient & Create Checkup"}
                   </button>
 
                   <button
                     type="button"
                     disabled={checkupLoading}
-                    onClick={() => setShowCheckupModal(false)}
+                    onClick={() =>
+                      setShowCheckupModal(
+                        false
+                      )
+                    }
                     className="rounded-xl bg-slate-200 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200"
                   >
-                    {isArabic ? "إلغاء" : "Close"}
+                    {isArabic
+                      ? "إلغاء"
+                      : "Close"}
                   </button>
                 </div>
               </div>
@@ -2003,12 +2876,18 @@ function TodayAppointments() {
               <div className="border-b border-slate-200 p-6 dark:border-slate-700">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                    {isArabic ? "إضافة موعد متابعة" : "Add Follow-up"}
+                    {isArabic
+                      ? "إضافة موعد متابعة"
+                      : "Add Follow-up"}
                   </h2>
 
                   <button
                     type="button"
-                    onClick={() => setShowFollowUpModal(false)}
+                    onClick={() =>
+                      setShowFollowUpModal(
+                        false
+                      )
+                    }
                     className="text-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     ×
@@ -2017,44 +2896,63 @@ function TodayAppointments() {
               </div>
 
               <div className="space-y-5 p-6">
-                {/* Patient */}
+                {/* Existing Patient */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "المريض" : "Patient"}
+                    {isArabic
+                      ? "المريض"
+                      : "Patient"}
                   </label>
 
                   <select
                     value={followUpPatientId}
                     onChange={(event) =>
-                      setFollowUpPatientId(event.target.value)
+                      setFollowUpPatientId(
+                        event.target.value
+                      )
                     }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   >
                     <option value="">
-                      {isArabic ? "اختر المريض" : "Select Patient"}
+                      {isArabic
+                        ? "اختر المريض"
+                        : "Select Patient"}
                     </option>
 
-                    {patients.map((patient) => (
-                      <option key={patient.id} value={patient.id}>
-                        {patient.name}
+                    {patients.map(
+                      (patient) => (
+                        <option
+                          key={patient.id}
+                          value={patient.id}
+                        >
+                          {patient.name}
 
-                        {patient.phone ? ` - ${patient.phone}` : ""}
-                      </option>
-                    ))}
+                          {patient.phone
+                            ? ` - ${patient.phone}`
+                            : ""}
+                        </option>
+                      )
+                    )}
                   </select>
                 </div>
 
                 {/* Date */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "التاريخ" : "Date"}
+                    {isArabic
+                      ? "التاريخ"
+                      : "Date"}
                   </label>
 
                   <input
                     type="date"
                     value={followUpDate}
                     min={getTodayDate()}
-                    onChange={(event) => setFollowUpDate(event.target.value)}
+                    onChange={(event) =>
+                      setFollowUpDate(
+                        event.target.value
+                      )
+                    }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                 </div>
@@ -2062,13 +2960,19 @@ function TodayAppointments() {
                 {/* Time */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "الوقت" : "Time"}
+                    {isArabic
+                      ? "الوقت"
+                      : "Time"}
                   </label>
 
                   <input
                     type="time"
                     value={followUpTime}
-                    onChange={(event) => setFollowUpTime(event.target.value)}
+                    onChange={(event) =>
+                      setFollowUpTime(
+                        event.target.value
+                      )
+                    }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
                 </div>
@@ -2076,12 +2980,18 @@ function TodayAppointments() {
                 {/* Notes */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    {isArabic ? "ملاحظات" : "Notes"}
+                    {isArabic
+                      ? "ملاحظات"
+                      : "Notes"}
                   </label>
 
                   <textarea
                     value={followUpNotes}
-                    onChange={(event) => setFollowUpNotes(event.target.value)}
+                    onChange={(event) =>
+                      setFollowUpNotes(
+                        event.target.value
+                      )
+                    }
                     rows={3}
                     placeholder={
                       isArabic
@@ -2097,7 +3007,9 @@ function TodayAppointments() {
                   <button
                     type="button"
                     disabled={followUpLoading}
-                    onClick={handleCreateFollowUp}
+                    onClick={
+                      handleCreateFollowUp
+                    }
                     className="flex-1 rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {followUpLoading
@@ -2110,10 +3022,16 @@ function TodayAppointments() {
                   <button
                     type="button"
                     disabled={followUpLoading}
-                    onClick={() => setShowFollowUpModal(false)}
+                    onClick={() =>
+                      setShowFollowUpModal(
+                        false
+                      )
+                    }
                     className="rounded-xl bg-slate-200 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200"
                   >
-                    {isArabic ? "إلغاء" : "Close"}
+                    {isArabic
+                      ? "إلغاء"
+                      : "Close"}
                   </button>
                 </div>
               </div>
@@ -2126,3 +3044,7 @@ function TodayAppointments() {
 }
 
 export default TodayAppointments;
+
+
+
+

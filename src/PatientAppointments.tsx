@@ -40,8 +40,6 @@ type FilterType =
 const PatientAppointments = () => {
   const navigate = useNavigate();
 
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState("");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -157,115 +155,16 @@ const PatientAppointments = () => {
   };
 
   // ============================================
-  // Load patient records
-  // ============================================
-
-  const loadPatients = async () => {
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        console.error(userError);
-
-        setError(
-          isArabic
-            ? "حدث خطأ أثناء التحقق من تسجيل الدخول."
-            : "An error occurred while checking your login."
-        );
-
-        return;
-      }
-
-      if (!user) {
-        navigate("/patient/login", {
-          replace: true,
-        });
-
-        return;
-      }
-
-      const {
-        data: patientData,
-        error: patientError,
-      } = await supabase
-        .from("patients")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .order("created_at", {
-          ascending: true,
-        });
-
-      if (patientError) {
-        console.error(patientError);
-
-        setError(
-          isArabic
-            ? `تعذر تحميل بيانات المريض: ${patientError.message}`
-            : `Could not load patient data: ${patientError.message}`
-        );
-
-        return;
-      }
-
-      if (!patientData || patientData.length === 0) {
-        setPatients([]);
-        setSelectedPatientId("");
-        setAppointments([]);
-
-        setError(
-          isArabic
-            ? "حساب المريض الخاص بك غير مرتبط بسجل مريض."
-            : "Your patient account is not connected to a patient record."
-        );
-
-        return;
-      }
-
-      const patientList = patientData as Patient[];
-
-      setPatients(patientList);
-
-      setSelectedPatientId((currentSelectedId) => {
-        if (
-          currentSelectedId &&
-          patientList.some(
-            (patient) => patient.id === currentSelectedId
-          )
-        ) {
-          return currentSelectedId;
-        }
-
-        return patientList[0].id;
-      });
-    } catch (error) {
-      console.error(error);
-
-      setError(
-        isArabic
-          ? "حدث خطأ أثناء تحميل بيانات المريض."
-          : "An error occurred while loading patient data."
-      );
-    }
-  };
-
-  // ============================================
-  // Load selected patient's appointments
+  // Load appointments for all of the user's patient records
   // ============================================
 
   const loadPatientAppointments = async (
-    patientId: string
+    patientIds: string[]
   ) => {
-    if (!patientId) {
+    if (patientIds.length === 0) {
       setAppointments([]);
-      setLoading(false);
       return;
     }
-
-    setLoading(true);
-    setError("");
 
     try {
       const {
@@ -285,7 +184,7 @@ const PatientAppointments = () => {
             name
           )
         `)
-        .eq("patient_id", patientId)
+        .in("patient_id", patientIds)
         .order("appointment_date", {
           ascending: false,
         })
@@ -342,6 +241,91 @@ const PatientAppointments = () => {
       );
 
       setAppointments([]);
+    }
+  };
+
+  // ============================================
+  // Load patient records, then their appointments
+  // ============================================
+
+  const loadPatients = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error(userError);
+
+        setError(
+          isArabic
+            ? "حدث خطأ أثناء التحقق من تسجيل الدخول."
+            : "An error occurred while checking your login."
+        );
+
+        return;
+      }
+
+      if (!user) {
+        navigate("/patient/login", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      const {
+        data: patientData,
+        error: patientError,
+      } = await supabase
+        .from("patients")
+        .select("id, name")
+        .eq("user_id", user.id)
+        .order("created_at", {
+          ascending: true,
+        });
+
+      if (patientError) {
+        console.error(patientError);
+
+        setError(
+          isArabic
+            ? `تعذر تحميل بيانات المريض: ${patientError.message}`
+            : `Could not load patient data: ${patientError.message}`
+        );
+
+        return;
+      }
+
+      if (!patientData || patientData.length === 0) {
+        setAppointments([]);
+
+        setError(
+          isArabic
+            ? "حساب المريض الخاص بك غير مرتبط بسجل مريض."
+            : "Your patient account is not connected to a patient record."
+        );
+
+        return;
+      }
+
+      const patientList = patientData as Patient[];
+
+      await loadPatientAppointments(
+        patientList.map((patient) => patient.id)
+      );
+    } catch (error) {
+      console.error(error);
+
+      setError(
+        isArabic
+          ? "حدث خطأ أثناء تحميل بيانات المريض."
+          : "An error occurred while loading patient data."
+      );
     } finally {
       setLoading(false);
     }
@@ -354,16 +338,6 @@ const PatientAppointments = () => {
   useEffect(() => {
     loadPatients();
   }, []);
-
-  // ============================================
-  // Load appointments when selected patient changes
-  // ============================================
-
-  useEffect(() => {
-    if (selectedPatientId) {
-      loadPatientAppointments(selectedPatientId);
-    }
-  }, [selectedPatientId]);
 
   // ============================================
   // Clear error after language change
@@ -727,46 +701,6 @@ const PatientAppointments = () => {
             }`}
           >
             {error}
-          </div>
-        )}
-
-        {/* ========================================
-            Patient Selector
-        ======================================== */}
-
-        {patients.length >= 2 && (
-          <div className="mb-6 rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
-            <label
-              className={`mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300 ${
-                isArabic
-                  ? "text-right"
-                  : "text-left"
-              }`}
-            >
-              {isArabic
-                ? "اختر الملف الطبي"
-                : "Select medical file"}
-            </label>
-
-            <select
-              value={selectedPatientId}
-              onChange={(event) => {
-                setSelectedPatientId(
-                  event.target.value
-                );
-                setFilter("all");
-              }}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-teal-900"
-            >
-              {patients.map((patient) => (
-                <option
-                  key={patient.id}
-                  value={patient.id}
-                >
-                  {patient.name}
-                </option>
-              ))}
-            </select>
           </div>
         )}
 

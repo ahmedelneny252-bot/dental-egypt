@@ -20,22 +20,11 @@ type Notification = {
   appointment_id: string | null;
 };
 
-type Patient = {
-  id: string;
-  name: string;
-};
-
 const PatientNotifications = () => {
   const navigate = useNavigate();
 
   const [notifications, setNotifications] =
     useState<Notification[]>([]);
-
-  const [patients, setPatients] =
-    useState<Patient[]>([]);
-
-  const [selectedPatientId, setSelectedPatientId] =
-    useState("");
 
   const [loading, setLoading] =
     useState(true);
@@ -200,12 +189,11 @@ const PatientNotifications = () => {
 
   // =========================
   // Load Notifications
+  // (من كل ملفات المريض)
   // =========================
 
   const loadNotifications =
-    async (
-      patientId?: string
-    ) => {
+    async () => {
       setLoading(true);
       setError("");
 
@@ -230,7 +218,7 @@ const PatientNotifications = () => {
           patientsError,
       } = await supabase
         .from("patients")
-        .select("id, name")
+        .select("id")
         .eq(
           "user_id",
           user.id
@@ -255,50 +243,19 @@ const PatientNotifications = () => {
         return;
       }
 
-      const patientList =
-        patientData ?? [];
-
-      setPatients(
-        patientList
+      const patientIds = (
+        patientData ?? []
+      ).map(
+        (patient) => patient.id
       );
 
       if (
-        patientList.length === 0
+        patientIds.length === 0
       ) {
-        setSelectedPatientId("");
         setNotifications([]);
         setLoading(false);
         return;
       }
-
-      // =========================
-      // Select Patient
-      // =========================
-
-      const savedPatientId =
-        localStorage.getItem(
-          "dentalcare-selected-patient"
-        );
-
-      const currentPatientId =
-        patientId ||
-        (savedPatientId &&
-        patientList.some(
-          (patient) =>
-            patient.id ===
-            savedPatientId
-        )
-          ? savedPatientId
-          : patientList[0].id);
-
-      setSelectedPatientId(
-        currentPatientId
-      );
-
-      localStorage.setItem(
-        "dentalcare-selected-patient",
-        currentPatientId
-      );
 
       // =========================
       // Get Patient Notifications
@@ -318,9 +275,9 @@ const PatientNotifications = () => {
           created_at,
           appointment_id
         `)
-        .eq(
+        .in(
           "patient_id",
-          currentPatientId
+          patientIds
         )
         .eq(
           "recipient_type",
@@ -373,27 +330,6 @@ const PatientNotifications = () => {
   useEffect(() => {
     loadNotifications();
   }, []);
-
-  // =========================
-  // Change Selected Patient
-  // =========================
-
-  const handlePatientChange = (
-    patientId: string
-  ) => {
-    setSelectedPatientId(
-      patientId
-    );
-
-    localStorage.setItem(
-      "dentalcare-selected-patient",
-      patientId
-    );
-
-    loadNotifications(
-      patientId
-    );
-  };
 
   // =========================
   // Mark Notification As Read
@@ -693,45 +629,6 @@ const PatientNotifications = () => {
             </button>
           )}
         </div>
-
-        {/* Patient Selector */}
-
-        {patients.length > 1 && (
-          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-              {isArabic
-                ? "اختر الملف الطبي"
-                : "Select medical file"}
-            </label>
-
-            <select
-              value={
-                selectedPatientId
-              }
-              onChange={(event) =>
-                handlePatientChange(
-                  event.target.value
-                )
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-teal-900"
-            >
-              {patients.map(
-                (patient) => (
-                  <option
-                    key={
-                      patient.id
-                    }
-                    value={
-                      patient.id
-                    }
-                  >
-                    {patient.name}
-                  </option>
-                )
-              )}
-            </select>
-          </div>
-        )}
 
         {/* Error */}
 

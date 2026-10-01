@@ -4,15 +4,31 @@ import {
   Phone,
   MessageCircle,
   Facebook,
+  Instagram,
+  Twitter,
+  Linkedin,
   Mail,
   Users,
   Shield,
   Sparkles,
   CheckCircle,
 } from "lucide-react";
+import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
 
 type SubmitStatus = "success" | "error" | null;
+
+type SiteSettings = {
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  address_ar: string | null;
+  address_en: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+};
 
 const Contact = () => {
   const [language, setLanguage] = useState<Language>(() => {
@@ -29,6 +45,29 @@ const Contact = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>(null);
+
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select(
+          "phone, whatsapp, email, address_ar, address_en, facebook, instagram, twitter, linkedin"
+        )
+        .eq("id", 1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Site settings error:", error);
+        return;
+      }
+
+      setSettings(data);
+    };
+
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     const updateLanguage = () => {
@@ -50,6 +89,27 @@ const Contact = () => {
 
   const isArabic = language === "ar";
   const t = translations[language];
+
+  const info = {
+    phone: settings?.phone?.trim() || "",
+    whatsapp: settings?.whatsapp?.trim() || "",
+    email: settings?.email?.trim() || "",
+    facebook: settings?.facebook?.trim() || "",
+    instagram: settings?.instagram?.trim() || "",
+    twitter: settings?.twitter?.trim() || "",
+    linkedin: settings?.linkedin?.trim() || "",
+  };
+
+  const address =
+    (isArabic ? settings?.address_ar : settings?.address_en)?.trim() || "";
+
+  const phoneHref = info.phone
+    ? `tel:${info.phone.replace(/[^\d+]/g, "")}`
+    : "";
+
+  const whatsappHref = info.whatsapp
+    ? `https://wa.me/${info.whatsapp.replace(/\D/g, "")}`
+    : "";
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -92,12 +152,12 @@ const Contact = () => {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-background text-foreground transition-colors"
+      className="min-h-screen bg-background pt-16 text-foreground transition-colors"
     >
       {/* Header */}
       <section className="border-b border-border bg-card">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8">
-          <div className="mb-8 text-center">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 md:py-10 lg:px-8">
+          <div className="mb-6 text-center">
             <h1 className="mb-3 text-3xl font-bold text-foreground md:text-4xl">
               {isArabic ? "اتصل بنا" : "Contact Us"}
             </h1>
@@ -198,7 +258,9 @@ const Contact = () => {
                 {/* Phone */}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-foreground">
-                    {isArabic ? "رقم الهاتف (اختياري)" : "Phone Number (Optional)"}
+                    {isArabic
+                      ? "رقم الهاتف (اختياري)"
+                      : "Phone Number (Optional)"}
                   </label>
 
                   <input
@@ -275,114 +337,171 @@ const Contact = () => {
 
                 <div className="space-y-5">
                   {/* Address */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
-                      <MapPin className="h-5 w-5 text-teal-500" />
-                    </div>
+                  {address && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
+                        <MapPin className="h-5 w-5 text-teal-500" />
+                      </div>
 
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {isArabic ? "المقر الرئيسي" : "Head Office"}
-                      </p>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {isArabic ? "المقر الرئيسي" : "Head Office"}
+                        </p>
 
-                      <p className="text-sm text-muted-foreground">
-                        {isArabic ? "القاهرة، مصر" : "Cairo, Egypt"}
-                      </p>
+                        <p className="text-sm text-muted-foreground">
+                          {address}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Phone */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
-                      <Phone className="h-5 w-5 text-teal-500" />
-                    </div>
+                  {info.phone && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
+                        <Phone className="h-5 w-5 text-teal-500" />
+                      </div>
 
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {t.common.phone}
-                      </p>
-
-                      <p className="text-sm text-muted-foreground">
-                        0800 123 4567
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* WhatsApp */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
-                      <MessageCircle className="h-5 w-5 text-teal-500" />
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {t.common.whatsapp}
-                      </p>
-
-                      <p className="text-sm text-muted-foreground">
-                        01012345678
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Email */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
-                      <Mail className="h-5 w-5 text-teal-500" />
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {t.auth.email}
-                      </p>
-
-                      <p className="text-sm text-muted-foreground">
-                        info@dentalcare-eg.com
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Social Media */}
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
-                      <Users className="h-5 w-5 text-teal-500" />
-                    </div>
-
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {isArabic
-                          ? "وسائل التواصل الاجتماعي"
-                          : "Social Media"}
-                      </p>
-
-                      <div className="mt-1 flex gap-3">
-                        <a
-                          href="#"
-                          aria-label="Facebook"
-                          className="text-muted-foreground transition-colors hover:text-teal-500"
-                        >
-                          <Facebook className="h-5 w-5" />
-                        </a>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {t.common.phone}
+                        </p>
 
                         <a
-                          href="mailto:info@dentalcare-eg.com"
-                          aria-label="Email"
-                          className="text-muted-foreground transition-colors hover:text-teal-500"
+                          href={phoneHref}
+                          dir="ltr"
+                          className="text-sm text-muted-foreground transition-colors hover:text-teal-500"
                         >
-                          <Mail className="h-5 w-5" />
+                          {info.phone}
                         </a>
                       </div>
                     </div>
-                  </div>
+                  )}
+
+                  {/* WhatsApp */}
+                  {info.whatsapp && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
+                        <MessageCircle className="h-5 w-5 text-teal-500" />
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {t.common.whatsapp}
+                        </p>
+
+                        <a
+                          href={whatsappHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          dir="ltr"
+                          className="text-sm text-muted-foreground transition-colors hover:text-teal-500"
+                        >
+                          {info.whatsapp}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  {info.email && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
+                        <Mail className="h-5 w-5 text-teal-500" />
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {t.auth.email}
+                        </p>
+
+                        <a
+                          href={`mailto:${info.email}`}
+                          dir="ltr"
+                          className="text-sm text-muted-foreground transition-colors hover:text-teal-500"
+                        >
+                          {info.email}
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Social Media */}
+                  {(info.facebook ||
+                    info.instagram ||
+                    info.twitter ||
+                    info.linkedin) && (
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
+                        <Users className="h-5 w-5 text-teal-500" />
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {isArabic
+                            ? "وسائل التواصل الاجتماعي"
+                            : "Social Media"}
+                        </p>
+
+                        <div className="mt-1 flex gap-3">
+                          {info.facebook && (
+                            <a
+                              href={info.facebook}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label="Facebook"
+                              className="text-muted-foreground transition-colors hover:text-teal-500"
+                            >
+                              <Facebook className="h-5 w-5" />
+                            </a>
+                          )}
+
+                          {info.instagram && (
+                            <a
+                              href={info.instagram}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label="Instagram"
+                              className="text-muted-foreground transition-colors hover:text-teal-500"
+                            >
+                              <Instagram className="h-5 w-5" />
+                            </a>
+                          )}
+
+                          {info.twitter && (
+                            <a
+                              href={info.twitter}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label="Twitter"
+                              className="text-muted-foreground transition-colors hover:text-teal-500"
+                            >
+                              <Twitter className="h-5 w-5" />
+                            </a>
+                          )}
+
+                          {info.linkedin && (
+                            <a
+                              href={info.linkedin}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label="LinkedIn"
+                              className="text-muted-foreground transition-colors hover:text-teal-500"
+                            >
+                              <Linkedin className="h-5 w-5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Why Contact Us */}
               <div className="rounded-2xl border border-border bg-card p-6 shadow-lg md:p-8">
                 <h2 className="mb-4 text-xl font-bold text-foreground md:text-2xl">
-                  {isArabic
-                    ? "لماذا تتواصل معنا؟"
-                    : "Why Contact Us?"}
+                  {isArabic ? "لماذا تتواصل معنا؟" : "Why Contact Us?"}
                 </h2>
 
                 <div className="space-y-4">

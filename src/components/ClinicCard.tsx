@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -7,6 +8,7 @@ import {
   MessageCircle,
   ArrowUpRight,
   Heart,
+  LogIn,
 } from "lucide-react";
 import { translations, type Language } from "../i18n";
 import type { Clinic as LocalClinic } from "../data/clinics";
@@ -60,7 +62,10 @@ const ClinicCard = ({ clinic }: ClinicCardProps) => {
         handleLanguageChange
       );
 
-      window.removeEventListener("storage", handleLanguageChange);
+      window.removeEventListener(
+        "storage",
+        handleLanguageChange
+      );
     };
   }, []);
 
@@ -71,13 +76,9 @@ const ClinicCard = ({ clinic }: ClinicCardProps) => {
     : clinic.logo_url;
 
   const phone = clinic.phone;
-
   const whatsapp = clinic.whatsapp;
-
   const address = clinic.address;
-
   const description = clinic.description;
-
   const clinicId = clinic.id;
 
   const rating = isLocalClinic
@@ -216,6 +217,20 @@ const ClinicCard = ({ clinic }: ClinicCardProps) => {
           </p>
         </div>
 
+        {/* Patient Login */}
+        <Link
+          to={`/patient/login?clinic_id=${clinicId}`}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-colors hover:bg-blue-700"
+        >
+          <LogIn className="h-4 w-4" />
+
+          <span>
+            {isArabic
+              ? "تسجيل دخول المريض"
+              : "Patient Login"}
+          </span>
+        </Link>
+
         {/* Actions */}
         <div className="mt-auto grid grid-cols-3 gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
           {/* Phone */}
@@ -268,3 +283,4 @@ const ClinicCard = ({ clinic }: ClinicCardProps) => {
 };
 
 export default ClinicCard;
+

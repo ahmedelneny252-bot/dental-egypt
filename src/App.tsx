@@ -29,6 +29,7 @@ import PatientDetails from "./PatientDetails";
 import PrescriptionPrint from "./PrescriptionPrint";
 import Appointments from "./Appointments";
 import TodayAppointments from "./TodayAppointments";
+import WeekAppointments from "./WeekAppointments";
 import DoctorServices from "./Services";
 import ClinicProfile from "./ClinicProfile";
 import Reviews from "./Reviews";
@@ -158,10 +159,10 @@ function AppLayout() {
             element={<TodayAppointments />}
           />
 
-          {/* مواعيد هذا الأسبوع */}
+          {/* مواعيد هذا الأسبوع - صفحة مستقلة */}
           <Route
             path="/doctor/week-appointments"
-            element={<Appointments />}
+            element={<WeekAppointments />}
           />
 
           <Route

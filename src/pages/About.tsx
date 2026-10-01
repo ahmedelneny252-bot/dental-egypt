@@ -45,11 +45,11 @@ const About = () => {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-background text-foreground transition-colors"
+      className="min-h-screen bg-background pt-16 text-foreground transition-colors"
     >
       {/* Header */}
       <section className="border-b border-border bg-card">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 md:py-8 lg:px-8">
           <div className="mb-8 text-center">
             <h1 className="mb-3 text-3xl font-bold text-foreground md:text-4xl">
               {isArabic ? "من نحن" : "About Us"}
@@ -65,7 +65,7 @@ const About = () => {
       </section>
 
       {/* Mission & Vision */}
-      <section className="py-12 md:py-16">
+      <section className="pt-0 pb-12 md:pt-2 md:pb-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             {/* Mission */}

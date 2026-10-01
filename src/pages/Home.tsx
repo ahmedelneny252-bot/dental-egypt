@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -12,7 +13,6 @@ import {
   UserRound,
   Users2,
   CalendarCheck,
-  CreditCard,
   ShieldPlus,
   ArrowLeft,
   ArrowRight,
@@ -50,7 +50,7 @@ const Home = () => {
   const [clinics, setClinics] = useState<SupabaseClinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
 
-  // ✅ بيانات المودال (نافذة تفاصيل العيادة)
+  // بيانات المودال
   const [selectedClinic, setSelectedClinic] =
     useState<SupabaseClinic | null>(null);
 
@@ -79,7 +79,7 @@ const Home = () => {
     document.documentElement.dir = isArabic ? "rtl" : "ltr";
   }, [isArabic]);
 
-  // ✅ منع تمرير الصفحة اللي وراء المودال لما يبقى مفتوح
+  // منع تمرير الصفحة خلف المودال
   useEffect(() => {
     document.body.style.overflow = isModalOpen ? "hidden" : "";
 
@@ -139,7 +139,7 @@ const Home = () => {
     },
   ];
 
-  // بيانات تجريبية تظهر لحد ما العيادات الحقيقية تتحمل من قاعدة البيانات
+  // بيانات تجريبية
   const fallbackClinics: SupabaseClinic[] = [
     {
       id: "demo-1",
@@ -238,7 +238,7 @@ const Home = () => {
     },
   ];
 
-  // ✅ فتح مودال تفاصيل العيادة بدل الانتقال لصفحة تانية
+  // فتح تفاصيل العيادة
   const openClinicModal = (clinic: SupabaseClinic) => {
     setSelectedClinic(clinic);
     setIsModalOpen(true);
@@ -274,8 +274,7 @@ const Home = () => {
           ============================================ */}
       <section className="relative overflow-hidden bg-gradient-to-b from-blue-50/60 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-slate-950">
         <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:min-h-[560px] lg:px-8 lg:py-0">
-
-          {/* الصورة — absolute على الشمال، بتملا نص عرض القسم بارتفاعه بالكامل (ديسكتوب بس، زي التصميم الأصلي) */}
+          {/* الصورة */}
           <div className="absolute inset-y-0 left-0 hidden w-1/2 lg:block">
             <img
               src="/dental-care.jpg"
@@ -283,16 +282,12 @@ const Home = () => {
               className="h-full w-full object-cover"
             />
 
-            {/* تدرّج تحت */}
             <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white to-transparent dark:from-slate-950" />
 
-            {/* تدرّج على الشمال */}
             <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white to-transparent dark:from-slate-950" />
 
-            {/* تدرّج على اليمين */}
             <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-white to-transparent dark:from-slate-950" />
 
-            {/* تدرّج فوق */}
             <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-blue-50 to-transparent dark:from-slate-900" />
 
             <div className="absolute bottom-8 right-8 flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl dark:bg-slate-900">
@@ -312,9 +307,7 @@ const Home = () => {
             </div>
           </div>
 
-          {/* الكلام — relative على اليمين، بياخد نص عرض القسم على الديسكتوب عشان الصورة ماتغطيش عليه.
-              lg:ml-auto بتثبته على اليمين فعليًا في اللغتين (عربي وإنجليزي)، عشان لما اللغة
-              تتغير لإنجليزي (dir يبقى ltr) الكلام ميرجعش يتحط على الشمال فوق الصورة. */}
+          {/* الكلام */}
           <div className="relative z-10 lg:ml-auto lg:flex lg:min-h-[560px] lg:w-1/2 lg:flex-col lg:justify-center lg:py-16">
             <div>
               <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
@@ -352,7 +345,7 @@ const Home = () => {
                   : "We bring together the best dentists and trusted clinics, with easy booking and real patient reviews."}
               </p>
 
-              {/* Search bar: input | region dropdown | button */}
+              {/* Search bar */}
               <div className="mb-6 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg shadow-slate-200/50 dark:border-slate-800 dark:bg-slate-900 sm:flex-row">
                 <div className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2.5">
                   <Search className="h-5 w-5 shrink-0 text-slate-400" />
@@ -381,12 +374,15 @@ const Home = () => {
                     <option value="">
                       {isArabic ? "اختر المنطقة" : "Choose region"}
                     </option>
+
                     <option value="cairo">
                       {isArabic ? "القاهرة" : "Cairo"}
                     </option>
+
                     <option value="giza">
                       {isArabic ? "الجيزة" : "Giza"}
                     </option>
+
                     <option value="alex">
                       {isArabic ? "الإسكندرية" : "Alexandria"}
                     </option>
@@ -404,7 +400,7 @@ const Home = () => {
                 </Link>
               </div>
 
-              {/* Trust points row */}
+              {/* Trust points */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {trustPoints.map((point, index) => (
                   <div key={index} className="flex items-center gap-2">
@@ -526,8 +522,6 @@ const Home = () => {
       <section className="bg-white py-16 transition-colors duration-300 dark:bg-slate-900 md:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 items-center gap-10 rounded-3xl bg-blue-50/60 p-8 dark:bg-slate-800/40 lg:grid-cols-[220px_1fr_240px] lg:gap-8 lg:p-12">
-
-            {/* العمود الأيمن: قائمة المميزات الجانبية */}
             <div className="order-3 flex flex-col gap-4 lg:order-1">
               <span className="hidden self-end rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 lg:inline-block">
                 {isArabic ? "لأطباء الأسنان" : "For Dentists"}
@@ -549,7 +543,6 @@ const Home = () => {
               ))}
             </div>
 
-            {/* العمود الأوسط: العنوان والوصف والأزرار */}
             <div className="order-2 text-center lg:text-right">
               <span className="mb-3 inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 lg:hidden">
                 {isArabic ? "لأطباء الأسنان" : "For Dentists"}
@@ -586,7 +579,6 @@ const Home = () => {
               </div>
             </div>
 
-            {/* العمود الأيسر: صورة الطبيب (بديل - استبدلها بصورتك) */}
             <div className="order-1 mx-auto flex aspect-[3/4] w-40 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-xl shadow-blue-600/20 sm:w-48 lg:order-3 lg:mx-0">
               <UserRound className="h-20 w-20 text-white/90" />
             </div>
@@ -744,6 +736,21 @@ const Home = () => {
                   </a>
                 )}
               </div>
+
+              {/* Patient Login */}
+              <div className="mt-6">
+                <Link
+                  to={`/patient/login?clinic_id=${selectedClinic.id}`}
+                  onClick={closeClinicModal}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700"
+                >
+                  <UserRound className="h-4 w-4" />
+
+                  {isArabic
+                    ? "تسجيل دخول المريض"
+                    : "Patient Login"}
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -753,3 +760,5 @@ const Home = () => {
 };
 
 export default Home;
+
+

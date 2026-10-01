@@ -6,10 +6,40 @@ import {
   Heart,
   Phone,
   Mail,
+  MessageCircle,
+  MapPin,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
+
+// ============================================================
+// بيانات أصحاب المنصة بتتقرأ من جدول site_settings في Supabase
+// لتغيير أي بيان: Supabase > Table Editor > site_settings > عدّل الخانة.
+// أي خانة فاضية مش بتظهر في الفوتر.
+// ============================================================
+type SiteSettings = {
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  address_ar: string | null;
+  address_en: string | null;
+  facebook: string | null;
+  instagram: string | null;
+  twitter: string | null;
+  linkedin: string | null;
+};
+
+// يطلع اسم الحساب من رابط انستجرام: https://instagram.com/name -> @name
+const getInstagramHandle = (url: string) => {
+  try {
+    const name = new URL(url).pathname.split("/").filter(Boolean)[0];
+    return name ? `@${name}` : url;
+  } catch {
+    return url;
+  }
+};
 
 const Footer = () => {
   const [language, setLanguage] = useState<Language>(() => {
@@ -17,8 +47,31 @@ const Footer = () => {
     return saved === "en" ? "en" : "ar";
   });
 
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
+
   const isArabic = language === "ar";
   const t = translations[language];
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select(
+          "phone, whatsapp, email, address_ar, address_en, facebook, instagram, twitter, linkedin"
+        )
+        .eq("id", 1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Site settings error:", error);
+        return;
+      }
+
+      setSettings(data);
+    };
+
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     const handleLanguageChange = () => {
@@ -54,6 +107,39 @@ const Footer = () => {
         "Dental Implants",
         "Pediatric Dentistry",
       ];
+
+  const info = {
+    phone: settings?.phone?.trim() || "",
+    whatsapp: settings?.whatsapp?.trim() || "",
+    email: settings?.email?.trim() || "",
+    facebook: settings?.facebook?.trim() || "",
+    instagram: settings?.instagram?.trim() || "",
+    twitter: settings?.twitter?.trim() || "",
+    linkedin: settings?.linkedin?.trim() || "",
+  };
+
+  const address =
+    (isArabic ? settings?.address_ar : settings?.address_en)?.trim() || "";
+
+  const phoneHref = info.phone
+    ? `tel:${info.phone.replace(/[^\d+]/g, "")}`
+    : "";
+
+  const whatsappHref = info.whatsapp
+    ? `https://wa.me/${info.whatsapp.replace(/\D/g, "")}`
+    : "";
+
+  const socials = [
+    { key: "facebook", label: "Facebook", url: info.facebook, icon: Facebook },
+    { key: "instagram", label: "Instagram", url: info.instagram, icon: Instagram },
+    { key: "twitter", label: "Twitter", url: info.twitter, icon: Twitter },
+    { key: "linkedin", label: "LinkedIn", url: info.linkedin, icon: Linkedin },
+  ].filter((item) => item.url);
+
+  const contactLinkClass =
+    "text-slate-500 dark:text-slate-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors";
+
+  const contactIconClass = "w-3 h-3 text-teal-500 dark:text-teal-400 shrink-0";
 
   return (
     <footer
@@ -167,42 +253,70 @@ const Footer = () => {
             </h4>
 
             <ul className="space-y-1.5 text-[11px]">
-              <li className="flex items-center gap-2">
-                <Phone className="w-3 h-3 text-teal-500 dark:text-teal-400 shrink-0" />
+              {info.phone && (
+                <li className="flex items-center gap-2">
+                  <Phone className={contactIconClass} />
 
-                <a
-                  href="tel:08001234567"
-                  dir="ltr"
-                  className="text-slate-500 dark:text-slate-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-                >
-                  0800 123 4567
-                </a>
-              </li>
+                  <a href={phoneHref} dir="ltr" className={contactLinkClass}>
+                    {info.phone}
+                  </a>
+                </li>
+              )}
 
-              <li className="flex items-center gap-2">
-                <Mail className="w-3 h-3 text-teal-500 dark:text-teal-400 shrink-0" />
+              {info.whatsapp && (
+                <li className="flex items-center gap-2">
+                  <MessageCircle className={contactIconClass} />
 
-                <a
-                  href="mailto:info@dentalcare-eg.com"
-                  dir="ltr"
-                  className="text-slate-500 dark:text-slate-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-                >
-                  info@dentalcare-eg.com
-                </a>
-              </li>
+                  <a
+                    href={whatsappHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={contactLinkClass}
+                  >
+                    {isArabic ? "واتساب" : "WhatsApp"}
+                  </a>
+                </li>
+              )}
 
-              <li className="flex items-center gap-2">
-                <div className="w-3.5 h-3.5 rounded-full bg-teal-500 flex items-center justify-center shrink-0">
-                  <Instagram className="w-2 h-2 text-white" />
-                </div>
+              {info.email && (
+                <li className="flex items-center gap-2">
+                  <Mail className={contactIconClass} />
 
-                <span
-                  dir="ltr"
-                  className="text-slate-500 dark:text-slate-400"
-                >
-                  @dentalcare_eg
-                </span>
-              </li>
+                  <a
+                    href={`mailto:${info.email}`}
+                    dir="ltr"
+                    className={contactLinkClass}
+                  >
+                    {info.email}
+                  </a>
+                </li>
+              )}
+
+              {info.instagram && (
+                <li className="flex items-center gap-2">
+                  <Instagram className={contactIconClass} />
+
+                  <a
+                    href={info.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    dir="ltr"
+                    className={contactLinkClass}
+                  >
+                    {getInstagramHandle(info.instagram)}
+                  </a>
+                </li>
+              )}
+
+              {address && (
+                <li className="flex items-center gap-2">
+                  <MapPin className={contactIconClass} />
+
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {address}
+                  </span>
+                </li>
+              )}
             </ul>
           </div>
         </div>
@@ -217,39 +331,22 @@ const Footer = () => {
           </p>
 
           {/* Social Media */}
-          <div className="flex gap-2.5">
-            <a
-              href="#"
-              aria-label="Facebook"
-              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-            >
-              <Facebook className="w-3.5 h-3.5" />
-            </a>
-
-            <a
-              href="#"
-              aria-label="Instagram"
-              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-            >
-              <Instagram className="w-3.5 h-3.5" />
-            </a>
-
-            <a
-              href="#"
-              aria-label="Twitter"
-              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-            >
-              <Twitter className="w-3.5 h-3.5" />
-            </a>
-
-            <a
-              href="#"
-              aria-label="LinkedIn"
-              className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-            >
-              <Linkedin className="w-3.5 h-3.5" />
-            </a>
-          </div>
+          {socials.length > 0 && (
+            <div className="flex gap-2.5">
+              {socials.map(({ key, label, url, icon: Icon }) => (
+                <a
+                  key={key}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={label}
+                  className="text-slate-400 dark:text-slate-500 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </footer>

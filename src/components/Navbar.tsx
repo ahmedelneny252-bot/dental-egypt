@@ -10,8 +10,6 @@ import {
   ChevronDown,
   Languages,
   LogOut,
-  LogIn,
-  UserPlus,
   Stethoscope,
   CreditCard,
   LayoutDashboard,
@@ -23,25 +21,8 @@ import { translations, type Language } from "../i18n";
 type UserRole = "guest" | "patient" | "doctor";
 
 // ============================================================
-// الصفحات اللي عايزين نخفي فيها بس أزرار الدخول/التسجيل الخاصة
-// بالمريض ("إنشاء حساب"، "تسجيل الدخول"، "للأطباء") لأنها مش
-// منطقية هناك (المستخدم أصلًا بيعمل حساب دكتور/مريض في نفس الصفحة).
-// باقي الـ Navbar (روابط التنقل، اللغة، الوضع الداكن، اللوجو)
-// بيفضل ظاهر عادي.
-// ============================================================
-const HIDDEN_AUTH_BUTTONS_PATHS = [
-  "/doctor/register",
-  "/doctor/login",
-  "/patient/register",
-  "/patient/login",
-];
-
-// ============================================================
 // مسارات الداشبورد بتاعت الدكتور عندها هيدر وSidebar خاص بيها
-// (فيها تسجيل خروج/لغة/وضع داكن جواها دلوقتي في صفحة
-// /doctor/settings)، فمش محتاجة الـ Navbar العام يظهر فيها
-// خالص. صفحات تسجيل الدخول/إنشاء الحساب لسه بتستخدم الـ
-// Navbar العام عشان كده مستثناة من هنا.
+// فمش محتاجة الـ Navbar العام يظهر فيها خالص.
 // ============================================================
 const DOCTOR_STANDALONE_LAYOUT_PATHS = ["/doctor/register", "/doctor/login"];
 
@@ -51,9 +32,6 @@ const Navbar = () => {
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [role, setRole] = useState<UserRole>("guest");
-
-  // ✅ فتح/قفل قائمة "تسجيل الدخول / إنشاء حساب" المنسدلة (ديسكتوب)
-  const [isAuthMenuOpen, setIsAuthMenuOpen] = useState(false);
 
   const [language, setLanguage] = useState<Language>(() => {
     const savedLanguage = localStorage.getItem("dentalcare-language");
@@ -96,24 +74,11 @@ const Navbar = () => {
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
+
     window.addEventListener("scroll", handleScroll);
+
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // ✅ قفل قائمة تسجيل الدخول/إنشاء الحساب المنسدلة لو المستخدم ضغط برّه
-  useEffect(() => {
-    if (!isAuthMenuOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest("[data-auth-menu]")) {
-        setIsAuthMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isAuthMenuOpen]);
 
   const loadUnreadNotifications = async () => {
     try {
@@ -215,17 +180,20 @@ const Navbar = () => {
   };
 
   const toggleLanguage = () => {
-    setLanguage((currentLanguage) => (currentLanguage === "ar" ? "en" : "ar"));
+    setLanguage((currentLanguage) =>
+      currentLanguage === "ar" ? "en" : "ar"
+    );
   };
 
   const toggleTheme = () => {
-    setTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
+    setTheme((currentTheme) =>
+      currentTheme === "light" ? "dark" : "light"
+    );
   };
 
-  const notificationPath = isDoctor ? "/doctor/notifications" : "/patient/notifications";
-
-  // مسار تسجيل المريض - عدّل هنا لو اسم المسار مختلف عندك
-  const patientRegisterPath = "/patient/register";
+  const notificationPath = isDoctor
+    ? "/doctor/notifications"
+    : "/patient/notifications";
 
   const navLinks = [
     { to: "/", label: t.common.home },
@@ -241,22 +209,15 @@ const Navbar = () => {
         : "text-slate-600 hover:bg-blue-50/60 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
     }`;
 
-  // ============================================================
-  // بدل ما نخفي الـ Navbar كله، بنحسب فلاج بيتحقق منه بس عند
-  // رندر قسم أزرار "إنشاء حساب / تسجيل الدخول" تحت.
-  // ============================================================
-  const hideAuthButtons = HIDDEN_AUTH_BUTTONS_PATHS.includes(location.pathname);
-
-  // ============================================================
-  // الداشبورد بتاعت الدكتور (كل مسارات /doctor/* ما عدا صفحات
-  // تسجيل الدخول/إنشاء الحساب) عندها هيدر وSidebar خاص بيها،
-  // فبنخفي الـ Navbar العام تمامًا هناك بدل ما يترندر فوقها.
-  // ============================================================
   const isDoctorDashboardArea =
     location.pathname.startsWith("/doctor/") &&
     !DOCTOR_STANDALONE_LAYOUT_PATHS.includes(location.pathname);
 
-  if (isDoctorDashboardArea) {
+  // صفحة تفاصيل العيادة: /clinics/<id> (من غير /book)
+  // الصفحة دي بتعرض بانر كامل وسهم رجوع خاص بيها، فمش محتاجة الـ Navbar
+  const isClinicDetailPage = /^\/clinics\/[^/]+\/?$/.test(location.pathname);
+
+  if (isDoctorDashboardArea || isClinicDetailPage) {
     return null;
   }
 
@@ -276,114 +237,21 @@ const Navbar = () => {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-3 lg:h-20">
 
-          {/* ============ 1) أقصى اليمين: تسجيل الدخول / إنشاء حساب ============ */}
-
-          <div className="hidden items-center gap-2 lg:flex">
-            {!hideAuthButtons && (
-              isLoggedIn ? (
-                <>
-                  {/* Doctor Dashboard */}
-                  {isDoctor && (
-                    <Link to="/doctor/dashboard" className={linkClasses("/doctor/dashboard")}>
-                      <span className="flex items-center gap-2">
-                        <LayoutDashboard className="h-4 w-4" />
-                        {isArabic ? "لوحة التحكم" : "Dashboard"}
-                      </span>
-                    </Link>
-                  )}
-
-                  {/* Patient Payments */}
-                  {isPatient && (
-                    <Link to="/patient/payments" className={linkClasses("/patient/payments")}>
-                      <span className="flex items-center gap-2">
-                        <CreditCard className="h-4 w-4" />
-                        {isArabic ? "المدفوعات" : "Payments"}
-                      </span>
-                    </Link>
-                  )}
-
-                  {/* Notifications */}
-                  <Link
-                    to={notificationPath}
-                    className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition-all hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-                    aria-label={t.common.notifications}
-                  >
-                    <Bell className="h-5 w-5" />
-                    {unreadCount > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-xs font-bold text-white dark:border-slate-950">
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </span>
-                    )}
-                  </Link>
-
-                  {/* Logout */}
-                  <button
-                    onClick={handleLogout}
-                    type="button"
-                    className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-600 transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-red-950/30 dark:hover:text-red-400"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    {isArabic ? "تسجيل الخروج" : "Logout"}
-                  </button>
-                </>
-              ) : (
-                // ✅ زرار "تسجيل الدخول" وجواه Dropdown فيه:
-                // 1) تسجيل الدخول  2) إنشاء حساب كمريض
-                <div className="relative" data-auth-menu>
-                  <button
-                    type="button"
-                    onClick={() => setIsAuthMenuOpen((prev) => !prev)}
-                    className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
-                  >
-                    <LogIn className="h-4 w-4" />
-                    {isArabic ? "تسجيل الدخول" : "Login"}
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${
-                        isAuthMenuOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-
-                  {isAuthMenuOpen && (
-                    <div
-                      className={`absolute top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900 ${
-                        isArabic ? "right-0" : "left-0"
-                      }`}
-                    >
-                      <Link
-                        to="/patient/login"
-                        onClick={() => setIsAuthMenuOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-                      >
-                        <LogIn className="h-4 w-4" />
-                        {isArabic ? "تسجيل الدخول" : "Log in"}
-                      </Link>
-                      <Link
-                        to={patientRegisterPath}
-                        onClick={() => setIsAuthMenuOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 transition-all hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-                      >
-                        <UserPlus className="h-4 w-4" />
-                        {isArabic ? "إنشاء حساب كمريض" : "Sign up as patient"}
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              )
-            )}
-          </div>
-
-          {/* ============ 2) روابط التنقل - النص ============ */}
+          {/* ============ روابط التنقل ============ */}
 
           <div className="hidden items-center gap-1 lg:flex">
             {navLinks.map((link) => (
-              <Link key={link.to} to={link.to} className={linkClasses(link.to)}>
+              <Link
+                key={link.to}
+                to={link.to}
+                className={linkClasses(link.to)}
+              >
                 {link.label}
               </Link>
             ))}
           </div>
 
-          {/* ============ 3) اللغة + الثيم - شكل موحّد زي الصورة ============ */}
+          {/* ============ اللغة + الثيم ============ */}
 
           <div className="hidden items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 dark:border-slate-700 lg:flex">
             <button
@@ -399,36 +267,48 @@ const Navbar = () => {
 
             <span className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
 
-            {/* مفتاح تبديل واحد بين الوضع الفاتح والداكن */}
             <button
               onClick={toggleTheme}
               type="button"
               dir="ltr"
-              aria-label={theme === "dark" ? t.common.lightMode : t.common.darkMode}
+              aria-label={
+                theme === "dark"
+                  ? t.common.lightMode
+                  : t.common.darkMode
+              }
               className="relative flex h-7 w-14 items-center rounded-full bg-blue-600 px-1.5 transition-colors"
             >
               <Sun className="h-3.5 w-3.5 shrink-0 text-white/80" />
+
               <span
                 className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
-                  theme === "dark" ? "translate-x-[26px]" : "translate-x-[2px]"
+                  theme === "dark"
+                    ? "translate-x-[26px]"
+                    : "translate-x-[2px]"
                 }`}
               />
+
               <Moon className="mr-0 ml-auto h-3.5 w-3.5 shrink-0 text-white/80" />
             </button>
           </div>
 
-          {/* ============ 4) أقصى الشمال: اللوجو ============ */}
+          {/* ============ اللوجو ============ */}
 
           <Link to="/" className="group flex items-center gap-3">
             <div className="hidden text-right sm:block">
               <h1
                 className={`text-lg font-bold leading-tight ${
-                  theme === "dark" ? "text-white" : "text-slate-800"
+                  theme === "dark"
+                    ? "text-white"
+                    : "text-slate-800"
                 }`}
               >
                 {isArabic ? "دنتال كير" : "DentalCare"}
               </h1>
-              <p className="text-xs font-medium text-blue-500">DentalCare Egypt</p>
+
+              <p className="text-xs font-medium text-blue-500">
+                DentalCare Egypt
+              </p>
             </div>
 
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/25 transition-all duration-300 group-hover:shadow-blue-500/40">
@@ -448,7 +328,11 @@ const Navbar = () => {
             }`}
             aria-label="Toggle menu"
           >
-            {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {isMobileMenuOpen ? (
+              <X className="h-6 w-6" />
+            ) : (
+              <Menu className="h-6 w-6" />
+            )}
           </button>
         </div>
 
@@ -456,15 +340,20 @@ const Navbar = () => {
 
         <div
           className={`overflow-hidden transition-all duration-300 ease-in-out lg:hidden ${
-            isMobileMenuOpen ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
+            isMobileMenuOpen
+              ? "max-h-[800px] opacity-100"
+              : "max-h-0 opacity-0"
           }`}
         >
           <div
             className={`rounded-b-2xl border-t py-4 ${
-              theme === "dark" ? "border-slate-800 bg-slate-950/95" : "border-blue-100 bg-white/95"
+              theme === "dark"
+                ? "border-slate-800 bg-slate-950/95"
+                : "border-blue-100 bg-white/95"
             }`}
           >
             <div className="flex flex-col gap-1">
+
               {navLinks.map((link) => (
                 <Link
                   key={link.to}
@@ -516,8 +405,15 @@ const Navbar = () => {
                       : "bg-slate-100 text-slate-700 hover:bg-blue-50 hover:text-blue-700"
                   }`}
                 >
-                  {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                  {theme === "dark" ? t.common.lightMode : t.common.darkMode}
+                  {theme === "dark" ? (
+                    <Sun className="h-5 w-5" />
+                  ) : (
+                    <Moon className="h-5 w-5" />
+                  )}
+
+                  {theme === "dark"
+                    ? t.common.lightMode
+                    : t.common.darkMode}
                 </button>
               </div>
 
@@ -539,7 +435,9 @@ const Navbar = () => {
                   className="relative mx-4 mt-2 flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   <Bell className="h-5 w-5" />
+
                   {t.common.notifications}
+
                   {unreadCount > 0 && (
                     <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white">
                       {unreadCount > 99 ? "99+" : unreadCount}
@@ -548,7 +446,7 @@ const Navbar = () => {
                 </Link>
               )}
 
-              {isLoggedIn ? (
+              {isLoggedIn && (
                 <button
                   onClick={handleLogout}
                   type="button"
@@ -557,29 +455,6 @@ const Navbar = () => {
                   <LogOut className="h-5 w-5" />
                   {isArabic ? "تسجيل الخروج" : "Logout"}
                 </button>
-              ) : (
-                !hideAuthButtons && (
-                  // ✅ في الموبايل بنعرض الزرارين واضحين تحت بعض:
-                  // "تسجيل الدخول" و "إنشاء حساب كمريض"
-                  <div className="mx-4 mt-2 flex flex-col gap-2">
-                    <Link
-                      to="/patient/login"
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-5 py-3 font-semibold text-blue-600 dark:border-slate-700 dark:bg-slate-900"
-                    >
-                      <LogIn className="h-5 w-5" />
-                      {isArabic ? "تسجيل الدخول" : "Log in"}
-                    </Link>
-                    <Link
-                      to={patientRegisterPath}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-md shadow-blue-600/25"
-                    >
-                      <UserPlus className="h-5 w-5" />
-                      {isArabic ? "إنشاء حساب كمريض" : "Sign Up as Patient"}
-                    </Link>
-                  </div>
-                )
               )}
 
               <div className="px-4 pt-2">
@@ -592,6 +467,7 @@ const Navbar = () => {
                   {t.common.findClinic}
                 </Link>
               </div>
+
             </div>
           </div>
         </div>
@@ -601,3 +477,4 @@ const Navbar = () => {
 };
 
 export default Navbar;
+

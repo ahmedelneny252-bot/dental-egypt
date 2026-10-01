@@ -4,7 +4,6 @@ import {
   Bell,
   Building2,
   Calendar,
-  CalendarPlus,
   CheckCircle2,
   Circle,
   FileText,
@@ -15,7 +14,6 @@ import {
   MessageCircle,
   Moon,
   PanelRightClose,
-  Search,
   Sun,
   Wallet,
   Activity,
@@ -63,10 +61,6 @@ const ToothIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
     />
   </svg>
 );
-
-// ============================================
-// خطوات خطة العلاج
-// ============================================
 
 type TreatmentStepStatus = "done" | "current" | "upcoming";
 
@@ -183,6 +177,7 @@ const PatientDashboard = () => {
     AppointmentRow[]
   >([]);
   const [upcomingCount, setUpcomingCount] = useState(0);
+  const [allAppointments, setAllAppointments] = useState<AppointmentRow[]>([]);
   const [recentVisits, setRecentVisits] = useState<AppointmentRow[]>([]);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
 
@@ -192,9 +187,7 @@ const PatientDashboard = () => {
     { label: string; total: number }[]
   >([]);
 
-  const [hasBookedBefore, setHasBookedBefore] = useState(false);
-
-  const [searchValue, setSearchValue] = useState("");
+  const [clinicName, setClinicName] = useState("");
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -202,19 +195,9 @@ const PatientDashboard = () => {
   // العيادة المختارة
   // ============================================
 
-  const [clinicsList, setClinicsList] = useState<
-    { id: string; name: string }[]
-  >([]);
-
   const [selectedClinicId, setSelectedClinicId] = useState<string>(() => {
     return localStorage.getItem("dentalcare-selected-clinic") || "";
   });
-
-  const handleClinicChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newClinicId = e.target.value;
-    setSelectedClinicId(newClinicId);
-    localStorage.setItem("dentalcare-selected-clinic", newClinicId);
-  };
 
   // ============================================
   // Helpers
@@ -326,29 +309,6 @@ const PatientDashboard = () => {
   };
 
   // ============================================
-  // Load clinics list
-  // ============================================
-
-  useEffect(() => {
-    const loadClinicsList = async () => {
-      const { data, error } = await supabase
-        .from("clinics")
-        .select("id, name")
-        .order("name", { ascending: true });
-
-      if (error) {
-        console.error("Clinics list load error:", error);
-        setClinicsList([]);
-        return;
-      }
-
-      setClinicsList(data || []);
-    };
-
-    loadClinicsList();
-  }, []);
-
-  // ============================================
   // Load dashboard data
   // ============================================
 
@@ -386,11 +346,27 @@ const PatientDashboard = () => {
         );
       }
 
+      if (activeClinicId) {
+        const { data: clinicData, error: clinicError } = await supabase
+          .from("clinics")
+          .select("name")
+          .eq("id", activeClinicId)
+          .maybeSingle();
+
+        if (clinicError) {
+          console.error("Clinic load error:", clinicError);
+        }
+
+        setClinicName(clinicData?.name || "");
+      } else {
+        setClinicName("");
+      }
+
       if (!activeClinicId) {
         setPatient(null);
-        setHasBookedBefore(false);
         setUpcomingAppointments([]);
         setUpcomingCount(0);
+        setAllAppointments([]);
         setRecentVisits([]);
         setNotifications([]);
         setTotalPaid(0);
@@ -403,13 +379,15 @@ const PatientDashboard = () => {
       const matchingPatient =
         (allPatientRows || []).find(
           (p) => p.clinic_id === activeClinicId
-        ) || null;
+        ) ||
+        (allPatientRows || [])[0] ||
+        null;
 
       if (!matchingPatient) {
         setPatient(null);
-        setHasBookedBefore(false);
         setUpcomingAppointments([]);
         setUpcomingCount(0);
+        setAllAppointments([]);
         setRecentVisits([]);
         setNotifications([]);
         setTotalPaid(0);
@@ -424,7 +402,7 @@ const PatientDashboard = () => {
         name: matchingPatient.name,
       });
 
-      const patientIds = [matchingPatient.id];
+      const patientIds = (allPatientRows || []).map((p) => p.id);
 
       // ---------- Appointments ----------
 
@@ -441,8 +419,6 @@ const PatientDashboard = () => {
 
       if (appointmentsError) {
         console.error("Appointments load error:", appointmentsError);
-
-        setHasBookedBefore(true);
       } else {
         const rows: AppointmentRow[] = (appointmentsData || []).map(
           (a: any) => ({
@@ -457,7 +433,7 @@ const PatientDashboard = () => {
           })
         );
 
-        setHasBookedBefore(rows.length > 0);
+        setAllAppointments(rows);
 
         const today = getEgyptToday();
 
@@ -465,7 +441,8 @@ const PatientDashboard = () => {
           .filter(
             (a) =>
               a.appointment_date >= today &&
-              (a.status === "pending" || a.status === "confirmed")
+              a.status !== "cancelled" &&
+              a.status !== "completed"
           )
           .sort((a, b) =>
             a.appointment_date === b.appointment_date
@@ -592,7 +569,7 @@ const PatientDashboard = () => {
         .select(
           "id, title, message, created_at, is_read"
         )
-        .eq("patient_id", matchingPatient.id)
+        .in("patient_id", patientIds)
         .eq("recipient_type", "patient")
         .order("created_at", {
           ascending: false,
@@ -637,80 +614,86 @@ const PatientDashboard = () => {
     [notifications]
   );
 
-  const showFirstBookingBanner =
-    !loading &&
-    Boolean(selectedClinicId) &&
-    !hasBookedBefore;
-
   // ============================================
-  // خطة العلاج
+  // خطة العلاج (من المواعيد الحقيقية)
   // ============================================
 
-  const treatmentProgressPercent = 60;
+  const treatment = useMemo(() => {
+    const today = getEgyptToday();
 
-  const treatmentSteps: TreatmentStep[] = [
-    {
-      id: "1",
-      label: isArabic
-        ? "الفحص والتشخيص"
-        : "Examination & Diagnosis",
-      helper: isArabic
-        ? "تم الانتهاء منه"
-        : "Completed",
-      status: "done",
-    },
-    {
-      id: "2",
-      label: isArabic
-        ? "تنظيف الأسنان"
-        : "Teeth Cleaning",
-      helper: isArabic
-        ? "تم الانتهاء منه"
-        : "Completed",
-      status: "done",
-    },
-    {
-      id: "3",
-      label: isArabic
-        ? "حشو الأسنان"
-        : "Filling",
-      helper: isArabic
-        ? "في الجلسة الحالية"
-        : "In current session",
-      status: "current",
-    },
-    {
-      id: "4",
-      label: isArabic
-        ? "تركيب تاج"
-        : "Crown Placement",
-      helper: isArabic
-        ? "قادم"
-        : "Upcoming",
-      status: "upcoming",
-    },
-  ];
+    const sortAsc = (a: AppointmentRow, b: AppointmentRow) =>
+      a.appointment_date === b.appointment_date
+        ? a.appointment_time.localeCompare(b.appointment_time)
+        : a.appointment_date.localeCompare(b.appointment_date);
+
+    const completed = allAppointments
+      .filter((a) => a.status === "completed")
+      .sort(sortAsc);
+
+    const upcoming = allAppointments
+      .filter(
+        (a) =>
+          a.appointment_date >= today &&
+          a.status !== "cancelled" &&
+          a.status !== "completed"
+      )
+      .sort(sortAsc);
+
+    const total = completed.length + upcoming.length;
+    const percent =
+      total === 0 ? 0 : Math.round((completed.length / total) * 100);
+
+    const toStep = (
+      a: AppointmentRow,
+      status: TreatmentStepStatus,
+      helper: string
+    ): TreatmentStep => ({
+      id: a.id,
+      label: `${formatAppointmentType(a.appointment_type)} - ${formatShortDate(
+        a.appointment_date
+      )}`,
+      helper,
+      status,
+    });
+
+    const steps: TreatmentStep[] = [
+      ...completed
+        .slice(-2)
+        .map((a) =>
+          toStep(a, "done", isArabic ? "تم الانتهاء منه" : "Completed")
+        ),
+      ...upcoming.slice(0, 3).map((a, i) =>
+        toStep(
+          a,
+          i === 0 ? "current" : "upcoming",
+          `${
+            i === 0
+              ? isArabic
+                ? "الموعد القادم"
+                : "Next appointment"
+              : isArabic
+              ? "قادم"
+              : "Upcoming"
+          } - ${formatTime(a.appointment_time)}`
+        )
+      ),
+    ];
+
+    return { percent, steps };
+  }, [allAppointments, isArabic]);
+
+  const treatmentProgressPercent = treatment.percent;
+  const treatmentSteps = treatment.steps;
 
   // ============================================
   // القائمة الجانبية
   // ============================================
-
-  const bookAppointmentTo = selectedClinicId
-    ? `/clinics/${selectedClinicId}/book`
-    : "/clinics";
 
   const navItems = [
     {
       icon: HomeIcon,
       label: isArabic ? "الرئيسية" : "Home",
       to: "/patient/dashboard",
-    },
-    {
-      icon: CalendarPlus,
-      label: isArabic
-        ? "حجز موعد جديد"
-        : "Book new appointment",
-      to: bookAppointmentTo,
     },
     {
       icon: Calendar,
@@ -884,7 +867,7 @@ const PatientDashboard = () => {
       >
         {/* ---------- Top bar ---------- */}
 
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+        <header className="sticky top-0 z-20 relative flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
           {/* زرار إخفاء/إظهار القائمة */}
 
           <button
@@ -921,38 +904,17 @@ const PatientDashboard = () => {
             )}
           </button>
 
-          {/* البحث */}
+          <div className="flex-1" />
 
-          <div className="flex flex-1 justify-center">
-            <div className="relative w-full max-w-[220px] sm:max-w-xs">
-              <Search
-                className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 ${
-                  isArabic
-                    ? "right-3.5"
-                    : "left-3.5"
-                }`}
-              />
+          {/* اسم العيادة (في النص) */}
 
-              <input
-                type="text"
-                value={searchValue}
-                onChange={(e) =>
-                  setSearchValue(
-                    e.target.value
-                  )
-                }
-                placeholder={
-                  isArabic
-                    ? "ابحث..."
-                    : "Search..."
-                }
-                className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white ${
-                  isArabic
-                    ? "pr-9 pl-3"
-                    : "pl-9 pr-3"
-                }`}
-              />
-            </div>
+          <div className="pointer-events-none absolute left-1/2 top-1/2 flex max-w-[45%] -translate-x-1/2 -translate-y-1/2 items-center gap-2">
+            <Building2 className="h-5 w-5 shrink-0 text-blue-500" />
+
+            <p className="truncate text-base font-bold text-slate-900 dark:text-white">
+              {clinicName ||
+                (isArabic ? "عيادة الأسنان" : "Dental Clinic")}
+            </p>
           </div>
 
           {/* باقي الأزرار */}
@@ -1032,107 +994,6 @@ const PatientDashboard = () => {
 
         <main className="px-4 py-6 sm:px-6">
           <div className="space-y-6">
-            {/* اختيار العيادة */}
-
-            <div className="flex flex-col gap-3 rounded-2xl bg-blue-50/70 p-5 shadow-sm dark:bg-blue-950/20 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                  {isArabic
-                    ? "عيادتك"
-                    : "Your clinic"}
-                </p>
-
-                {selectedClinicId ? (
-                  <p className="mt-1 flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">
-                    <Building2 className="h-4 w-4 shrink-0 text-blue-500" />
-
-                    {isArabic
-                      ? "عيادتك الحالية: "
-                      : "Current clinic: "}
-
-                    {clinicsList.find(
-                      (c) =>
-                        c.id ===
-                        selectedClinicId
-                    )?.name ||
-                      (isArabic
-                        ? "جاري التحميل..."
-                        : "Loading...")}
-                  </p>
-                ) : (
-                  <p className="mt-1 font-semibold text-amber-600 dark:text-amber-400">
-                    {isArabic
-                      ? "من فضلك اختر عيادتك عشان تقدر تحجز وتتابع مواعيدك"
-                      : "Please choose your clinic so you can book and track your appointments"}
-                  </p>
-                )}
-              </div>
-
-              <select
-                value={selectedClinicId}
-                onChange={handleClinicChange}
-                className="w-full rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 dark:border-blue-900 dark:bg-slate-800 dark:text-white sm:w-64"
-              >
-                <option value="" disabled>
-                  {isArabic
-                    ? "اختر عيادة"
-                    : "Choose a clinic"}
-                </option>
-
-                {clinicsList.map(
-                  (clinic) => (
-                    <option
-                      key={clinic.id}
-                      value={clinic.id}
-                    >
-                      {clinic.name}
-                    </option>
-                  )
-                )}
-              </select>
-            </div>
-
-            {/* بانر حجز أول موعد */}
-
-            {showFirstBookingBanner && (
-              <Link
-                to={
-                  selectedClinicId
-                    ? `/clinics/${selectedClinicId}/book`
-                    : "/clinics"
-                }
-                className="group flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl bg-gradient-to-l from-teal-500 to-teal-600 p-6 text-white shadow-sm transition hover:shadow-md sm:flex-row"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                    <CalendarPlus className="h-6 w-6" />
-                  </span>
-
-                  <div>
-                    <p className="text-lg font-bold">
-                      {isArabic
-                        ? "احجز موعدك الأول الآن"
-                        : "Book your first appointment now"}
-                    </p>
-
-                    <p className="mt-1 text-sm text-white/90">
-                      {isArabic
-                        ? "دي أول مرة تحجز على DentalCare — احجز موعدك الأول وابدأ رحلة علاجك."
-                        : "This is your first booking on DentalCare — book your first appointment and start your treatment journey."}
-                    </p>
-                  </div>
-                </div>
-
-                <span className="flex shrink-0 items-center gap-1 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-teal-700 transition group-hover:bg-teal-50">
-                  {isArabic
-                    ? "احجز الآن"
-                    : "Book now"}
-
-                  <ChevronIcon className="h-4 w-4" />
-                </span>
-              </Link>
-            )}
-
             {/* Stat cards */}
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -1341,7 +1202,19 @@ const PatientDashboard = () => {
                   />
                 </div>
 
-                <ol className="relative space-y-6 border-e-2 border-slate-100 pe-5 dark:border-slate-800">
+                {treatmentSteps.length === 0 && (
+                  <p className="py-6 text-center text-sm text-slate-400">
+                    {isArabic
+                      ? "لا توجد زيارات في خطة العلاج بعد."
+                      : "No treatment visits yet."}
+                  </p>
+                )}
+
+                <ol
+                  className={`${
+                    treatmentSteps.length === 0 ? "hidden " : ""
+                  }relative space-y-6 border-e-2 border-slate-100 pe-5 dark:border-slate-800`}
+                >
                   {treatmentSteps.map(
                     (step) => (
                       <li

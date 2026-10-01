@@ -65,7 +65,6 @@ export default function PatientMedicalFile() {
   const [isDarkMode, setIsDarkMode] = useState(getInitialTheme);
 
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState("");
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
 
@@ -126,28 +125,7 @@ export default function PatientMedicalFile() {
           throw patientsError;
         }
 
-        const patientList = (data || []) as Patient[];
-
-        setPatients(patientList);
-
-        if (patientList.length === 0) {
-          setSelectedPatientId("");
-          return;
-        }
-
-        const savedClinicId = localStorage.getItem(
-          "dentalcare-selected-clinic"
-        );
-
-        const savedPatient =
-          savedClinicId &&
-          patientList.find(
-            (patient) => patient.clinic_id === savedClinicId
-          );
-
-        setSelectedPatientId(
-          savedPatient?.id || patientList[0].id
-        );
+        setPatients((data || []) as Patient[]);
       } catch (err) {
         console.error("Error loading patients:", err);
 
@@ -164,21 +142,33 @@ export default function PatientMedicalFile() {
     loadPatients();
   }, [navigate, isArabic]);
 
-  const selectedPatient = useMemo(
-    () =>
-      patients.find(
-        (patient) => patient.id === selectedPatientId
-      ) || null,
-    [patients, selectedPatientId]
-  );
+  // بيانات المريض المعروضة: سجل العيادة المحفوظة، أو أول سجل
+  const selectedPatient = useMemo(() => {
+    if (patients.length === 0) return null;
 
+    const savedClinicId = localStorage.getItem(
+      "dentalcare-selected-clinic"
+    );
+
+    return (
+      (savedClinicId &&
+        patients.find(
+          (patient) => patient.clinic_id === savedClinicId
+        )) ||
+      patients[0]
+    );
+  }, [patients]);
+
+  // السجلات والوصفات من كل ملفات المريض
   useEffect(() => {
     const loadMedicalData = async () => {
-      if (!selectedPatientId) {
+      if (patients.length === 0) {
         setMedicalRecords([]);
         setPrescriptions([]);
         return;
       }
+
+      const patientIds = patients.map((patient) => patient.id);
 
       setRecordsLoading(true);
       setError("");
@@ -191,7 +181,7 @@ export default function PatientMedicalFile() {
               .select(
                 "id, treatment_date, diagnosis, cost, doctor_notes"
               )
-              .eq("patient_id", selectedPatientId)
+              .in("patient_id", patientIds)
               .order("treatment_date", { ascending: false }),
 
             supabase
@@ -199,7 +189,7 @@ export default function PatientMedicalFile() {
               .select(
                 "id, prescription_date, medicine_name, dosage, frequency, duration, instructions, doctor_notes"
               )
-              .eq("patient_id", selectedPatientId)
+              .in("patient_id", patientIds)
               .order("prescription_date", { ascending: false }),
           ]);
 
@@ -232,7 +222,7 @@ export default function PatientMedicalFile() {
     };
 
     loadMedicalData();
-  }, [selectedPatientId, isArabic]);
+  }, [patients, isArabic]);
 
   const formatDate = (date: string | null) => {
     if (!date) return "—";
@@ -396,30 +386,6 @@ export default function PatientMedicalFile() {
           </div>
         ) : (
           <div className="space-y-6">
-            {patients.length > 1 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  {isArabic
-                    ? "اختر الملف الطبي"
-                    : "Select medical file"}
-                </label>
-
-                <select
-                  value={selectedPatientId}
-                  onChange={(event) =>
-                    setSelectedPatientId(event.target.value)
-                  }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-teal-900"
-                >
-                  {patients.map((patient) => (
-                    <option key={patient.id} value={patient.id}>
-                      {patient.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {selectedPatient && (
               <>
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">

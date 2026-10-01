@@ -40,10 +40,6 @@ type Patient = {
 export default function PatientPayments() {
   const navigate = useNavigate();
 
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] =
-    useState("");
-
   const [patient, setPatient] =
     useState<Patient | null>(null);
 
@@ -215,10 +211,10 @@ export default function PatientPayments() {
   };
 
   // =========================
-  // Load patients
+  // Load patient records + payments (كل ملفات المريض)
   // =========================
 
-  const loadPatients = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       setError("");
@@ -277,79 +273,25 @@ export default function PatientPayments() {
       const patientList =
         patientsData as Patient[];
 
-      setPatients(patientList);
-
-      const savedPatientId =
+      const savedClinicId =
         localStorage.getItem(
-          "dentalcare-selected-patient"
+          "dentalcare-selected-clinic"
         );
 
-      const savedPatient =
-        savedPatientId
-          ? patientList.find(
-              (item) =>
-                item.id ===
-                savedPatientId
-            )
-          : null;
-
-      const initialPatient =
-        savedPatient ||
-        patientList[0];
-
-      setSelectedPatientId(
-        initialPatient.id
-      );
-
       setPatient(
-        initialPatient
-      );
-    } catch (err: any) {
-      console.error(
-        "Error loading patients:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          (isArabic
-            ? "حدث خطأ أثناء تحميل بيانات المرضى."
-            : "Failed to load patient data.")
+        (savedClinicId &&
+          patientList.find(
+            (item) =>
+              item.clinic_id ===
+              savedClinicId
+          )) ||
+          patientList[0]
       );
 
-      setLoading(false);
-    }
-  };
-
-  // =========================
-  // Load payments for selected patient
-  // =========================
-
-  const loadPayments = async (
-    patientId: string
-  ) => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const selectedPatient =
-        patients.find(
-          (item) =>
-            item.id === patientId
+      const patientIds =
+        patientList.map(
+          (item) => item.id
         );
-
-      if (!selectedPatient) {
-        return;
-      }
-
-      setPatient(
-        selectedPatient
-      );
-
-      localStorage.setItem(
-        "dentalcare-selected-patient",
-        patientId
-      );
 
       const {
         data: medicalRecordsData,
@@ -367,9 +309,9 @@ export default function PatientPayments() {
             cost
           `
         )
-        .eq(
+        .in(
           "patient_id",
-          patientId
+          patientIds
         )
         .order(
           "treatment_date",
@@ -399,9 +341,9 @@ export default function PatientPayments() {
             created_at
           `
         )
-        .eq(
+        .in(
           "patient_id",
-          patientId
+          patientIds
         )
         .order(
           "payment_date",
@@ -488,34 +430,8 @@ export default function PatientPayments() {
   // =========================
 
   useEffect(() => {
-    loadPatients();
+    loadData();
   }, []);
-
-  // =========================
-  // Load selected patient data
-  // =========================
-
-  useEffect(() => {
-    if (
-      selectedPatientId &&
-      patients.length > 0
-    ) {
-      loadPayments(
-        selectedPatientId
-      );
-    }
-  }, [
-    selectedPatientId,
-    patients,
-  ]);
-
-  const handlePatientChange = (
-    patientId: string
-  ) => {
-    setSelectedPatientId(
-      patientId
-    );
-  };
 
   const getRecordPayments = (
     recordId: string
@@ -822,13 +738,7 @@ export default function PatientPayments() {
               </p>
 
               <button
-                onClick={() =>
-                  selectedPatientId
-                    ? loadPayments(
-                        selectedPatientId
-                      )
-                    : loadPatients()
-                }
+                onClick={loadData}
                 className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700"
               >
                 {isArabic
@@ -960,45 +870,6 @@ export default function PatientPayments() {
               </p>
             )}
           </div>
-
-          {/* Select Medical File */}
-
-          {patients.length > 1 && (
-            <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-              <label className="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                {isArabic
-                  ? "اختر الملف الطبي"
-                  : "Select medical file"}
-              </label>
-
-              <select
-                value={
-                  selectedPatientId
-                }
-                onChange={(event) =>
-                  handlePatientChange(
-                    event.target.value
-                  )
-                }
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:focus:ring-teal-900"
-              >
-                {patients.map(
-                  (item) => (
-                    <option
-                      key={
-                        item.id
-                      }
-                      value={
-                        item.id
-                      }
-                    >
-                      {item.name}
-                    </option>
-                  )
-                )}
-              </select>
-            </div>
-          )}
 
           {/* Summary Cards */}
 
@@ -1330,4 +1201,3 @@ export default function PatientPayments() {
     </div>
   );
 }
-

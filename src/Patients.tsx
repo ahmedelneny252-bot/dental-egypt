@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -60,6 +61,9 @@ type ClinicHeader = {
 const FREE_PATIENT_LIMIT = 20;
 const PAGE_SIZE = 6;
 
+// مسار الداشبورد - غيّره لو المسار عندك مختلف
+const DASHBOARD_PATH = "/doctor/dashboard";
+
 type StatusFilter = "all" | PatientStatusCategory;
 type PeriodFilter = "all" | "week" | "month";
 
@@ -79,6 +83,7 @@ const Patients = () => {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
   const [address, setAddress] = useState("");
@@ -477,6 +482,7 @@ const Patients = () => {
   const resetForm = () => {
     setName("");
     setPhone("");
+    setPassword("");
     setAge("");
     setGender("");
     setAddress("");
@@ -521,41 +527,117 @@ const Patients = () => {
       return;
     }
 
-    const payload = {
-      clinic_id: clinicId,
-      name,
-      phone: phone || null,
-      age: age ? Number(age) : null,
-      gender: gender || null,
-      address: address || null,
-      medical_notes: medicalNotes || null,
-    };
+    // ============================================================
+    // Create New Patient Account
+    // ============================================================
 
-    const { error: submitError } =
-      editingPatientId
-        ? await supabase
-            .from("patients")
-            .update(payload)
-            .eq("id", editingPatientId)
-        : await supabase
-            .from("patients")
-            .insert(payload);
+    if (!editingPatientId) {
+      if (!phone.trim()) {
+        setError(
+          isArabic
+            ? "رقم الهاتف مطلوب لإنشاء حساب المريض."
+            : "Phone number is required to create the patient account."
+        );
 
-    if (submitError) {
-      console.error(submitError);
-      setError(submitError.message);
-      return;
+        return;
+      }
+
+      if (!password || password.length < 6) {
+        setError(
+          isArabic
+            ? "كلمة مرور المريض يجب أن تكون 6 أحرف أو أكثر."
+            : "Patient password must be at least 6 characters."
+        );
+
+        return;
+      }
+
+      const { data, error: accountError } =
+        await supabase.functions.invoke(
+          "create-patient-account",
+          {
+            body: {
+              name: name.trim(),
+              phone: phone.trim(),
+              password,
+              age: age ? Number(age) : null,
+              gender: gender || null,
+              address: address || null,
+              medical_notes:
+                medicalNotes || null,
+            },
+          }
+        );
+
+      if (accountError) {
+        console.error(
+          "Create patient account error:",
+          accountError
+        );
+
+        setError(
+          isArabic
+            ? "تعذر إنشاء حساب المريض."
+            : "Could not create the patient account."
+        );
+
+        return;
+      }
+
+      if (data?.error) {
+        console.error(
+          "Create patient account function error:",
+          data.error
+        );
+
+        setError(
+          data.error
+        );
+
+        return;
+      }
+
+      setSuccess(
+        isArabic
+          ? "تم إنشاء حساب المريض بنجاح. أعطِ المريض رقم الهاتف وكلمة المرور."
+          : "Patient account created successfully. Give the patient their phone number and password."
+      );
     }
 
-    setSuccess(
-      editingPatientId
-        ? isArabic
+    // ============================================================
+    // Update Existing Patient
+    // ============================================================
+
+    else {
+      const payload = {
+        name,
+        phone: phone || null,
+        age: age ? Number(age) : null,
+        gender: gender || null,
+        address: address || null,
+        medical_notes:
+          medicalNotes || null,
+      };
+
+      const {
+        error: submitError,
+      } = await supabase
+        .from("patients")
+        .update(payload)
+        .eq("id", editingPatientId);
+
+      if (submitError) {
+        console.error(submitError);
+        setError(submitError.message);
+        return;
+      }
+
+      setSuccess(
+        isArabic
           ? "تم تحديث بيانات المريض بنجاح!"
           : "Patient updated successfully!"
-        : isArabic
-        ? "تمت إضافة المريض بنجاح!"
-        : "Patient added successfully!"
-    );
+      );
+    }
 
     resetForm();
     setShowForm(false);
@@ -830,11 +912,13 @@ const Patients = () => {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={() =>
+                navigate(DASHBOARD_PATH)
+              }
               aria-label={
                 isArabic
-                  ? "رجوع"
-                  : "Go back"
+                  ? "رجوع للوحة التحكم"
+                  : "Back to dashboard"
               }
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
@@ -1026,9 +1110,30 @@ const Patients = () => {
                 onChange={(e) =>
                   setPhone(e.target.value)
                 }
+                required={!editingPatientId}
                 dir="ltr"
                 className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
               />
+
+              {!editingPatientId && (
+                <input
+                  type="password"
+                  placeholder={
+                    isArabic
+                      ? "كلمة مرور المريض"
+                      : "Patient Password"
+                  }
+                  value={password}
+                  onChange={(e) =>
+                    setPassword(e.target.value)
+                  }
+                  minLength={6}
+                  required
+                  dir="ltr"
+                  autoComplete="new-password"
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500"
+                />
+              )}
 
               <input
                 type="number"
@@ -1094,6 +1199,14 @@ const Patients = () => {
                 className="min-h-32 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 md:col-span-2"
               />
 
+              {!editingPatientId && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 md:col-span-2">
+                  {isArabic
+                    ? "كلمة المرور دي هي اللي هتديها للمريض علشان يقدر يسجل الدخول من صفحة العيادة."
+                    : "Give this password to the patient so they can log in from the clinic page."}
+                </p>
+              )}
+
               <div className="flex gap-3 md:col-span-2">
                 <button
                   type="submit"
@@ -1104,8 +1217,8 @@ const Patients = () => {
                       ? "حفظ التعديلات"
                       : "Save changes"
                     : isArabic
-                    ? "إضافة المريض"
-                    : "Add Patient"}
+                    ? "إنشاء حساب المريض"
+                    : "Create Patient Account"}
                 </button>
 
                 <button
@@ -1552,6 +1665,7 @@ const Patients = () => {
 };
 
 export default Patients;
+
 
 
 
