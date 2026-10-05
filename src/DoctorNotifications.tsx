@@ -50,7 +50,6 @@ type ClinicHeader = {
   logo_url: string | null;
 };
 
-// مسار الداشبورد - غيّره لو المسار عندك مختلف
 const DASHBOARD_PATH = "/doctor/dashboard";
 
 const DoctorNotifications = () => {
@@ -291,10 +290,6 @@ const DoctorNotifications = () => {
         return;
       }
 
-      // ======================================
-      // Doctor Profile
-      // ======================================
-
       const {
         data: profile,
         error: profileError,
@@ -338,10 +333,6 @@ const DoctorNotifications = () => {
 
       setClinicId(currentClinicId);
 
-      // ======================================
-      // Clinic Header (name + logo)
-      // ======================================
-
       const {
         data: clinic,
         error: clinicError,
@@ -360,19 +351,6 @@ const DoctorNotifications = () => {
             clinic?.logo_url || null,
         });
       }
-
-      // ======================================
-      // Load ALL Doctor Notifications
-      // ======================================
-      //
-      // IMPORTANT:
-      // We intentionally do NOT filter by:
-      // notification_type = appointment_request
-      // or is_read = false.
-      //
-      // This keeps accepted/rejected notifications
-      // visible as notification history.
-      //
 
       const {
         data,
@@ -452,7 +430,6 @@ const DoctorNotifications = () => {
       return;
     }
 
-    // Keep the notification visible.
     setNotifications((current) =>
       current.map((notification) =>
         notification.id ===
@@ -490,7 +467,6 @@ const DoctorNotifications = () => {
       return;
     }
 
-    // Keep all notifications visible.
     setNotifications((current) =>
       current.map((notification) => ({
         ...notification,
@@ -521,8 +497,6 @@ const DoctorNotifications = () => {
         return;
       }
 
-      // Only pending appointment requests
-      // can be accepted/rejected.
       if (
         notification.notification_type !==
         "appointment_request"
@@ -543,18 +517,10 @@ const DoctorNotifications = () => {
       setError("");
 
       try {
-        // ======================================
-        // 1. New Appointment Status
-        // ======================================
-
         const newStatus =
           action === "confirm"
             ? "confirmed"
             : "cancelled";
-
-        // ======================================
-        // 2. Update Appointment
-        // ======================================
 
         const {
           data: updatedAppointment,
@@ -598,16 +564,10 @@ const DoctorNotifications = () => {
               : "This appointment has already been processed or is no longer pending."
           );
 
-          // Refresh notifications in case another page
-          // already processed the request.
           await loadNotifications();
 
           return;
         }
-
-        // ======================================
-        // 3. Appointment Type
-        // ======================================
 
         const appointmentType =
           (updatedAppointment.appointment_type ||
@@ -618,18 +578,10 @@ const DoctorNotifications = () => {
             appointmentType
           );
 
-        // ======================================
-        // 4. Notification Type
-        // ======================================
-
         const notificationType =
           action === "confirm"
             ? "appointment_confirmed"
             : "appointment_rejected";
-
-        // ======================================
-        // 5. Patient Notification
-        // ======================================
 
         const patientNotificationTitle =
           action === "confirm"
@@ -664,41 +616,19 @@ const DoctorNotifications = () => {
           .from("notifications")
           .insert({
             clinic_id: clinicId,
-
             patient_id:
               updatedAppointment.patient_id,
-
             appointment_id:
               updatedAppointment.id,
-
             title:
               patientNotificationTitle,
-
             message:
               patientNotificationMessage,
-
             is_read: false,
-
             recipient_type: "patient",
-
             notification_type:
               notificationType,
           });
-
-        // ======================================
-        // 6. Update SAME Doctor Notification
-        // ======================================
-        //
-        // IMPORTANT:
-        // We do NOT delete the notification.
-        //
-        // We change:
-        // appointment_request
-        // ->
-        // appointment_confirmed / appointment_rejected
-        //
-        // and mark it as read.
-        //
 
         const doctorNotificationTitle =
           action === "confirm"
@@ -726,12 +656,9 @@ const DoctorNotifications = () => {
           .update({
             title:
               doctorNotificationTitle,
-
             message:
               doctorNotificationMessage,
-
             is_read: true,
-
             notification_type:
               notificationType,
           })
@@ -762,10 +689,6 @@ const DoctorNotifications = () => {
           );
         }
 
-        // ======================================
-        // 7. Update Notification On Screen
-        // ======================================
-
         setNotifications((current) =>
           current.map((item) => {
             if (
@@ -777,25 +700,17 @@ const DoctorNotifications = () => {
             return (
               updatedDoctorNotification || {
                 ...item,
-
                 title:
                   doctorNotificationTitle,
-
                 message:
                   doctorNotificationMessage,
-
                 is_read: true,
-
                 notification_type:
                   notificationType,
               }
             );
           })
         );
-
-        // ======================================
-        // 8. Show Patient Notification Warning
-        // ======================================
 
         if (patientNotificationError) {
           setError(
@@ -806,10 +721,6 @@ const DoctorNotifications = () => {
 
           return;
         }
-
-        // ======================================
-        // 9. Doctor Notification Warning
-        // ======================================
 
         if (doctorNotificationError) {
           setError(
@@ -923,8 +834,8 @@ const DoctorNotifications = () => {
     >
       {/* الشريط العلوي */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4 sm:h-14 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={() =>
@@ -935,16 +846,16 @@ const DoctorNotifications = () => {
                   ? "رجوع للوحة التحكم"
                   : "Back to dashboard"
               }
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               {isArabic ? (
-                <ArrowRight className="h-5 w-5" />
+                <ArrowRight className="h-4 w-4" />
               ) : (
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-4 w-4" />
               )}
             </button>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
               {clinicHeader?.logo_url ? (
                 <img
                   src={clinicHeader.logo_url}
@@ -952,23 +863,23 @@ const DoctorNotifications = () => {
                     clinicHeader.name ||
                     "Clinic logo"
                   }
-                  className="h-10 w-10 rounded-xl object-cover shadow-sm"
+                  className="h-7 w-7 rounded-lg object-cover shadow-sm sm:h-8 sm:w-8"
                 />
               ) : (
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-600 text-white shadow-sm">
-                  <Activity className="h-5 w-5" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-600 text-white shadow-sm sm:h-8 sm:w-8">
+                  <Activity className="h-4 w-4" />
                 </div>
               )}
 
               <div className="leading-tight">
-                <p className="max-w-[220px] truncate text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                <p className="max-w-[130px] truncate text-[13px] font-bold tracking-tight text-slate-900 dark:text-white sm:max-w-[220px] sm:text-sm">
                   {clinicHeader?.name ||
                     (isArabic
                       ? "العيادة"
                       : "Clinic")}
                 </p>
 
-                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <p className="text-[9px] font-medium text-slate-500 dark:text-slate-400 sm:text-[10px]">
                   {isArabic
                     ? "إشعارات الدكتور"
                     : "Doctor Notifications"}
@@ -986,7 +897,7 @@ const DoctorNotifications = () => {
                   ? "تغيير اللغة"
                   : "Change language"
               }
-              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <Languages className="h-4 w-4" />
 
@@ -1009,34 +920,34 @@ const DoctorNotifications = () => {
                     ? "الوضع الداكن"
                     : "Dark mode"
               }
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               {isDarkMode ? (
-                <Sun className="h-5 w-5" />
+                <Sun className="h-4 w-4" />
               ) : (
-                <Moon className="h-5 w-5" />
+                <Moon className="h-4 w-4" />
               )}
             </button>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl px-6 pb-12 pt-8">
+      <div className="mx-auto max-w-4xl px-4 pb-8 pt-3 sm:px-6">
         {/* Header */}
 
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 dark:bg-blue-950/50">
-                <Bell className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-950/50">
+                <Bell className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               </div>
 
               <div>
-                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                <h1 className="text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
                   {t.common.notifications}
                 </h1>
 
-                <p className="mt-1 text-slate-600 dark:text-slate-300">
+                <p className="text-xs text-slate-600 dark:text-slate-300 sm:text-sm">
                   {isArabic
                     ? "طلبات وحالة مواعيد المرضى"
                     : "Patient appointment requests and status"}
@@ -1048,9 +959,9 @@ const DoctorNotifications = () => {
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
             >
-              <Check className="h-5 w-5" />
+              <Check className="h-4 w-4" />
 
               {isArabic
                 ? `تحديد الكل كمقروء (${unreadCount})`
@@ -1089,7 +1000,7 @@ const DoctorNotifications = () => {
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {notifications.map(
               (notification) => {
                 const isProcessing =
@@ -1127,7 +1038,7 @@ const DoctorNotifications = () => {
                 return (
                   <div
                     key={notification.id}
-                    className={`rounded-2xl border p-5 shadow-sm ${
+                    className={`rounded-xl border p-2 shadow-sm ${
                       isConfirmed
                         ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
                         : isRejected
@@ -1137,11 +1048,11 @@ const DoctorNotifications = () => {
                             : "border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30"
                     }`}
                   >
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-2">
                       {/* Icon */}
 
                       <div
-                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
                           isConfirmed
                             ? "bg-emerald-100 dark:bg-emerald-900/50"
                             : isRejected
@@ -1150,21 +1061,21 @@ const DoctorNotifications = () => {
                         }`}
                       >
                         {isConfirmed ? (
-                          <Check className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                          <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                         ) : isRejected ? (
-                          <X className="h-6 w-6 text-red-600 dark:text-red-400" />
+                          <X className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                         ) : (
-                          <Calendar className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                          <Calendar className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                         )}
                       </div>
 
                       <div className="min-w-0 flex-1">
                         {/* Header */}
 
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <div
-                              className={`mb-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                              className={`mb-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                 isConfirmed
                                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
                                   : isRejected
@@ -1174,7 +1085,7 @@ const DoctorNotifications = () => {
                                       : "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
                               }`}
                             >
-                              <Calendar className="h-3.5 w-3.5" />
+                              <Calendar className="h-3 w-3" />
 
                               {getNotificationLabel(
                                 notification.notification_type
@@ -1184,8 +1095,8 @@ const DoctorNotifications = () => {
                             {/* Appointment Type */}
 
                             {isAppointmentRequest && (
-                              <div className="mb-3">
-                                <span className="inline-flex items-center rounded-full bg-teal-100 px-3 py-1 text-xs font-bold text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
+                              <div className="mb-0.5">
+                                <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
                                   {isArabic
                                     ? "نوع الحجز: "
                                     : "Type: "}
@@ -1197,17 +1108,17 @@ const DoctorNotifications = () => {
                               </div>
                             )}
 
-                            <h3 className="font-semibold text-slate-900 dark:text-white">
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                               {notification.title}
                             </h3>
 
-                            <p className="mt-1 text-slate-600 dark:text-slate-300">
+                            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300 sm:text-sm">
                               {notification.message}
                             </p>
                           </div>
 
                           <span
-                            className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                            className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                               notification.is_read
                                 ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                                 : "bg-blue-600 text-white"
@@ -1225,9 +1136,9 @@ const DoctorNotifications = () => {
 
                         {/* Date + Patient */}
 
-                        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                           <span className="inline-flex items-center gap-1.5">
-                            <Clock className="h-4 w-4" />
+                            <Clock className="h-3 w-3" />
 
                             {formatDate(
                               notification.created_at
@@ -1236,7 +1147,7 @@ const DoctorNotifications = () => {
 
                           {notification.patient_id && (
                             <span className="inline-flex items-center gap-1.5">
-                              <User className="h-4 w-4" />
+                              <User className="h-3 w-3" />
 
                               {isArabic
                                 ? "طلب من مريض"
@@ -1249,14 +1160,14 @@ const DoctorNotifications = () => {
 
                         {notification.appointment_id &&
                           isAppointmentRequest && (
-                            <div className="mt-5 rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-900 dark:bg-slate-900">
-                              <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+                            <div className="mt-2 rounded-lg border border-blue-200 bg-white p-2 dark:border-blue-900 dark:bg-slate-900">
+                              <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-200">
                                 {isArabic
                                   ? "هل تريد قبول طلب الموعد أم رفضه؟"
                                   : "Would you like to accept or reject this appointment request?"}
                               </p>
 
-                              <div className="flex flex-wrap gap-3">
+                              <div className="flex flex-wrap gap-2">
                                 {/* Accept */}
 
                                 <button
@@ -1270,7 +1181,7 @@ const DoctorNotifications = () => {
                                       "confirm"
                                     )
                                   }
-                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <Check className="h-4 w-4" />
 
@@ -1296,7 +1207,7 @@ const DoctorNotifications = () => {
                                       "reject"
                                     )
                                   }
-                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <X className="h-4 w-4" />
 
@@ -1315,9 +1226,9 @@ const DoctorNotifications = () => {
                         {/* Status Message */}
 
                         {isConfirmed && (
-                          <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
-                            <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
-                              <Check className="h-5 w-5" />
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 dark:border-emerald-900 dark:bg-emerald-950/30">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                              <Check className="h-4 w-4" />
 
                               {isArabic
                                 ? "تم قبول هذا الموعد."
@@ -1327,9 +1238,9 @@ const DoctorNotifications = () => {
                         )}
 
                         {isRejected && (
-                          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
-                            <div className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-300">
-                              <X className="h-5 w-5" />
+                          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 dark:border-red-900 dark:bg-red-950/30">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-red-700 dark:text-red-300">
+                              <X className="h-4 w-4" />
 
                               {isArabic
                                 ? "تم رفض هذا الموعد."
@@ -1340,11 +1251,11 @@ const DoctorNotifications = () => {
 
                         {/* Actions */}
 
-                        <div className="mt-4 flex flex-wrap gap-3">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           {notification.appointment_id && (
                             <Link
                               to="/doctor/appointments"
-                              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                              className="inline-flex items-center rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700"
                             >
                               {isArabic
                                 ? "عرض المواعيد"
@@ -1361,7 +1272,7 @@ const DoctorNotifications = () => {
                                   notification.id
                                 )
                               }
-                              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                             >
                               <Check className="h-4 w-4" />
 

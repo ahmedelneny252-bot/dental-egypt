@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
   ArrowLeft,
   ArrowRight,
-  FileText,
   Languages,
   Moon,
   Pill,
@@ -12,10 +11,10 @@ import {
   User,
   CalendarDays,
   Stethoscope,
-  ClipboardList,
   AlertCircle,
 } from "lucide-react";
 import { supabase } from "./supabase";
+import XrayGallery from "./XrayGallery";
 
 type Language = "ar" | "en";
 
@@ -72,6 +71,11 @@ export default function PatientMedicalFile() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // بيزيد كل ما الدكتور يضيف/يعدّل حاجة => بيعمل إعادة تحميل هادية للبيانات
+  const [refreshTick, setRefreshTick] = useState(0);
+  const patientsLoadedOnce = useRef(false);
+  const recordsLoadedOnce = useRef(false);
+
   const isArabic = language === "ar";
 
   useEffect(() => {
@@ -98,9 +102,53 @@ export default function PatientMedicalFile() {
     setIsDarkMode((current) => !current);
   };
 
+  // ============================================
+  // تحديث لحظي: أي إضافة/تعديل من الدكتور تظهر فورًا للمريض
+  // ============================================
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const bump = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setRefreshTick((n) => n + 1), 400);
+    };
+
+    const channel = supabase.channel("patient-medical-file-live");
+
+    ["patients", "medical_records", "prescriptions"].forEach((table) => {
+      channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table },
+        bump
+      );
+    });
+
+    channel.subscribe();
+
+    // احتياطي: لما المريض يرجع للتاب/التطبيق يحدّث البيانات
+    const onVisible = () => {
+      if (document.visibilityState === "visible") bump();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", bump);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", bump);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   useEffect(() => {
     const loadPatients = async () => {
-      setLoading(true);
+      // أول مرة بس نعرض السبينر، بعد كده التحديث بيبقى هادي
+      if (!patientsLoadedOnce.current) {
+        setLoading(true);
+      }
+
       setError("");
 
       try {
@@ -126,6 +174,7 @@ export default function PatientMedicalFile() {
         }
 
         setPatients((data || []) as Patient[]);
+        patientsLoadedOnce.current = true;
       } catch (err) {
         console.error("Error loading patients:", err);
 
@@ -140,7 +189,7 @@ export default function PatientMedicalFile() {
     };
 
     loadPatients();
-  }, [navigate, isArabic]);
+  }, [navigate, isArabic, refreshTick]);
 
   // بيانات المريض المعروضة: سجل العيادة المحفوظة، أو أول سجل
   const selectedPatient = useMemo(() => {
@@ -170,7 +219,10 @@ export default function PatientMedicalFile() {
 
       const patientIds = patients.map((patient) => patient.id);
 
-      setRecordsLoading(true);
+      if (!recordsLoadedOnce.current) {
+        setRecordsLoading(true);
+      }
+
       setError("");
 
       try {
@@ -208,6 +260,8 @@ export default function PatientMedicalFile() {
         setPrescriptions(
           (prescriptionsResult.data || []) as Prescription[]
         );
+
+        recordsLoadedOnce.current = true;
       } catch (err) {
         console.error("Error loading medical data:", err);
 
@@ -222,7 +276,7 @@ export default function PatientMedicalFile() {
     };
 
     loadMedicalData();
-  }, [patients, isArabic]);
+  }, [patients, isArabic, refreshTick]);
 
   const formatDate = (date: string | null) => {
     if (!date) return "—";
@@ -456,26 +510,6 @@ export default function PatientMedicalFile() {
                       </p>
                     </div>
                   </div>
-
-                  {selectedPatient.medical_notes && (
-                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
-                      <div className="flex items-start gap-3">
-                        <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-
-                        <div>
-                          <p className="mb-1 text-sm font-bold text-amber-800 dark:text-amber-300">
-                            {isArabic
-                              ? "ملاحظات طبية"
-                              : "Medical Notes"}
-                          </p>
-
-                          <p className="text-sm leading-6 text-amber-700 dark:text-amber-400">
-                            {selectedPatient.medical_notes}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </section>
 
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -704,27 +738,11 @@ export default function PatientMedicalFile() {
                   )}
                 </section>
 
-                <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                      <FileText className="h-5 w-5" />
-                    </div>
-
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                        {isArabic
-                          ? "الأشعة والصور"
-                          : "X-Rays & Images"}
-                      </h2>
-
-                      <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                        {isArabic
-                          ? "سيتم عرض الأشعة والصور الطبية هنا عند إضافتها إلى ملفك من خلال العيادة."
-                          : "X-rays and medical images will appear here when added to your file by the clinic."}
-                      </p>
-                    </div>
-                  </div>
-                </section>
+                <XrayGallery
+                  mode="patient"
+                  isArabic={isArabic}
+                  patientIds={patients.map((patient) => patient.id)}
+                />
               </>
             )}
           </div>

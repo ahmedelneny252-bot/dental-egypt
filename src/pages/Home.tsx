@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -230,12 +229,6 @@ const Home = () => {
         ? "دعم فني مستمر"
         : "Ongoing technical support",
     },
-    {
-      icon: ShieldCheck,
-      label: isArabic
-        ? "بدون عمولات عالية"
-        : "No high commissions",
-    },
   ];
 
   // فتح تفاصيل العيادة
@@ -273,9 +266,9 @@ const Home = () => {
           Hero Section
           ============================================ */}
       <section className="relative overflow-hidden bg-gradient-to-b from-blue-50/60 via-white to-white dark:from-slate-900 dark:via-slate-950 dark:to-slate-950">
-        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:min-h-[560px] lg:px-8 lg:py-0">
-          {/* الصورة */}
-          <div className="absolute inset-y-0 left-0 hidden w-1/2 lg:block">
+        <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-0 sm:px-6 lg:min-h-[560px] lg:px-8 lg:py-0">
+          {/* الصورة: على الموبايل فوق الكلام، وعلى اللابتوب جنب الكلام */}
+          <div className="relative -mx-4 mb-8 h-64 sm:-mx-6 sm:h-80 lg:absolute lg:inset-y-0 lg:left-0 lg:mx-0 lg:mb-0 lg:h-auto lg:w-1/2">
             <img
               src="/dental-care.jpg"
               alt={isArabic ? "عيادة الأسنان" : "Dental clinic"}
@@ -284,13 +277,14 @@ const Home = () => {
 
             <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-white to-transparent dark:from-slate-950" />
 
-            <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-white to-transparent dark:from-slate-950" />
+            {/* الجراديانتات الجانبية والعلوية للابتوب بس */}
+            <div className="absolute inset-y-0 left-0 hidden w-24 bg-gradient-to-r from-white to-transparent dark:from-slate-950 lg:block" />
 
-            <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-white to-transparent dark:from-slate-950" />
+            <div className="absolute inset-y-0 right-0 hidden w-24 bg-gradient-to-l from-white to-transparent dark:from-slate-950 lg:block" />
 
-            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-blue-50 to-transparent dark:from-slate-900" />
+            <div className="absolute inset-x-0 top-0 hidden h-24 bg-gradient-to-b from-blue-50 to-transparent dark:from-slate-900 lg:block" />
 
-            <div className="absolute bottom-8 right-8 flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-xl dark:bg-slate-900">
+            <div className="absolute bottom-4 right-4 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-xl dark:bg-slate-900 lg:bottom-8 lg:right-8 lg:px-5 lg:py-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
                 <ShieldCheck className="h-5 w-5" />
               </div>
@@ -518,69 +512,80 @@ const Home = () => {
 
       {/* ============================================
           For Doctors Section
+          الصورة خلفية كاملة (absolute) والكلام فوقها (relative)
           ============================================ */}
-      <section className="bg-white py-16 transition-colors duration-300 dark:bg-slate-900 md:py-20">
+      <section className="bg-slate-50/60 pb-10 pt-0 transition-colors duration-300 dark:bg-slate-950 md:pb-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 items-center gap-10 rounded-3xl bg-blue-50/60 p-8 dark:bg-slate-800/40 lg:grid-cols-[220px_1fr_240px] lg:gap-8 lg:p-12">
-            <div className="order-3 flex flex-col gap-4 lg:order-1">
-              <span className="hidden self-end rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 lg:inline-block">
-                {isArabic ? "لأطباء الأسنان" : "For Dentists"}
-              </span>
+          {/* الكونتينر: relative */}
+          <div className="relative min-h-[340px] overflow-hidden rounded-3xl bg-blue-900 shadow-xl shadow-blue-900/20 lg:min-h-[280px]">
+            {/* الصورة: absolute تغطي الكونتينر كله */}
+            <img
+              src="/doctor.jpeg"
+              alt={
+                isArabic
+                  ? "طبيب أسنان يستخدم منصة DentalCare"
+                  : "Dentist using the DentalCare platform"
+              }
+              className="absolute inset-0 h-full w-full object-cover object-[25%_center] lg:object-center"
+            />
 
-              {doctorFeatures.map((feature, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-end gap-3 lg:justify-start"
-                >
-                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 lg:order-2">
-                    {feature.label}
-                  </span>
+            {/* طبقة تغميق: على الموبايل تغطي كله، وعلى الشاشات الكبيرة تتدرج من جهة الكلام */}
+            <div className="absolute inset-0 bg-blue-950/70 lg:bg-gradient-to-l lg:from-blue-950/70 lg:via-blue-950/20 lg:to-transparent" />
 
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 lg:order-1">
-                    <feature.icon className="h-4 w-4" />
-                  </span>
+            {/* المحتوى: relative فوق الصورة */}
+            <div className="relative z-10 flex min-h-[340px] items-center p-6 lg:min-h-[280px] lg:p-8">
+              {/* على اليمين دايمًا (المساحة الفاضية في الصورة) */}
+              <div className="w-full text-center lg:mr-0 lg:w-1/2 lg:text-start xl:w-5/12 lg:ml-auto">
+                <span className="mb-3 inline-block rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                  {isArabic ? "لأطباء الأسنان" : "For Dentists"}
+                </span>
+
+                <h2 className="mb-2 text-2xl font-bold text-white md:text-3xl">
+                  {isArabic
+                    ? "انضم إلى منصتنا كطبيب"
+                    : "Join our platform as a doctor"}
+                </h2>
+
+                <p className="mb-4 text-sm text-blue-100">
+                  {isArabic
+                    ? "وفّر وقتك وابدأ في استقبال مرضاك بسهولة مع أدواتنا الذكية."
+                    : "Save your time and start welcoming your patients easily with our smart tools."}
+                </p>
+
+                {/* المميزات */}
+                <div className="mb-5 flex flex-col items-center gap-2 lg:items-start">
+                  {doctorFeatures.map((feature, index) => (
+                    <div key={index} className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white backdrop-blur-sm">
+                        <feature.icon className="h-4 w-4" />
+                      </span>
+
+                      <span className="text-sm font-semibold text-white">
+                        {feature.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="order-2 text-center lg:text-right">
-              <span className="mb-3 inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 lg:hidden">
-                {isArabic ? "لأطباء الأسنان" : "For Dentists"}
-              </span>
+                {/* الأزرار */}
+                <div className="flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+                  <Link
+                    to="/doctor/register"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-500"
+                  >
+                    <Stethoscope className="h-4 w-4" />
+                    {isArabic ? "اشترك كطبيب" : "Subscribe as a Doctor"}
+                  </Link>
 
-              <h2 className="mb-3 text-3xl font-bold text-slate-800 dark:text-white">
-                {isArabic
-                  ? "انضم إلى منصتنا كطبيب"
-                  : "Join our platform as a doctor"}
-              </h2>
-
-              <p className="mb-6 text-slate-500 dark:text-slate-300">
-                {isArabic
-                  ? "وفّر وقتك وابدأ في استقبال مرضاك بسهولة مع أدواتنا الذكية."
-                  : "Save your time and start welcoming your patients easily with our smart tools."}
-              </p>
-
-              <div className="flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
-                <Link
-                  to="/doctor/register"
-                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
-                >
-                  <Stethoscope className="h-4 w-4" />
-                  {isArabic ? "اشترك كطبيب" : "Subscribe as a Doctor"}
-                </Link>
-
-                <Link
-                  to="/about"
-                  className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-600 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                >
-                  {isArabic ? "معرفة المزيد" : "Learn more"}
-                  <ArrowIcon className="h-4 w-4" />
-                </Link>
+                  <Link
+                    to="/about"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/20"
+                  >
+                    {isArabic ? "معرفة المزيد" : "Learn more"}
+                    <ArrowIcon className="h-4 w-4" />
+                  </Link>
+                </div>
               </div>
-            </div>
-
-            <div className="order-1 mx-auto flex aspect-[3/4] w-40 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-xl shadow-blue-600/20 sm:w-48 lg:order-3 lg:mx-0">
-              <UserRound className="h-20 w-20 text-white/90" />
             </div>
           </div>
         </div>

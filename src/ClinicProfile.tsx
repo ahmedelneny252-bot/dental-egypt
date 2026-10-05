@@ -38,6 +38,14 @@ type ClinicCase = {
   after_url: string | null;
 };
 
+type ClinicService = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number | null;
+  duration: number | null;
+};
+
 const DAY_OPTIONS = [
   { value: 6, ar: "السبت", en: "Saturday" },
   { value: 0, ar: "الأحد", en: "Sunday" },
@@ -107,6 +115,13 @@ export default function ClinicProfile() {
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [addingCase, setAddingCase] = useState(false);
+
+  const [services, setServices] = useState<ClinicService[]>([]);
+  const [serviceName, setServiceName] = useState("");
+  const [servicePrice, setServicePrice] = useState("");
+  const [serviceDuration, setServiceDuration] = useState("");
+  const [serviceDescription, setServiceDescription] = useState("");
+  const [addingService, setAddingService] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -238,6 +253,22 @@ export default function ClinicProfile() {
         ar: "تعذر إضافة الحالة.",
         en: "Could not add the case.",
       },
+      serviceNameRequired: {
+        ar: "اكتب اسم الخدمة.",
+        en: "Write the service name.",
+      },
+      serviceAdded: {
+        ar: "تمت إضافة الخدمة بنجاح.",
+        en: "Service added successfully.",
+      },
+      serviceDeleted: {
+        ar: "تم حذف الخدمة.",
+        en: "Service deleted.",
+      },
+      serviceError: {
+        ar: "تعذر إضافة الخدمة.",
+        en: "Could not add the service.",
+      },
     };
 
     return (
@@ -258,6 +289,21 @@ export default function ClinicProfile() {
     }
 
     setCases(data ?? []);
+  };
+
+  const loadServices = async (id: string) => {
+    const { data, error } = await supabase
+      .from("services")
+      .select("id, name, description, price, duration")
+      .eq("clinic_id", id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setServices(data ?? []);
   };
 
   const loadClinic = async () => {
@@ -334,6 +380,7 @@ export default function ClinicProfile() {
       }
 
       await loadCases(profile.clinic_id);
+      await loadServices(profile.clinic_id);
     } catch (error) {
       console.error(error);
       setMessage(getMessageText("somethingWrong"));
@@ -570,9 +617,84 @@ export default function ClinicProfile() {
     await loadCases(clinicId);
   };
 
+  // ============================================
+  // Services
+  // ============================================
+
+  const handleAddService = async () => {
+    if (!clinicId) return;
+
+    if (!serviceName.trim()) {
+      setMessage(getMessageText("serviceNameRequired"));
+      return;
+    }
+
+    try {
+      setAddingService(true);
+      setMessage("");
+
+      // Only the name is required. Price, duration and description are optional.
+      const { error } = await supabase.from("services").insert({
+        clinic_id: clinicId,
+        name: serviceName.trim(),
+        description: serviceDescription.trim() || null,
+        price: servicePrice.trim() ? Number(servicePrice) : null,
+        duration: serviceDuration.trim() ? Number(serviceDuration) : null,
+      });
+
+      if (error) {
+        console.error(error);
+        setMessage(error.message);
+        return;
+      }
+
+      setServiceName("");
+      setServicePrice("");
+      setServiceDuration("");
+      setServiceDescription("");
+
+      await loadServices(clinicId);
+      setMessage(getMessageText("serviceAdded"));
+    } catch (error) {
+      console.error(error);
+      setMessage(
+        error instanceof Error ? error.message : getMessageText("serviceError")
+      );
+    } finally {
+      setAddingService(false);
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    if (!clinicId) return;
+
+    const confirmed = window.confirm(
+      isArabic ? "هل تريد حذف هذه الخدمة؟" : "Delete this service?"
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("services")
+      .delete()
+      .eq("id", serviceId)
+      .eq("clinic_id", clinicId);
+
+    if (error) {
+      console.error(error);
+      setMessage(error.message);
+      return;
+    }
+
+    await loadServices(clinicId);
+    setMessage(getMessageText("serviceDeleted"));
+  };
+
   const isSuccessMessage =
     message === getMessageText("saved") ||
-    message === getMessageText("caseAdded");
+    message === getMessageText("caseAdded") ||
+    message === getMessageText("serviceAdded") ||
+    message === getMessageText("serviceDeleted");
 
   if (loading) {
     return (
@@ -1053,6 +1175,154 @@ export default function ClinicProfile() {
                 ? "حفظ التغييرات"
                 : "Save Changes"}
             </button>
+          </div>
+
+          {/* ========================================
+              Services
+          ======================================== */}
+
+          <div className="mt-12 border-t border-gray-200 dark:border-slate-800 pt-8">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              {isArabic ? "خدمات العيادة" : "Clinic Services"}
+            </h2>
+
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              {isArabic
+                ? "الخدمات اللي تضيفها هنا بتظهر للمرضى في صفحة العيادة. اسم الخدمة فقط هو المطلوب، والسعر والمدة والوصف اختياريين. الإضافة والحذف بيتم فوراً من غير زرار الحفظ."
+                : "Services you add here appear to patients on your clinic page. Only the name is required; price, duration and description are optional. Adding and deleting happen immediately, without the Save button."}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>
+                  {isArabic ? "اسم الخدمة *" : "Service Name *"}
+                </label>
+
+                <input
+                  type="text"
+                  value={serviceName}
+                  onChange={(e) => setServiceName(e.target.value)}
+                  placeholder={
+                    isArabic ? "مثال: تنظيف الأسنان" : "Example: Dental cleaning"
+                  }
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className={labelClass}>
+                    {isArabic ? "السعر (اختياري)" : "Price (optional)"}
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    dir="ltr"
+                    value={servicePrice}
+                    onChange={(e) => setServicePrice(e.target.value)}
+                    placeholder={isArabic ? "مثال: 500" : "Example: 500"}
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass}>
+                    {isArabic
+                      ? "المدة بالدقائق (اختياري)"
+                      : "Duration in minutes (optional)"}
+                  </label>
+
+                  <input
+                    type="number"
+                    min="1"
+                    dir="ltr"
+                    value={serviceDuration}
+                    onChange={(e) => setServiceDuration(e.target.value)}
+                    placeholder={isArabic ? "مثال: 30" : "Example: 30"}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  {isArabic ? "الوصف (اختياري)" : "Description (optional)"}
+                </label>
+
+                <input
+                  type="text"
+                  value={serviceDescription}
+                  onChange={(e) => setServiceDescription(e.target.value)}
+                  placeholder={
+                    isArabic ? "وصف مختصر للخدمة" : "Short description"
+                  }
+                  className={inputClass}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddService}
+                disabled={addingService}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-slate-700 text-white px-6 py-3 rounded-lg font-semibold transition"
+              >
+                {addingService
+                  ? isArabic
+                    ? "جاري الإضافة..."
+                    : "Adding..."
+                  : isArabic
+                  ? "إضافة الخدمة"
+                  : "Add Service"}
+              </button>
+            </div>
+
+            {services.length > 0 && (
+              <ul className="mt-8 space-y-3">
+                {services.map((service) => (
+                  <li
+                    key={service.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-slate-700 p-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                        {service.name}
+                      </p>
+
+                      {service.description && (
+                        <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                          {service.description}
+                        </p>
+                      )}
+
+                      {(service.price != null || service.duration != null) && (
+                        <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                          {service.price != null &&
+                            `${service.price} ${isArabic ? "جنيه" : "EGP"}`}
+
+                          {service.price != null &&
+                            service.duration != null &&
+                            " · "}
+
+                          {service.duration != null &&
+                            `${service.duration} ${isArabic ? "دقيقة" : "min"}`}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteService(service.id)}
+                      aria-label={isArabic ? "حذف" : "Delete"}
+                      className="shrink-0 rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* ========================================

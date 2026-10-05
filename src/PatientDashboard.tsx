@@ -19,6 +19,7 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
@@ -189,7 +190,26 @@ const PatientDashboard = () => {
 
   const [clinicName, setClinicName] = useState("");
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // على اللاب مفتوح تلقائيًا، وعلى التليفون/التابلت مقفول
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window !== "undefined" && window.innerWidth >= 1024
+  );
+
+  // يقفل السايدبار بعد الضغط على لينك (على الموبايل بس)
+  const closeOnMobile = () => {
+    if (window.innerWidth < 1024) setSidebarOpen(false);
+  };
+
+  // يقفل السايدبار بزرار Escape
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // ============================================
   // العيادة المختارة
@@ -756,33 +776,55 @@ const PatientDashboard = () => {
     >
       {/* ==================== Sidebar ==================== */}
 
+      {/* Overlay: تابلت + موبايل بس (اضغط عليه عشان يقفل) */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-[1px] lg:hidden"
+          aria-hidden="true"
+        />
+      )}
+
       <aside
-        className={`fixed inset-y-0 right-0 z-30 hidden w-64 flex-col overflow-y-auto border-l border-slate-100 bg-white px-4 py-6 dark:border-slate-800 dark:bg-slate-900 ${
+        className={`fixed inset-y-0 right-0 z-40 flex w-64 flex-col overflow-y-auto border-l border-slate-100 bg-white px-4 py-6 shadow-2xl transition-transform duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 ${
           sidebarOpen
-            ? "lg:flex"
-            : "lg:hidden"
+            ? "translate-x-0"
+            : "translate-x-full"
         }`}
       >
-        <Link
-          to="/patient/dashboard"
-          className="mb-8 flex items-center gap-2 px-2"
-        >
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25">
-            <ToothIcon className="h-6 w-6" />
-          </span>
+        <div className="mb-8 flex items-center justify-between gap-2 px-2">
+          <Link
+            to="/patient/dashboard"
+            onClick={closeOnMobile}
+            className="flex items-center gap-2"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25">
+              <ToothIcon className="h-6 w-6" />
+            </span>
 
-          <div>
-            <p className="text-base font-bold leading-tight text-slate-800 dark:text-white">
-              DentalCare
-            </p>
+            <div>
+              <p className="text-base font-bold leading-tight text-slate-800 dark:text-white">
+                DentalCare
+              </p>
 
-            <p className="text-[11px] font-medium leading-tight text-blue-500">
-              {isArabic
-                ? "ابتسامتك، صحتنا"
-                : "Your Smile, Our Care"}
-            </p>
-          </div>
-        </Link>
+              <p className="text-[11px] font-medium leading-tight text-blue-500">
+                {isArabic
+                  ? "ابتسامتك، صحتنا"
+                  : "Your Smile, Our Care"}
+              </p>
+            </div>
+          </Link>
+
+          {/* زرار الإغلاق (موبايل + تابلت) */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden"
+            title={isArabic ? "إغلاق القائمة" : "Close menu"}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
         <nav className="space-y-1">
           {navItems.map((item) => {
@@ -793,6 +835,7 @@ const PatientDashboard = () => {
               <Link
                 key={item.to}
                 to={item.to}
+                onClick={closeOnMobile}
                 className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
                   active
                     ? "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"
@@ -819,6 +862,7 @@ const PatientDashboard = () => {
 
           <Link
             to="/contact"
+            onClick={closeOnMobile}
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           >
             <MessageCircle className="h-[18px] w-[18px]" />
@@ -859,15 +903,15 @@ const PatientDashboard = () => {
       {/* ==================== Main column ==================== */}
 
       <div
-        className={
+        className={`transition-all duration-300 ${
           sidebarOpen
             ? "lg:pr-64"
-            : ""
-        }
+            : "lg:pr-0"
+        }`}
       >
         {/* ---------- Top bar ---------- */}
 
-        <header className="sticky top-0 z-20 relative flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
           {/* زرار إخفاء/إظهار القائمة */}
 
           <button
@@ -877,7 +921,7 @@ const PatientDashboard = () => {
                 (open) => !open
               )
             }
-            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 lg:flex"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             aria-label={
               sidebarOpen
                 ? isArabic

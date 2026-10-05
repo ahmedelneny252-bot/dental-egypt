@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -17,6 +16,7 @@ import {
   RefreshCcw,
   Sun,
   User,
+  Users,
   X,
   XCircle,
   Stethoscope,
@@ -1628,6 +1628,15 @@ function TodayAppointments() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/doctor/patients"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <Users className="h-4 w-4" />
+
+              {isArabic ? "المرضى" : "Patients"}
+            </Link>
+
             <button
               type="button"
               onClick={openCheckupModal}

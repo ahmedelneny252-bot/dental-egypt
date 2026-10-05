@@ -5,7 +5,6 @@ import {
   MessageCircle,
   Facebook,
   Instagram,
-  Twitter,
   Linkedin,
   Mail,
   Users,
@@ -26,7 +25,6 @@ type SiteSettings = {
   address_en: string | null;
   facebook: string | null;
   instagram: string | null;
-  twitter: string | null;
   linkedin: string | null;
 };
 
@@ -53,7 +51,7 @@ const Contact = () => {
       const { data, error } = await supabase
         .from("site_settings")
         .select(
-          "phone, whatsapp, email, address_ar, address_en, facebook, instagram, twitter, linkedin"
+          "phone, whatsapp, email, address_ar, address_en, facebook, instagram, linkedin"
         )
         .eq("id", 1)
         .maybeSingle();
@@ -96,7 +94,6 @@ const Contact = () => {
     email: settings?.email?.trim() || "",
     facebook: settings?.facebook?.trim() || "",
     instagram: settings?.instagram?.trim() || "",
-    twitter: settings?.twitter?.trim() || "",
     linkedin: settings?.linkedin?.trim() || "",
   };
 
@@ -427,10 +424,7 @@ const Contact = () => {
                   )}
 
                   {/* Social Media */}
-                  {(info.facebook ||
-                    info.instagram ||
-                    info.twitter ||
-                    info.linkedin) && (
+                  {(info.facebook || info.instagram || info.linkedin) && (
                     <div className="flex items-start gap-3">
                       <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-teal-500/10">
                         <Users className="h-5 w-5 text-teal-500" />
@@ -465,18 +459,6 @@ const Contact = () => {
                               className="text-muted-foreground transition-colors hover:text-teal-500"
                             >
                               <Instagram className="h-5 w-5" />
-                            </a>
-                          )}
-
-                          {info.twitter && (
-                            <a
-                              href={info.twitter}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              aria-label="Twitter"
-                              className="text-muted-foreground transition-colors hover:text-teal-500"
-                            >
-                              <Twitter className="h-5 w-5" />
                             </a>
                           )}
 

@@ -15,6 +15,10 @@ import {
   Cpu,
   ImageOff,
   User,
+  Smile,
+  Sparkles,
+  Syringe,
+  Crown,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import { translations, type Language } from "../i18n";
@@ -50,6 +54,14 @@ type ClinicCase = {
   description: string | null;
   before_url: string | null;
   after_url: string | null;
+};
+
+type ClinicService = {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number | null;
+  duration: number | null;
 };
 
 const DAYS_AR = [
@@ -93,6 +105,20 @@ const getCaseName = (c: ClinicCase, lang: Language) => {
   }
 
   return c.title;
+};
+
+// Pick an icon for a service from keywords in its name (tooth by default)
+const getServiceIcon = (
+  name: string
+): React.ComponentType<{ className?: string }> => {
+  const n = name.toLowerCase();
+
+  if (/تنظيف|تبييض|جير|clean|whiten|scal|polish/.test(n)) return Sparkles;
+  if (/تقويم|ortho|brace|aligner/.test(n)) return Smile;
+  if (/زراعة|زرع|implant/.test(n)) return Syringe;
+  if (/تركيب|تاج|طقم|crown|bridge|veneer|denture/.test(n)) return Crown;
+
+  return ToothLogo;
 };
 
 const toMinutes = (v: string) => {
@@ -142,6 +168,7 @@ const ClinicDetail = () => {
 
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [cases, setCases] = useState<ClinicCase[]>([]);
+  const [services, setServices] = useState<ClinicService[]>([]);
   const [showAllCases, setShowAllCases] = useState(false);
   const [selectedCase, setSelectedCase] = useState<ClinicCase | null>(null);
   const [loading, setLoading] = useState(true);
@@ -269,6 +296,28 @@ const ClinicDetail = () => {
     };
 
     loadCases();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const loadServices = async () => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("id, name, description, price, duration")
+        .eq("clinic_id", id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Clinic services error:", error);
+        setServices([]);
+        return;
+      }
+
+      setServices(data ?? []);
+    };
+
+    loadServices();
   }, [id]);
 
   const visibleCases = showAllCases ? cases : cases.slice(0, 4);
@@ -489,7 +538,7 @@ const ClinicDetail = () => {
       {/* Full-width banner at the very top of the page */}
       <section
         dir="ltr"
-        className="relative w-full overflow-hidden bg-slate-100 dark:bg-slate-800"
+        className="relative mx-4 mt-4 overflow-hidden rounded-3xl bg-slate-100 sm:mx-6 lg:mx-8 dark:bg-slate-800"
       >
         {clinic.logo_url ? (
           <img
@@ -776,7 +825,46 @@ const ClinicDetail = () => {
             )}
           </div>
 
-          <aside>
+          <aside className="space-y-5">
+            {services.length > 0 && (
+              <Card>
+                <h2 className="mb-4 text-lg font-bold text-slate-900 dark:text-white">
+                  {isArabic ? "خدماتنا" : "Our Services"}
+                </h2>
+
+                <ul className="grid max-h-80 grid-cols-4 gap-x-2 gap-y-4 overflow-y-auto lg:grid-cols-3">
+                  {services.map((service) => {
+                    const Icon = getServiceIcon(service.name);
+
+                    return (
+                      <li
+                        key={service.id}
+                        title={service.description ?? service.name}
+                        className="flex flex-col items-center text-center"
+                      >
+                        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100 dark:bg-blue-950/60 dark:text-blue-400 dark:ring-blue-900">
+                          <Icon className="h-7 w-7" />
+                        </span>
+
+                        <span className="mt-2 line-clamp-2 break-words text-xs font-medium leading-snug text-slate-700 dark:text-slate-200">
+                          {service.name}
+                        </span>
+
+                        {service.price != null && (
+                          <span
+                            dir="ltr"
+                            className="mt-0.5 text-[11px] font-semibold text-blue-600 dark:text-blue-400"
+                          >
+                            {service.price} {isArabic ? "ج.م" : "EGP"}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
+
             <Card>
               <Link
                 to={`/clinics/${clinic.id}/book`}

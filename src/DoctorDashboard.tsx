@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
   Calendar,
-  MessageCircle,
   Search,
-  ChevronDown,
   Users,
   CalendarCheck,
   Wallet,
@@ -15,22 +13,17 @@ import {
   Activity,
   Settings as SettingsIcon,
   Building2,
-  Pencil,
   Home as HomeIcon,
-  PackageSearch,
   Star,
-  Menu,
-  PanelRightClose,
   Languages,
   Sun,
   Moon,
+  PanelRightOpen,
+  PanelRightClose,
+  X,
 } from "lucide-react";
 import { supabase } from "./supabase";
 import { translations, type Language } from "./i18n";
-
-// ============================================
-// Types
-// ============================================
 
 type ClinicInfo = {
   id: string;
@@ -68,6 +61,12 @@ type RecentPatientRow = {
   latest_visit: string | null;
 };
 
+type SearchPatientRow = {
+  id: string;
+  name: string;
+  phone: string | null;
+};
+
 type NotificationRow = {
   id: string;
   title: string;
@@ -75,10 +74,6 @@ type NotificationRow = {
   created_at: string;
   is_read: boolean;
 };
-
-// ============================================
-// Tooth logo
-// ============================================
 
 const ToothIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" className={className}>
@@ -89,28 +84,42 @@ const ToothIcon = ({ className = "h-6 w-6" }: { className?: string }) => (
   </svg>
 );
 
-const DoctorDashboard = () => {
-  // ============================================
-  // Language
-  // ============================================
+// Convert Arabic-Indic digits (٠١٢٣...) to Latin digits so phone search works with both
+const normalizeDigits = (value: string) =>
+  value.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 
+// Remove spaces, dashes, plus and brackets from a phone number
+const normalizePhone = (value: string) =>
+  normalizeDigits(value).replace(/[\s\-+()]/g, "");
+
+const DoctorDashboard = () => {
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("dentalcare-language");
     return saved === "en" ? "en" : "ar";
   });
-
-  // ============================================
-  // Theme
-  // ============================================
 
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const savedTheme = localStorage.getItem("dentalcare-theme");
     return savedTheme === "dark" ? "dark" : "light";
   });
 
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const isArabic = language === "ar";
   const t = translations[language];
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Close sidebar with Escape key
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const handleLanguageChange = () => {
@@ -118,7 +127,10 @@ const DoctorDashboard = () => {
       setLanguage(saved === "en" ? "en" : "ar");
     };
 
-    window.addEventListener("dentalcare-language-change", handleLanguageChange);
+    window.addEventListener(
+      "dentalcare-language-change",
+      handleLanguageChange
+    );
     window.addEventListener("storage", handleLanguageChange);
 
     return () => {
@@ -176,16 +188,10 @@ const DoctorDashboard = () => {
     setTheme((current) => (current === "light" ? "dark" : "light"));
   };
 
-  // ============================================
-  // State
-  // ============================================
-
   const [loading, setLoading] = useState(true);
   const [clinicId, setClinicId] = useState<string | null>(null);
-
   const [doctor, setDoctor] = useState<DoctorProfile | null>(null);
   const [clinic, setClinic] = useState<ClinicInfo | null>(null);
-
   const [patientsCount, setPatientsCount] = useState(0);
   const [upcomingCount, setUpcomingCount] = useState(0);
   const [newPatientsThisMonth, setNewPatientsThisMonth] = useState(0);
@@ -193,22 +199,17 @@ const DoctorDashboard = () => {
   const [paidToday, setPaidToday] = useState(0);
   const [totalTreatmentValue, setTotalTreatmentValue] = useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
-
-  const [allAppointments, setAllAppointments] = useState<AppointmentRow[]>([]);
-  const [recentPatients, setRecentPatients] = useState<RecentPatientRow[]>([]);
+  const [allAppointments, setAllAppointments] = useState<AppointmentRow[]>(
+    []
+  );
+  const [recentPatients, setRecentPatients] = useState<
+    RecentPatientRow[]
+  >([]);
+  const [allPatients, setAllPatients] = useState<SearchPatientRow[]>([]);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
-
   const [selectedWeekDay, setSelectedWeekDay] = useState<string>("");
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
-
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
   const [todaySummaryOpen, setTodaySummaryOpen] = useState(false);
-
-  // ============================================
-  // Helpers — dates
-  // ============================================
 
   const getEgyptToday = () =>
     new Intl.DateTimeFormat("en-CA", {
@@ -303,9 +304,37 @@ const DoctorDashboard = () => {
     }
   };
 
-  // ============================================
-  // Load everything
-  // ============================================
+  // =====================================================
+  // SEARCH PATIENTS ONLY (by name or phone)
+  // =====================================================
+
+  const searchResults = useMemo(() => {
+    const rawQuery = searchValue.trim();
+
+    if (!rawQuery) {
+      return [];
+    }
+
+    const nameQuery = normalizeDigits(rawQuery).toLowerCase();
+    const phoneQuery = normalizePhone(rawQuery);
+
+    return allPatients
+      .filter((patient) => {
+        const name = normalizeDigits(patient.name || "").toLowerCase();
+        const phone = normalizePhone(patient.phone || "");
+
+        const matchesName = name.includes(nameQuery);
+        const matchesPhone = phoneQuery !== "" && phone.includes(phoneQuery);
+
+        return matchesName || matchesPhone;
+      })
+      .slice(0, 10);
+  }, [searchValue, allPatients]);
+
+  const goToPatient = (patientId: string) => {
+    setSearchValue("");
+    navigate(`/doctor/patients/${patientId}`);
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -367,14 +396,33 @@ const DoctorDashboard = () => {
         return;
       }
 
-      // ---------- Patients ----------
-
+      // Patients count
       const { count: totalPatients } = await supabase
         .from("patients")
         .select("*", { count: "exact", head: true })
         .eq("clinic_id", cId);
 
       setPatientsCount(totalPatients || 0);
+
+      // =====================================================
+      // Load ALL patients for search
+      // =====================================================
+
+      const { data: allPatientsData, error: allPatientsError } =
+        await supabase
+          .from("patients")
+          .select("id, name, phone")
+          .eq("clinic_id", cId)
+          .order("name", { ascending: true });
+
+      if (allPatientsError) {
+        console.error(
+          "Error loading patients for search:",
+          allPatientsError
+        );
+      } else {
+        setAllPatients(allPatientsData || []);
+      }
 
       const now = new Date();
 
@@ -390,8 +438,7 @@ const DoctorDashboard = () => {
 
       setNewPatientsThisMonth(newPatients || 0);
 
-      // ---------- Appointments ----------
-
+      // Appointments
       const { data: appointmentsData, error: appointmentsError } =
         await supabase
           .from("appointments")
@@ -432,8 +479,7 @@ const DoctorDashboard = () => {
         setUpcomingCount(upcoming.length);
       }
 
-      // ---------- Recent patients ----------
-
+      // Recent patients
       const { data: patientsData, error: patientsErr } = await supabase
         .from("patients")
         .select("id, name, phone, created_at")
@@ -450,7 +496,10 @@ const DoctorDashboard = () => {
           .from("appointments")
           .select("patient_id, appointment_date, status")
           .eq("clinic_id", cId)
-          .in("patient_id", patientIds.length ? patientIds : [""])
+          .in(
+            "patient_id",
+            patientIds.length ? patientIds : [""]
+          )
           .order("appointment_date", { ascending: false });
 
         const lastByPatient = new Map<
@@ -481,8 +530,7 @@ const DoctorDashboard = () => {
         );
       }
 
-      // ---------- Financials ----------
-
+      // Financials
       const { data: medicalRecords } = await supabase
         .from("medical_records")
         .select("id, cost")
@@ -530,8 +578,7 @@ const DoctorDashboard = () => {
 
       setPaidToday(paidTodayTotal);
 
-      // ---------- Notifications ----------
-
+      // Notifications
       const { data: notificationsData } = await supabase
         .from("notifications")
         .select("id, title, message, created_at, is_read")
@@ -547,10 +594,6 @@ const DoctorDashboard = () => {
 
     loadDashboard();
   }, []);
-
-  // ============================================
-  // Derived — today's appointments
-  // ============================================
 
   const todayAppointments = useMemo(() => {
     const today = getEgyptToday();
@@ -568,10 +611,6 @@ const DoctorDashboard = () => {
             : "upcoming",
       }));
   }, [allAppointments]);
-
-  // ============================================
-  // Today's checkups and follow-ups
-  // ============================================
 
   const todayCheckupsCount = useMemo(
     () =>
@@ -593,10 +632,6 @@ const DoctorDashboard = () => {
     [todayAppointments]
   );
 
-  // ============================================
-  // This week's appointments
-  // ============================================
-
   const weekAppointmentsByDay = useMemo(() => {
     const map = new Map<string, AppointmentRow[]>();
 
@@ -613,10 +648,6 @@ const DoctorDashboard = () => {
 
   const selectedDayAppointments =
     weekAppointmentsByDay.get(selectedWeekDay) || [];
-
-  // ============================================
-  // Patient status
-  // ============================================
 
   const patientStatusBreakdown = useMemo(() => {
     const counts = {
@@ -686,10 +717,6 @@ const DoctorDashboard = () => {
     }
   };
 
-  // ============================================
-  // Sidebar nav items
-  // ============================================
-
   const navItems = [
     {
       icon: HomeIcon,
@@ -721,22 +748,12 @@ const DoctorDashboard = () => {
       label: isArabic ? "التقارير" : "Reports",
       to: "/doctor/reports",
     },
-    // {
-    //   icon: PackageSearch,
-    //   label: isArabic ? "المخزون" : "Inventory",
-    //   to: "/doctor/inventory",
-    // },
     {
       icon: SettingsIcon,
       label: isArabic ? "الإعدادات" : "Settings",
       to: "/doctor/settings",
     },
   ];
-
-  // ============================================
-  // Quick tools
-  // تم إضافة المخزون هنا
-  // ============================================
 
   type QuickTool = {
     icon: typeof BarChart3;
@@ -751,11 +768,6 @@ const DoctorDashboard = () => {
       label: isArabic ? "التقارير" : "Reports",
       to: "/doctor/reports",
     },
-    // {
-    //   icon: PackageSearch,
-    //   label: isArabic ? "المخزون" : "Inventory",
-    //   to: "/doctor/inventory",
-    // },
     {
       icon: Search,
       label: isArabic ? "بحث عن مريض" : "Find patient",
@@ -800,31 +812,50 @@ const DoctorDashboard = () => {
       dir={isArabic ? "rtl" : "ltr"}
       className="min-h-screen bg-slate-50 dark:bg-slate-950"
     >
-      {/* ====================================================
-          Sidebar
-         ==================================================== */}
+      {/* Sidebar */}
+
+      {/* Overlay: tablet + mobile only (click to close) */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-[1px] lg:hidden"
+          aria-hidden="true"
+        />
+      )}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-30 hidden w-64 flex-col overflow-y-auto bg-[#0b1526] px-4 py-6 ${
-          sidebarOpen ? "lg:flex" : "lg:hidden"
+        className={`fixed inset-y-0 right-0 z-40 flex w-64 flex-col overflow-y-auto bg-[#0b1526] px-4 py-6 shadow-2xl transition-transform duration-300 ease-in-out ${
+          sidebarOpen
+            ? "translate-x-0"
+            : "translate-x-full"
         }`}
       >
-        <div className="mb-8 flex items-center gap-2 px-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-white">
-            <ToothIcon className="h-5 w-5" />
-          </span>
+        <div className="mb-8 flex items-center justify-between gap-2 px-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500 text-white">
+              <ToothIcon className="h-5 w-5" />
+            </span>
 
-          <div>
-            <p className="text-sm font-bold leading-tight text-white">
-              DentalCare
-            </p>
+            <div>
+              <p className="text-sm font-bold leading-tight text-white">
+                DentalCare
+              </p>
 
-            <p className="text-[11px] leading-tight text-slate-400">
-              {isArabic
-                ? "نظام إدارة العيادة"
-                : "Clinic System"}
-            </p>
+              <p className="text-[11px] leading-tight text-slate-400">
+                {isArabic ? "نظام إدارة العيادة" : "Clinic System"}
+              </p>
+            </div>
           </div>
+
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
+            title={isArabic ? "إغلاق القائمة" : "Close menu"}
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         <nav className="space-y-1">
@@ -832,6 +863,7 @@ const DoctorDashboard = () => {
             <Link
               key={item.to}
               to={item.to}
+              onClick={() => setSidebarOpen(false)}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                 location.pathname === item.to
                   ? "bg-teal-600 text-white"
@@ -844,15 +876,11 @@ const DoctorDashboard = () => {
           ))}
         </nav>
 
-        {/* ---------- Quick Tools + Notifications ---------- */}
-
         <div className="mt-4 flex-1 space-y-4">
           <div className="rounded-2xl bg-white/5 p-4">
             <h2 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-white">
               <Star className="h-3.5 w-3.5 text-teal-400" />
-              {isArabic
-                ? "أدوات سريعة"
-                : "Quick Tools"}
+              {isArabic ? "أدوات سريعة" : "Quick Tools"}
             </h2>
 
             <div className="grid grid-cols-3 gap-2">
@@ -882,6 +910,7 @@ const DoctorDashboard = () => {
                   <Link
                     key={tool.label}
                     to={tool.to!}
+                    onClick={() => setSidebarOpen(false)}
                     className="flex flex-col items-center gap-1 rounded-lg bg-white/5 py-2.5 text-center transition hover:bg-teal-500/20"
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-teal-400">
@@ -895,8 +924,6 @@ const DoctorDashboard = () => {
                 )
               )}
             </div>
-
-            {/* Today's Summary */}
 
             {todaySummaryOpen && (
               <div className="mt-3 space-y-2 rounded-xl bg-white/5 p-3">
@@ -939,8 +966,6 @@ const DoctorDashboard = () => {
             )}
           </div>
 
-          {/* Notifications */}
-
           <div className="rounded-2xl bg-white/5 p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-xs font-bold text-white">
@@ -951,11 +976,10 @@ const DoctorDashboard = () => {
 
               <Link
                 to="/doctor/notifications"
+                onClick={() => setSidebarOpen(false)}
                 className="text-[10px] font-semibold text-teal-400 hover:text-teal-300"
               >
-                {isArabic
-                  ? "عرض الكل"
-                  : "View all"}
+                {isArabic ? "عرض الكل" : "View all"}
               </Link>
             </div>
 
@@ -989,9 +1013,7 @@ const DoctorDashboard = () => {
                         {new Date(
                           n.created_at
                         ).toLocaleString(
-                          isArabic
-                            ? "ar-EG"
-                            : "en-US",
+                          isArabic ? "ar-EG" : "en-US",
                           {
                             hour: "numeric",
                             minute: "2-digit",
@@ -1017,45 +1039,40 @@ const DoctorDashboard = () => {
         </div>
       </aside>
 
-      {/* ==================== Main column ==================== */}
+      {/* Main */}
 
-      <div className={sidebarOpen ? "lg:pr-64" : ""}>
-        {/* ---------- Top bar ---------- */}
+      <div
+        className={`transition-all duration-300 ${
+          sidebarOpen ? "lg:pr-64" : "lg:pr-0"
+        }`}
+      >
+        {/* Top bar */}
 
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:gap-4 sm:px-6">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                setSidebarOpen((open) => !open)
-              }
-              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 lg:flex"
-              aria-label={
-                sidebarOpen
-                  ? isArabic
-                    ? "إخفاء القائمة"
-                    : "Hide sidebar"
-                  : isArabic
-                  ? "إظهار القائمة"
-                  : "Show sidebar"
-              }
-              title={
-                sidebarOpen
-                  ? isArabic
-                    ? "إخفاء القائمة"
-                    : "Hide sidebar"
-                  : isArabic
-                  ? "إظهار القائمة"
-                  : "Show sidebar"
-              }
-            >
-              {sidebarOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <Menu className="h-4 w-4" />
-              )}
-            </button>
+          {/* Sidebar Toggle + Logo */}
 
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((value) => !value)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0b1526] text-white shadow-sm transition hover:bg-teal-600"
+            title={
+              sidebarOpen
+                ? isArabic
+                  ? "إخفاء القائمة"
+                  : "Hide menu"
+                : isArabic
+                ? "إظهار القائمة"
+                : "Show menu"
+            }
+          >
+            {sidebarOpen ? (
+              <PanelRightClose className="h-5 w-5" />
+            ) : (
+              <PanelRightOpen className="h-5 w-5" />
+            )}
+          </button>
+
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link
               to="/doctor/dashboard"
               className="flex items-center gap-2"
@@ -1070,7 +1087,7 @@ const DoctorDashboard = () => {
             </Link>
           </div>
 
-          {/* Search + language + theme */}
+          {/* Search */}
 
           <div className="hidden flex-1 items-center justify-center gap-3 sm:flex">
             <div className="relative w-full max-w-md">
@@ -1083,20 +1100,79 @@ const DoctorDashboard = () => {
               <input
                 type="text"
                 value={searchValue}
-                onChange={(e) =>
-                  setSearchValue(e.target.value)
-                }
+                onChange={(e) => setSearchValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    searchResults.length > 0
+                  ) {
+                    e.preventDefault();
+                    goToPatient(searchResults[0].id);
+                  }
+
+                  if (e.key === "Escape") {
+                    setSearchValue("");
+                  }
+                }}
                 placeholder={
                   isArabic
-                    ? "ابحث عن مريض، موعد، رقم هاتف، أو أي شيء..."
-                    : "Search patient, appointment, phone, or anything..."
+                    ? "ابحث عن المريض بالاسم أو رقم التليفون..."
+                    : "Search patient by name or phone..."
                 }
                 className={`w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm text-slate-700 outline-none focus:border-teal-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white ${
-                  isArabic
-                    ? "pr-9 pl-3"
-                    : "pl-9 pr-3"
+                  isArabic ? "pr-9 pl-3" : "pl-9 pr-3"
                 }`}
               />
+
+              {/* Patient Search Results */}
+
+              {searchValue.trim() && (
+                <div className="absolute top-full z-50 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  {searchResults.length === 0 ? (
+                    <div className="px-3 py-5 text-center text-sm text-slate-400">
+                      {isArabic
+                        ? "لا يوجد مريض بهذا الاسم أو الرقم"
+                        : "No patient found with this name or phone number"}
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {searchResults.map((patient) => (
+                        <button
+                          key={patient.id}
+                          type="button"
+                          onClick={() =>
+                            goToPatient(patient.id)
+                          }
+                          className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-start transition hover:bg-slate-50 dark:hover:bg-slate-800"
+                        >
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400">
+                            <Users className="h-5 w-5" />
+                          </span>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-slate-800 dark:text-white">
+                              {patient.name}
+                            </p>
+
+                            <p
+                              dir="ltr"
+                              className="mt-0.5 text-start text-xs text-slate-400"
+                            >
+                              {patient.phone || "-"}
+                            </p>
+                          </div>
+
+                          <span className="text-xs font-medium text-teal-600 dark:text-teal-400">
+                            {isArabic
+                              ? "عرض المريض"
+                              : "View patient"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 dark:border-slate-700">
@@ -1104,9 +1180,7 @@ const DoctorDashboard = () => {
                 type="button"
                 onClick={toggleLanguage}
                 className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 transition-all hover:text-teal-600 dark:text-slate-300 dark:hover:text-teal-400"
-                title={
-                  isArabic ? "English" : "العربية"
-                }
+                title={isArabic ? "English" : "العربية"}
               >
                 <Languages className="h-4 w-4" />
 
@@ -1121,15 +1195,6 @@ const DoctorDashboard = () => {
                 type="button"
                 onClick={toggleTheme}
                 dir="ltr"
-                aria-label={
-                  theme === "dark"
-                    ? isArabic
-                      ? "الوضع الفاتح"
-                      : "Light mode"
-                    : isArabic
-                    ? "الوضع الداكن"
-                    : "Dark mode"
-                }
                 className="relative flex h-7 w-14 items-center rounded-full bg-teal-600 px-1.5 transition-colors"
               >
                 <Sun className="h-3.5 w-3.5 shrink-0 text-white/80" />
@@ -1147,24 +1212,51 @@ const DoctorDashboard = () => {
             </div>
           </div>
 
-          {/* Notifications + profile */}
+          {/* Left side (in Arabic) — doctor name is display only, not clickable */}
 
           <div className="ms-auto flex items-center gap-2 sm:gap-3">
+            {/* Language + theme toggles: phones only (desktop/tablet version is next to the search bar) */}
+            <div className="flex shrink-0 items-center gap-2 rounded-full border border-slate-200 px-2 py-1 dark:border-slate-700 sm:hidden">
+              <button
+                type="button"
+                onClick={toggleLanguage}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 transition hover:text-teal-600 dark:text-slate-300 dark:hover:text-teal-400"
+                title={isArabic ? "English" : "العربية"}
+              >
+                <Languages className="h-4 w-4" />
+              </button>
+
+              <span className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                dir="ltr"
+                className="relative flex h-7 w-14 items-center rounded-full bg-teal-600 px-1.5 transition-colors"
+              >
+                <Sun className="h-3.5 w-3.5 shrink-0 text-white/80" />
+
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
+                    theme === "dark"
+                      ? "translate-x-[26px]"
+                      : "translate-x-[2px]"
+                  }`}
+                />
+
+                <Moon className="mr-0 ml-auto h-3.5 w-3.5 shrink-0 text-white/80" />
+              </button>
+            </div>
+
             <Link
               to="/doctor/notifications"
               className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <Bell className="h-5 w-5" />
 
-              {notifications.filter(
-                (n) => !n.is_read
-              ).length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                  {
-                    notifications.filter(
-                      (n) => !n.is_read
-                    ).length
-                  }
+              {notifications.filter((n) => !n.is_read).length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                  {notifications.filter((n) => !n.is_read).length}
                 </span>
               )}
             </Link>
@@ -1176,85 +1268,43 @@ const DoctorDashboard = () => {
               <Calendar className="h-5 w-5" />
             </Link>
 
-            <button
-              type="button"
-              className="hidden h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:flex"
-            >
-              <MessageCircle className="h-5 w-5" />
-            </button>
+            {/* Doctor info: plain div, no click action */}
 
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() =>
-                  setProfileMenuOpen((v) => !v)
-                }
-                className="flex items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <div className="text-end">
-                  <p className="text-sm font-bold text-slate-800 dark:text-white">
-                    {isArabic
-                      ? `د. ${doctor?.name}`
-                      : `Dr. ${doctor?.name}`}
-                  </p>
+            <div className="flex cursor-default select-none items-center gap-2 px-2 py-1.5">
+              <div className="hidden text-end sm:block">
+                <p className="text-sm font-bold text-slate-800 dark:text-white">
+                  {isArabic
+                    ? `د. ${doctor?.name}`
+                    : `Dr. ${doctor?.name}`}
+                </p>
 
-                  <p className="text-xs text-slate-400">
-                    {doctor?.specialty ||
-                      (isArabic
-                        ? "طبيب أسنان عام"
-                        : "General dentist")}
-                  </p>
-                </div>
+                <p className="text-xs text-slate-400">
+                  {doctor?.specialty ||
+                    (isArabic
+                      ? "طبيب أسنان عام"
+                      : "General dentist")}
+                </p>
+              </div>
 
-                {doctor?.avatar_url ? (
-                  <img
-                    src={doctor.avatar_url}
-                    alt={doctor.name}
-                    className="h-10 w-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 font-bold text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
-                    {doctor?.name?.charAt(0) || "D"}
-                  </span>
-                )}
-
-                <ChevronDown className="h-4 w-4 text-slate-400" />
-              </button>
-
-              {profileMenuOpen && (
-                <div className="absolute end-0 z-30 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                  <Link
-                    to="/doctor/clinic-profile"
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    <Pencil className="h-4 w-4" />
-
-                    {isArabic
-                      ? "تعديل البيانات"
-                      : "Edit profile"}
-                  </Link>
-
-                  <Link
-                    to="/doctor/settings"
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    <SettingsIcon className="h-4 w-4" />
-
-                    {isArabic
-                      ? "الإعدادات"
-                      : "Settings"}
-                  </Link>
-                </div>
+              {doctor?.avatar_url ? (
+                <img
+                  src={doctor.avatar_url}
+                  alt={doctor.name}
+                  className="h-10 w-10 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 font-bold text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                  {doctor?.name?.charAt(0) || "D"}
+                </span>
               )}
             </div>
           </div>
         </header>
 
-        {/* ---------- Content ---------- */}
+        {/* Content */}
 
         <main className="px-4 py-6 sm:px-6">
           <div className="space-y-6">
-
             {/* Welcome banner */}
 
             <div className="relative overflow-hidden rounded-2xl p-6 text-white sm:p-8">
@@ -1293,7 +1343,7 @@ const DoctorDashboard = () => {
               </div>
             </div>
 
-            {/* Stat cards */}
+            {/* Stats */}
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
@@ -1363,10 +1413,7 @@ const DoctorDashboard = () => {
 
             {/* Today's + week's appointments */}
 
-            <div className="grid gap-6 lg:grid-cols-2">
-
-              {/* Today's appointments */}
-
+            <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
@@ -1379,9 +1426,7 @@ const DoctorDashboard = () => {
                     to="/doctor/today-appointments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
@@ -1397,27 +1442,19 @@ const DoctorDashboard = () => {
                       <thead>
                         <tr className="text-slate-400">
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "الحالة"
-                              : "Status"}
+                            {isArabic ? "الحالة" : "Status"}
                           </th>
 
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "نوع الزيارة"
-                              : "Type"}
+                            {isArabic ? "نوع الزيارة" : "Type"}
                           </th>
 
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "اسم المريض"
-                              : "Patient"}
+                            {isArabic ? "اسم المريض" : "Patient"}
                           </th>
 
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "الوقت"
-                              : "Time"}
+                            {isArabic ? "الوقت" : "Time"}
                           </th>
                         </tr>
                       </thead>
@@ -1433,19 +1470,16 @@ const DoctorDashboard = () => {
                                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                                   a.checkedState === "attended"
                                     ? "bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300"
-                                    : a.checkedState ===
-                                      "cancelled"
+                                    : a.checkedState === "cancelled"
                                     ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
                                     : "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
                                 }`}
                               >
-                                {a.checkedState ===
-                                "attended"
+                                {a.checkedState === "attended"
                                   ? isArabic
                                     ? "حاضر"
                                     : "Attended"
-                                  : a.checkedState ===
-                                    "cancelled"
+                                  : a.checkedState === "cancelled"
                                   ? isArabic
                                     ? "ملغي"
                                     : "Cancelled"
@@ -1463,15 +1497,11 @@ const DoctorDashboard = () => {
 
                             <td className="py-2.5 font-semibold text-slate-800 dark:text-white">
                               {a.patients?.name ||
-                                (isArabic
-                                  ? "مريض"
-                                  : "Patient")}
+                                (isArabic ? "مريض" : "Patient")}
                             </td>
 
                             <td className="py-2.5 text-slate-500 dark:text-slate-400">
-                              {formatTime(
-                                a.appointment_time
-                              )}
+                              {formatTime(a.appointment_time)}
                             </td>
                           </tr>
                         ))}
@@ -1480,8 +1510,6 @@ const DoctorDashboard = () => {
                   </div>
                 )}
               </div>
-
-              {/* This week's appointments */}
 
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
@@ -1495,13 +1523,11 @@ const DoctorDashboard = () => {
                     to="/doctor/week-appointments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
-                <div className="mb-4 flex gap-2 overflow-x-auto">
+                <div className="mb-4 flex w-full gap-2 overflow-x-auto pb-2 touch-pan-x snap-x [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {weekDays.map((day) => (
                     <button
                       key={day.iso}
@@ -1509,7 +1535,7 @@ const DoctorDashboard = () => {
                       onClick={() =>
                         setSelectedWeekDay(day.iso)
                       }
-                      className={`flex shrink-0 flex-col items-center rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                      className={`flex min-w-[56px] shrink-0 snap-start flex-col items-center rounded-xl px-3 py-2 text-xs font-semibold transition ${
                         selectedWeekDay === day.iso
                           ? "bg-teal-600 text-white"
                           : "bg-slate-50 text-slate-500 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-400"
@@ -1525,8 +1551,7 @@ const DoctorDashboard = () => {
                 </div>
 
                 <div className="space-y-2">
-                  {selectedDayAppointments.length ===
-                  0 ? (
+                  {selectedDayAppointments.length === 0 ? (
                     <p className="py-6 text-center text-sm text-slate-400">
                       {isArabic
                         ? "لا توجد مواعيد في هذا اليوم."
@@ -1543,9 +1568,7 @@ const DoctorDashboard = () => {
                         <div>
                           <p className="text-sm font-semibold">
                             {a.patients?.name ||
-                              (isArabic
-                                ? "مريض"
-                                : "Patient")}
+                              (isArabic ? "مريض" : "Patient")}
                           </p>
 
                           <p className="text-xs opacity-80">
@@ -1556,9 +1579,7 @@ const DoctorDashboard = () => {
                         </div>
 
                         <span className="text-xs font-semibold">
-                          {formatTime(
-                            a.appointment_time
-                          )}
+                          {formatTime(a.appointment_time)}
                         </span>
                       </div>
                     ))
@@ -1567,27 +1588,20 @@ const DoctorDashboard = () => {
               </div>
             </div>
 
-            {/* Payments + recent patients + status */}
+            {/* Bottom cards */}
 
             <div className="grid gap-6 lg:grid-cols-3">
-
-              {/* Payments */}
-
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic
-                      ? "المدفوعات"
-                      : "Payments"}
+                    {isArabic ? "المدفوعات" : "Payments"}
                   </h2>
 
                   <Link
                     to="/doctor/payments"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
@@ -1596,9 +1610,7 @@ const DoctorDashboard = () => {
                   style={{
                     background: `conic-gradient(#14b8a6 0% ${
                       totalTreatmentValue > 0
-                        ? (totalPaid /
-                            totalTreatmentValue) *
-                          100
+                        ? (totalPaid / totalTreatmentValue) * 100
                         : 0
                     }%, #f97316 0)`,
                   }}
@@ -1609,9 +1621,7 @@ const DoctorDashboard = () => {
                     </p>
 
                     <p className="text-[10px] text-slate-400">
-                      {isArabic
-                        ? "هذا الشهر"
-                        : "this month"}
+                      {isArabic ? "هذا الشهر" : "this month"}
                     </p>
                   </div>
                 </div>
@@ -1621,9 +1631,7 @@ const DoctorDashboard = () => {
                     <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                       <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
 
-                      {isArabic
-                        ? "مدفوع"
-                        : "Paid"}
+                      {isArabic ? "مدفوع" : "Paid"}
                     </span>
 
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -1635,16 +1643,13 @@ const DoctorDashboard = () => {
                     <span className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                       <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
 
-                      {isArabic
-                        ? "متبقي"
-                        : "Remaining"}
+                      {isArabic ? "متبقي" : "Remaining"}
                     </span>
 
                     <span className="font-semibold text-slate-700 dark:text-slate-200">
                       {formatMoney(
                         Math.max(
-                          totalTreatmentValue -
-                            totalPaid,
+                          totalTreatmentValue - totalPaid,
                           0
                         )
                       )}
@@ -1652,8 +1657,6 @@ const DoctorDashboard = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Recent patients */}
 
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
@@ -1667,9 +1670,7 @@ const DoctorDashboard = () => {
                     to="/doctor/patients"
                     className="text-xs font-semibold text-teal-600 hover:text-teal-700 dark:text-teal-400"
                   >
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
@@ -1718,14 +1719,10 @@ const DoctorDashboard = () => {
                 )}
               </div>
 
-              {/* Patient status */}
-
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic
-                      ? "حالة المرضى"
-                      : "Patient Status"}
+                    {isArabic ? "حالة المرضى" : "Patient Status"}
                   </h2>
 
                   <Bell className="h-4 w-4 text-slate-300" />
@@ -1758,38 +1755,26 @@ const DoctorDashboard = () => {
                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-
-                    {isArabic
-                      ? "قيد العلاج"
-                      : "In progress"}{" "}
-                    ({patientStatusBreakdown.in_progress})
+                    {isArabic ? "قيد العلاج" : "In progress"} (
+                    {patientStatusBreakdown.in_progress})
                   </span>
 
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-
-                    {isArabic
-                      ? "في المتابعة"
-                      : "Follow-up"}{" "}
-                    ({patientStatusBreakdown.follow_up})
+                    {isArabic ? "في المتابعة" : "Follow-up"} (
+                    {patientStatusBreakdown.follow_up})
                   </span>
 
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
-
-                    {isArabic
-                      ? "مكتمل العلاج"
-                      : "Completed"}{" "}
-                    ({patientStatusBreakdown.completed})
+                    {isArabic ? "مكتمل العلاج" : "Completed"} (
+                    {patientStatusBreakdown.completed})
                   </span>
 
                   <span className="flex items-center gap-1.5">
                     <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-
-                    {isArabic
-                      ? "لم يحضر"
-                      : "No show"}{" "}
-                    ({patientStatusBreakdown.no_show})
+                    {isArabic ? "لم يحضر" : "No show"} (
+                    {patientStatusBreakdown.no_show})
                   </span>
                 </div>
               </div>

@@ -1,7 +1,6 @@
 import {
   Facebook,
   Instagram,
-  Twitter,
   Linkedin,
   Heart,
   Phone,
@@ -27,7 +26,6 @@ type SiteSettings = {
   address_en: string | null;
   facebook: string | null;
   instagram: string | null;
-  twitter: string | null;
   linkedin: string | null;
 };
 
@@ -57,7 +55,7 @@ const Footer = () => {
       const { data, error } = await supabase
         .from("site_settings")
         .select(
-          "phone, whatsapp, email, address_ar, address_en, facebook, instagram, twitter, linkedin"
+          "phone, whatsapp, email, address_ar, address_en, facebook, instagram, linkedin"
         )
         .eq("id", 1)
         .maybeSingle();
@@ -114,7 +112,6 @@ const Footer = () => {
     email: settings?.email?.trim() || "",
     facebook: settings?.facebook?.trim() || "",
     instagram: settings?.instagram?.trim() || "",
-    twitter: settings?.twitter?.trim() || "",
     linkedin: settings?.linkedin?.trim() || "",
   };
 
@@ -132,7 +129,6 @@ const Footer = () => {
   const socials = [
     { key: "facebook", label: "Facebook", url: info.facebook, icon: Facebook },
     { key: "instagram", label: "Instagram", url: info.instagram, icon: Instagram },
-    { key: "twitter", label: "Twitter", url: info.twitter, icon: Twitter },
     { key: "linkedin", label: "LinkedIn", url: info.linkedin, icon: Linkedin },
   ].filter((item) => item.url);
 

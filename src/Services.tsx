@@ -6,7 +6,7 @@ type Service = {
   id: string;
   name: string;
   description: string | null;
-  price: number;
+  price: number | null;
   duration: number | null;
 };
 
@@ -230,16 +230,7 @@ const Services = () => {
       return;
     }
 
-    if (!price) {
-      setError(
-        isArabic
-          ? "من فضلك أدخل سعر الخدمة."
-          : "Please enter the service price."
-      );
-
-      return;
-    }
-
+    // السعر والمدة اختياريين
     const {
       error: insertError,
     } = await supabase
@@ -249,8 +240,10 @@ const Services = () => {
         name: name.trim(),
         description:
           description.trim() || null,
-        price: Number(price),
-        duration: duration
+        price: price.trim()
+          ? Number(price)
+          : null,
+        duration: duration.trim()
           ? Number(duration)
           : null,
       });
@@ -378,8 +371,8 @@ const Services = () => {
 
               <p className="mt-3 text-lg text-slate-600 dark:text-slate-300">
                 {isArabic
-                  ? "أضف خدمات عيادتك وقم بإدارتها بسهولة."
-                  : "Add and manage your clinic services easily."}
+                  ? "أضف خدمات عيادتك وقم بإدارتها بسهولة. هذه الخدمات تظهر للمرضى في صفحة عيادتك."
+                  : "Add and manage your clinic services easily. These services are shown to patients on your clinic page."}
               </p>
             </div>
 
@@ -447,8 +440,8 @@ const Services = () => {
 
                 <p className="mt-2 text-slate-600 dark:text-slate-300">
                   {isArabic
-                    ? "إضافة الخدمات اختيارية. يمكنك تخطي هذا القسم."
-                    : "Adding services is optional. You can skip this section."}
+                    ? "اسم الخدمة فقط هو المطلوب. السعر والمدة والوصف اختياريين."
+                    : "Only the service name is required. Price, duration and description are optional."}
                 </p>
               </div>
 
@@ -476,8 +469,8 @@ const Services = () => {
               <div>
                 <label className="mb-2 block font-semibold text-slate-700 dark:text-slate-200">
                   {isArabic
-                    ? "اسم الخدمة"
-                    : "Service Name"}
+                    ? "اسم الخدمة *"
+                    : "Service Name *"}
                 </label>
 
                 <input
@@ -497,13 +490,13 @@ const Services = () => {
                 />
               </div>
 
-              {/* Price */}
+              {/* Price (optional) */}
 
               <div>
                 <label className="mb-2 block font-semibold text-slate-700 dark:text-slate-200">
                   {isArabic
-                    ? "السعر"
-                    : "Price"}
+                    ? "السعر (اختياري)"
+                    : "Price (optional)"}
                 </label>
 
                 <input
@@ -519,19 +512,18 @@ const Services = () => {
                       ? "مثال: 500"
                       : "e.g. 500"
                   }
-                  required
                   dir="ltr"
                   className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
                 />
               </div>
 
-              {/* Duration */}
+              {/* Duration (optional) */}
 
               <div>
                 <label className="mb-2 block font-semibold text-slate-700 dark:text-slate-200">
                   {isArabic
-                    ? "المدة (بالدقائق)"
-                    : "Duration (minutes)"}
+                    ? "المدة بالدقائق (اختياري)"
+                    : "Duration in minutes (optional)"}
                 </label>
 
                 <input
@@ -551,13 +543,13 @@ const Services = () => {
                 />
               </div>
 
-              {/* Description */}
+              {/* Description (optional) */}
 
               <div>
                 <label className="mb-2 block font-semibold text-slate-700 dark:text-slate-200">
                   {isArabic
-                    ? "الوصف"
-                    : "Description"}
+                    ? "الوصف (اختياري)"
+                    : "Description (optional)"}
                 </label>
 
                 <input
@@ -614,8 +606,8 @@ const Services = () => {
 
             <p className="mt-2 text-slate-600 dark:text-slate-300">
               {isArabic
-                ? "الخدمات اختيارية. يمكنك ترك هذا القسم فارغًا."
-                : "Services are optional. You can leave this section empty."}
+                ? "الخدمات اللي تضيفها هنا بتظهر للمرضى في صفحة عيادتك."
+                : "Services you add here appear to patients on your clinic page."}
             </p>
           </div>
 
@@ -640,8 +632,8 @@ const Services = () => {
 
               <p className="mt-2 text-slate-500 dark:text-slate-400">
                 {isArabic
-                  ? "أضف الخدمات فقط إذا كنت بحاجة إليها."
-                  : "Add services only if you need them."}
+                  ? "أضف خدمات عيادتك لتظهر للمرضى في صفحة العيادة."
+                  : "Add your clinic services so patients can see them on your clinic page."}
               </p>
 
               <button
@@ -774,10 +766,13 @@ const Services = () => {
                             : "text-left"
                         }`}
                       >
-                        {service.price}{" "}
-                        {isArabic
-                          ? "جنيه"
-                          : "EGP"}
+                        {service.price != null
+                          ? `${service.price} ${
+                              isArabic
+                                ? "جنيه"
+                                : "EGP"
+                            }`
+                          : "-"}
                       </td>
 
                       <td
