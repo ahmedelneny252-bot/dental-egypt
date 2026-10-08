@@ -207,6 +207,19 @@ const Appointments = () => {
     }
   };
 
+  // تاريخ مختصر للصفوف في عرض الأسبوع والشهر: يوم الأسبوع + اليوم + الشهر
+  const formatRowDate = (date: string) => {
+    try {
+      return new Intl.DateTimeFormat(isArabic ? "ar-EG" : "en-US", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }).format(new Date(`${date}T00:00:00`));
+    } catch {
+      return date;
+    }
+  };
+
   const formatDateNav = (date: string) => {
     try {
       const d = new Date(`${date}T00:00:00`);
@@ -491,6 +504,9 @@ const Appointments = () => {
     }
     return displayedAppointments[0] || null;
   }, [displayedAppointments, selectedAppointmentId]);
+
+  // في عرض الأسبوع والشهر نظهر التاريخ مع الوقت
+  const showDateColumn = viewMode !== "day";
 
   const handleAppointmentAction = async (
     appointment: Appointment,
@@ -1121,6 +1137,117 @@ const Appointments = () => {
     return isArabic ? "حجز" : "Booking";
   };
 
+  // ألوان نوع الموعد: حجز = أزرق سماوي، متابعة = بنفسجي
+  const getTypeBadgeClasses = (type: AppointmentType) =>
+    type === "follow_up"
+      ? "bg-purple-100 text-purple-700 ring-purple-300 dark:bg-purple-900/40 dark:text-purple-200 dark:ring-purple-700"
+      : "bg-sky-100 text-sky-700 ring-sky-300 dark:bg-sky-900/40 dark:text-sky-200 dark:ring-sky-700";
+
+  const getTypeDotClasses = (type: AppointmentType) =>
+    type === "follow_up" ? "bg-purple-500" : "bg-sky-500";
+
+  const getTypeBorderClasses = (type: AppointmentType) =>
+    type === "follow_up" ? "border-s-purple-500" : "border-s-sky-500";
+
+  const renderTypeBadge = (type: AppointmentType) => (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset ${getTypeBadgeClasses(
+        type
+      )}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${getTypeDotClasses(type)}`} />
+      {getAppointmentTypeLabel(type)}
+    </span>
+  );
+
+  // قائمة الإجراءات (قبول / رفض / تعديل / إلغاء) - مشتركة بين الجدول وكروت الموبايل
+  const renderActionsMenu = (appointment: Appointment) => {
+    const isPending = appointment.status === "pending";
+    const isFollowUp = appointment.appointment_type === "follow_up";
+    const isProcessing = actionLoading === appointment.id;
+
+    if (!((isPending || isFollowUp) && appointment.status !== "cancelled")) {
+      return null;
+    }
+
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          disabled={isProcessing}
+          onClick={() =>
+            setOpenMenuId((current) =>
+              current === appointment.id ? null : appointment.id
+            )
+          }
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
+          aria-label={isArabic ? "المزيد" : "More"}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+
+        {openMenuId === appointment.id && (
+          <>
+            <div
+              className="fixed inset-0 z-10"
+              onClick={() => setOpenMenuId(null)}
+            />
+
+            <div className="absolute end-0 z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              {isPending && !isFollowUp && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleAppointmentAction(appointment, "confirm")
+                    }
+                    className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30"
+                  >
+                    {isArabic ? "قبول" : "Accept"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleAppointmentAction(appointment, "cancel")
+                    }
+                    className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  >
+                    {isArabic ? "رفض" : "Reject"}
+                  </button>
+                </>
+              )}
+
+              {isFollowUp && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(appointment)}
+                    className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                  >
+                    {isArabic ? "تعديل" : "Edit"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCancelFollowUp(appointment)}
+                    className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  >
+                    {isArabic ? "إلغاء" : "Cancel"}
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // أيقونات التنقل: تتعكس حسب اتجاه اللغة
+  const PrevIcon = isArabic ? ChevronRight : ChevronLeft;
+  const NextIcon = isArabic ? ChevronLeft : ChevronRight;
+
   if (loading) {
     return (
       <div
@@ -1137,17 +1264,17 @@ const Appointments = () => {
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
-      className="min-h-screen bg-slate-50 dark:bg-slate-950"
+      className="min-h-screen overflow-x-hidden bg-slate-50 dark:bg-slate-950"
     >
       {/* ==================== Header ==================== */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:h-20 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => navigate(-1)}
               aria-label={isArabic ? "رجوع" : "Go back"}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               {isArabic ? (
                 <ArrowRight className="h-5 w-5" />
@@ -1156,7 +1283,7 @@ const Appointments = () => {
               )}
             </button>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-teal-600 text-white shadow-sm">
                 {clinicLogo ? (
                   <img
@@ -1169,8 +1296,8 @@ const Appointments = () => {
                 )}
               </div>
 
-              <div className="leading-tight">
-                <p className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-lg">
                   {clinicName || (isArabic ? "العيادة" : "Clinic")}
                 </p>
 
@@ -1181,7 +1308,7 @@ const Appointments = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={toggleLanguage}
@@ -1226,32 +1353,32 @@ const Appointments = () => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6">
+      <main className="mx-auto max-w-7xl px-3 pb-12 pt-5 sm:px-6 sm:pt-6">
         {error && (
-          <div className="mb-5 rounded-xl bg-red-50 p-4 text-red-600 dark:bg-red-950/30 dark:text-red-400">
+          <div className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-5 rounded-xl bg-green-50 p-4 text-green-600 dark:bg-green-950/30 dark:text-green-400">
+          <div className="mb-5 rounded-xl bg-green-50 p-4 text-sm text-green-600 dark:bg-green-950/30 dark:text-green-400">
             {success}
           </div>
         )}
 
         {/* ---------- عنوان الصفحة + إضافة موعد متابعة ---------- */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
               {isArabic ? "المواعيد" : "Appointments"}
             </h1>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
             <button
               type="button"
               onClick={openFollowUpModal}
-              className="rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700"
+              className="rounded-xl bg-purple-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-purple-700 sm:px-5"
             >
               {isArabic ? "+ إضافة موعد متابعة" : "+ Add Follow-up"}
             </button>
@@ -1264,7 +1391,7 @@ const Appointments = () => {
                 loadAppointments(clinicId);
                 loadPatients(clinicId);
               }}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-teal-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700 sm:px-5"
             >
               <RefreshCcw className="h-4 w-4" />
               {isArabic ? "تحديث" : "Refresh"}
@@ -1273,9 +1400,9 @@ const Appointments = () => {
         </div>
 
         {/* ==================== Main grid ==================== */}
-        <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-          {/* ---------- العمود الأيمن ---------- */}
-          <div className="space-y-6 lg:order-first">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+          {/* ---------- العمود الجانبي (على الموبايل بيظهر بعد الجدول) ---------- */}
+          <div className="order-2 min-w-0 space-y-6 lg:order-first">
             {/* بروفايل الطبيب */}
             {doctorProfile && (
               <div className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900">
@@ -1290,13 +1417,13 @@ const Appointments = () => {
                     {doctorProfile.name?.charAt(0) || "D"}
                   </span>
                 )}
-                <div>
-                  <p className="text-sm font-bold text-slate-900 dark:text-white">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
                     {isArabic
                       ? `د. ${doctorProfile.name}`
                       : `Dr. ${doctorProfile.name}`}
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="truncate text-xs text-slate-400">
                     {doctorProfile.specialty ||
                       (isArabic ? "طبيب أسنان عام" : "General dentist")}
                   </p>
@@ -1313,11 +1440,11 @@ const Appointments = () => {
               {selectedAppointment ? (
                 <>
                   <div className="mb-4 flex items-center gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
                       <User className="h-5 w-5" />
                     </span>
-                    <div>
-                      <p className="font-bold text-slate-900 dark:text-white">
+                    <div className="min-w-0">
+                      <p className="break-words font-bold text-slate-900 dark:text-white">
                         {selectedAppointment.patient?.name ||
                           (isArabic ? "مريض غير معروف" : "Unknown patient")}
                       </p>
@@ -1327,7 +1454,7 @@ const Appointments = () => {
                   {selectedAppointment.patient?.phone && (
                     <div className="mb-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                       <Phone className="h-4 w-4 text-slate-400" />
-                      {selectedAppointment.patient.phone}
+                      <span dir="ltr">{selectedAppointment.patient.phone}</span>
                     </div>
                   )}
 
@@ -1335,17 +1462,17 @@ const Appointments = () => {
                     <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
                       {isArabic ? "الموعد المحدد" : "Selected appointment"}
                     </p>
-                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
-                      <Calendar className="h-4 w-4 text-slate-400" />
-                      {formatDate(selectedAppointment.appointment_date)}
-                      {" - "}
-                      {selectedAppointment.appointment_time}
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-slate-800 dark:text-white">
+                      <Calendar className="h-4 w-4 shrink-0 text-slate-400" />
+                      <span>
+                        {formatDate(selectedAppointment.appointment_date)}
+                        {" - "}
+                        {selectedAppointment.appointment_time}
+                      </span>
                     </p>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      {getAppointmentTypeLabel(
-                        selectedAppointment.appointment_type
-                      )}
-                    </p>
+                    <div className="mt-2">
+                      {renderTypeBadge(selectedAppointment.appointment_type)}
+                    </div>
                   </div>
 
                   <Link
@@ -1366,9 +1493,10 @@ const Appointments = () => {
           </div>
 
           {/* ---------- العمود الرئيسي ---------- */}
-          <div className="space-y-6 lg:order-last">
-            <div className="flex flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+          <div className="order-1 min-w-0 space-y-4 sm:space-y-6 lg:order-last">
+            {/* شريط الفلتر والتنقل */}
+            <div className="flex flex-col gap-3 rounded-2xl bg-white p-3 shadow-sm dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+              <div className="flex w-full items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800 sm:w-auto">
                 {(
                   [
                     { key: "day", label: isArabic ? "اليوم" : "Day" },
@@ -1380,7 +1508,7 @@ const Appointments = () => {
                     key={option.key}
                     type="button"
                     onClick={() => setViewMode(option.key)}
-                    className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition ${
+                    className={`flex-1 rounded-lg px-4 py-1.5 text-sm font-semibold transition sm:flex-none ${
                       viewMode === option.key
                         ? "bg-blue-600 text-white"
                         : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
@@ -1391,23 +1519,23 @@ const Appointments = () => {
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex w-full min-w-0 items-center justify-between gap-1 sm:w-auto sm:justify-start sm:gap-2">
                 <button
                   type="button"
                   onClick={handlePrev}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                   aria-label={isArabic ? "السابق" : "Previous"}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <PrevIcon className="h-4 w-4" />
                 </button>
 
                 <button
                   type="button"
                   onClick={openDatePicker}
-                  className="relative flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  className="relative flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800 sm:flex-none sm:px-3 sm:text-sm"
                 >
-                  <Calendar className="h-4 w-4 text-slate-400" />
-                  {rangeLabel}
+                  <Calendar className="h-4 w-4 shrink-0 text-slate-400" />
+                  <span className="truncate">{rangeLabel}</span>
                   <input
                     ref={dateInputRef}
                     type="date"
@@ -1425,18 +1553,18 @@ const Appointments = () => {
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                   aria-label={isArabic ? "التالي" : "Next"}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <NextIcon className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            {/* جدول المواعيد */}
+            {/* قائمة المواعيد */}
             <div className="rounded-2xl bg-white shadow-sm dark:bg-slate-900">
               {displayedAppointments.length === 0 ? (
-                <div className="p-12 text-center">
+                <div className="p-8 text-center sm:p-12">
                   <p className="text-slate-500 dark:text-slate-400">
                     {isArabic
                       ? "لا توجد مواعيد في هذه الفترة."
@@ -1449,202 +1577,191 @@ const Appointments = () => {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 dark:bg-slate-800">
-                      <tr>
-                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
-                          {isArabic ? "الوقت" : "Time"}
-                        </th>
-                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
-                          {isArabic ? "اسم المريض" : "Patient"}
-                        </th>
-                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
-                          {isArabic ? "نوع الموعد" : "Type"}
-                        </th>
-                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
-                          {isArabic ? "الحالة" : "Status"}
-                        </th>
-                        <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
-                          {isArabic ? "الإجراءات" : "Actions"}
-                        </th>
-                      </tr>
-                    </thead>
+                <>
+                  {/* ---------- كروت الموبايل ---------- */}
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 md:hidden">
+                    {displayedAppointments.map((appointment) => {
+                      const isRowSelected =
+                        selectedAppointment?.id === appointment.id;
 
-                    <tbody>
-                      {displayedAppointments.map((appointment) => {
-                        const isPending = appointment.status === "pending";
-                        const isFollowUp =
-                          appointment.appointment_type === "follow_up";
-                        const isProcessing =
-                          actionLoading === appointment.id;
-                        const isRowSelected =
-                          selectedAppointment?.id === appointment.id;
-
-                        return (
-                          <tr
-                            key={appointment.id}
-                            className={`border-t border-slate-100 transition dark:border-slate-800 ${
-                              isRowSelected
-                                ? "bg-blue-50/60 dark:bg-blue-950/20"
-                                : ""
-                            }`}
-                          >
-                            <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-200">
-                              {appointment.appointment_time}
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                                  <User className="h-4 w-4" />
-                                </span>
-                                <span className="font-semibold text-slate-900 dark:text-white">
-                                  {appointment.patient?.name ||
-                                    (isArabic
-                                      ? "مريض غير معروف"
-                                      : "Unknown Patient")}
-                                </span>
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {getAppointmentTypeLabel(
-                                appointment.appointment_type
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <span
-                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
-                                  appointment.status
-                                )}`}
-                              >
-                                {getStatusLabel(appointment.status)}
+                      return (
+                        <div
+                          key={appointment.id}
+                          onClick={() =>
+                            setSelectedAppointmentId(appointment.id)
+                          }
+                          className={`border-s-4 p-4 ${getTypeBorderClasses(
+                            appointment.appointment_type
+                          )} ${
+                            isRowSelected
+                              ? "bg-blue-50/60 dark:bg-blue-950/20"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                                <User className="h-4 w-4" />
                               </span>
-                            </td>
+                              <span className="min-w-0 break-words font-semibold text-slate-900 dark:text-white">
+                                {appointment.patient?.name ||
+                                  (isArabic
+                                    ? "مريض غير معروف"
+                                    : "Unknown Patient")}
+                              </span>
+                            </div>
 
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedAppointmentId(appointment.id)
-                                  }
-                                  className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300"
-                                >
-                                  {isArabic
-                                    ? "عرض التفاصيل"
-                                    : "View details"}
-                                </button>
+                            <span
+                              className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClasses(
+                                appointment.status
+                              )}`}
+                            >
+                              {getStatusLabel(appointment.status)}
+                            </span>
+                          </div>
 
-                                {(isPending || isFollowUp) &&
-                                  appointment.status !== "cancelled" && (
-                                    <div className="relative">
-                                      <button
-                                        type="button"
-                                        disabled={isProcessing}
-                                        onClick={() =>
-                                          setOpenMenuId((current) =>
-                                            current === appointment.id
-                                              ? null
-                                              : appointment.id
-                                          )
-                                        }
-                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-800"
-                                        aria-label={
-                                          isArabic ? "المزيد" : "More"
-                                        }
-                                      >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </button>
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
+                            {showDateColumn && (
+                              <span className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-100">
+                                <Calendar className="h-4 w-4 text-slate-400" />
+                                {formatRowDate(appointment.appointment_date)}
+                              </span>
+                            )}
 
-                                      {openMenuId === appointment.id && (
-                                        <>
-                                          <div
-                                            className="fixed inset-0 z-10"
-                                            onClick={() =>
-                                              setOpenMenuId(null)
-                                            }
-                                          />
+                            <span className="font-medium">
+                              {appointment.appointment_time}
+                            </span>
 
-                                          <div className="absolute end-0 z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                                            {isPending && !isFollowUp && (
-                                              <>
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    handleAppointmentAction(
-                                                      appointment,
-                                                      "confirm"
-                                                    )
-                                                  }
-                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30"
-                                                >
-                                                  {isArabic
-                                                    ? "قبول"
-                                                    : "Accept"}
-                                                </button>
+                            {renderTypeBadge(appointment.appointment_type)}
+                          </div>
 
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    handleAppointmentAction(
-                                                      appointment,
-                                                      "cancel"
-                                                    )
-                                                  }
-                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                                >
-                                                  {isArabic
-                                                    ? "رفض"
-                                                    : "Reject"}
-                                                </button>
-                                              </>
-                                            )}
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <Link
+                              to={`/doctor/patients/${appointment.patient_id}`}
+                              className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300"
+                            >
+                              {isArabic ? "عرض التفاصيل" : "View details"}
+                            </Link>
 
-                                            {isFollowUp && (
-                                              <>
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    openEditModal(appointment)
-                                                  }
-                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                                                >
-                                                  {isArabic
-                                                    ? "تعديل"
-                                                    : "Edit"}
-                                                </button>
+                            {renderActionsMenu(appointment)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
 
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    handleCancelFollowUp(
-                                                      appointment
-                                                    )
-                                                  }
-                                                  className="block w-full rounded-lg px-3 py-2 text-start text-sm font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                                >
-                                                  {isArabic
-                                                    ? "إلغاء"
-                                                    : "Cancel"}
-                                                </button>
-                                              </>
-                                            )}
-                                          </div>
-                                        </>
+                  {/* ---------- جدول الشاشات الكبيرة ---------- */}
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 dark:bg-slate-800">
+                        <tr>
+                          <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                            {showDateColumn
+                              ? isArabic
+                                ? "التاريخ والوقت"
+                                : "Date & Time"
+                              : isArabic
+                              ? "الوقت"
+                              : "Time"}
+                          </th>
+                          <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                            {isArabic ? "اسم المريض" : "Patient"}
+                          </th>
+                          <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                            {isArabic ? "نوع الموعد" : "Type"}
+                          </th>
+                          <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                            {isArabic ? "الحالة" : "Status"}
+                          </th>
+                          <th className="px-6 py-4 text-start font-semibold text-slate-600 dark:text-slate-300">
+                            {isArabic ? "الإجراءات" : "Actions"}
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {displayedAppointments.map((appointment) => {
+                          const isRowSelected =
+                            selectedAppointment?.id === appointment.id;
+
+                          return (
+                            <tr
+                              key={appointment.id}
+                              onClick={() =>
+                                setSelectedAppointmentId(appointment.id)
+                              }
+                              className={`cursor-pointer border-t border-slate-100 transition dark:border-slate-800 ${
+                                isRowSelected
+                                  ? "bg-blue-50/60 dark:bg-blue-950/20"
+                                  : ""
+                              }`}
+                            >
+                              <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-700 dark:text-slate-200">
+                                {showDateColumn ? (
+                                  <div>
+                                    <p className="font-semibold text-slate-900 dark:text-white">
+                                      {formatRowDate(
+                                        appointment.appointment_date
                                       )}
-                                    </div>
-                                  )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                                      {appointment.appointment_time}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  appointment.appointment_time
+                                )}
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                                    <User className="h-4 w-4" />
+                                  </span>
+                                  <span className="font-semibold text-slate-900 dark:text-white">
+                                    {appointment.patient?.name ||
+                                      (isArabic
+                                        ? "مريض غير معروف"
+                                        : "Unknown Patient")}
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="whitespace-nowrap px-6 py-4">
+                                {renderTypeBadge(appointment.appointment_type)}
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <span
+                                  className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                                    appointment.status
+                                  )}`}
+                                >
+                                  {getStatusLabel(appointment.status)}
+                                </span>
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <Link
+                                    to={`/doctor/patients/${appointment.patient_id}`}
+                                    className="whitespace-nowrap rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-300"
+                                  >
+                                    {isArabic
+                                      ? "عرض التفاصيل"
+                                      : "View details"}
+                                  </Link>
+
+                                  {renderActionsMenu(appointment)}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1654,10 +1771,10 @@ const Appointments = () => {
       {/* ==================== مودال إضافة موعد متابعة ==================== */}
       {showFollowUpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl dark:bg-slate-900">
-            <div className="border-b border-slate-200 p-6 dark:border-slate-700">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="border-b border-slate-200 p-5 dark:border-slate-700 sm:p-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
                   {isArabic
                     ? "إضافة موعد متابعة"
                     : "Add Follow-up Appointment"}
@@ -1673,7 +1790,7 @@ const Appointments = () => {
               </div>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="space-y-5 p-5 sm:p-6">
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {isArabic ? "المريض" : "Patient"}
@@ -1781,11 +1898,11 @@ const Appointments = () => {
       {/* ==================== مودال تعديل موعد متابعة ==================== */}
       {editingAppointment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl dark:bg-slate-900">
-            <div className="border-b border-slate-200 p-6 dark:border-slate-700">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="border-b border-slate-200 p-5 dark:border-slate-700 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
                     {isArabic
                       ? "تعديل موعد المتابعة"
                       : "Edit Follow-up"}
@@ -1806,7 +1923,7 @@ const Appointments = () => {
               </div>
             </div>
 
-            <div className="space-y-5 p-6">
+            <div className="space-y-5 p-5 sm:p-6">
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {isArabic ? "التاريخ الجديد" : "New Date"}

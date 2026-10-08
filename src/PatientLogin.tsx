@@ -1,42 +1,53 @@
 
 import { useEffect, useState } from "react";
-import {
-  Link,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
-import {
-  Eye,
-  EyeOff,
-  LogIn,
-  User,
-} from "lucide-react";
+
+import { useLocation, useNavigate } from "react-router-dom";
+
+import { Eye, EyeOff, LogIn, Phone } from "lucide-react";
+
 import { supabase } from "./supabase";
-import {
-  translations,
-  type Language,
-} from "./i18n";
+
+import { translations, type Language } from "./i18n";
+
+// ============================================================
+
+// أدوات الرقم والإيميل الداخلي
+
+// الإيميل ده بيتولّد تلقائي من (الرقم + العيادة) ومش بيظهر للمريض أبدًا.
+
+// لازم تكون نفس الدالتين الموجودتين في صفحة الدكتور (PatientDetails).
+
+// ============================================================
+
+const normalizeEgyptianPhone = (value: string) => {
+  const cleaned = value.replace(/[\s-]/g, "");
+
+  if (cleaned.startsWith("+20")) return cleaned;
+
+  if (cleaned.startsWith("20")) return `+${cleaned}`;
+
+  if (cleaned.startsWith("0")) return `+20${cleaned.substring(1)}`;
+
+  return cleaned;
+};
+
+const buildPatientLoginEmail = (normalizedPhone: string, clinicId: string) =>
+  `p${normalizedPhone.replace(/\D/g, "")}.${clinicId
+    .replace(/-/g, "")
+    .toLowerCase()}@dentalcare.local`;
 
 const PatientLogin = () => {
   const navigate = useNavigate();
+
   const location = useLocation();
 
-  // ============================================================
-  // URL Parameters
-  // ============================================================
+  const searchParams = new URLSearchParams(location.search);
 
-  const searchParams = new URLSearchParams(
-    location.search
-  );
+  const redirectParam = searchParams.get("redirect");
 
-  const redirectParam =
-    searchParams.get("redirect");
+  const reasonParam = searchParams.get("reason");
 
-  const reasonParam =
-    searchParams.get("reason");
-
-  const clinicIdParam =
-    searchParams.get("clinic_id");
+  const clinicIdParam = searchParams.get("clinic_id");
 
   const getSafeRedirect = () => {
     if (
@@ -50,60 +61,31 @@ const PatientLogin = () => {
     return "/patient/dashboard";
   };
 
-  // ============================================================
-  // State
-  // ============================================================
+  const [phone, setPhone] = useState("");
 
-  const [identifier, setIdentifier] =
-    useState("");
+  const [password, setPassword] = useState("");
 
-  const [password, setPassword] =
-    useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  const [showPassword, setShowPassword] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [loading, setLoading] =
-    useState(false);
+  const [error, setError] = useState("");
 
-  const [error, setError] =
-    useState("");
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem("dentalcare-language");
 
-  // ============================================================
-  // Language
-  // ============================================================
-
-  const [language, setLanguage] =
-    useState<Language>(() => {
-      const savedLanguage =
-        localStorage.getItem(
-          "dentalcare-language"
-        );
-
-      return savedLanguage === "en"
-        ? "en"
-        : "ar";
-    });
+    return saved === "en" ? "en" : "ar";
+  });
 
   const isArabic = language === "ar";
-  const t = translations[language];
 
-  // ============================================================
-  // Language Change
-  // ============================================================
+  const t = translations[language];
 
   useEffect(() => {
     const handleLanguageChange = () => {
-      const savedLanguage =
-        localStorage.getItem(
-          "dentalcare-language"
-        );
+      const saved = localStorage.getItem("dentalcare-language");
 
-      setLanguage(
-        savedLanguage === "en"
-          ? "en"
-          : "ar"
-      );
+      setLanguage(saved === "en" ? "en" : "ar");
     };
 
     window.addEventListener(
@@ -111,10 +93,7 @@ const PatientLogin = () => {
       handleLanguageChange
     );
 
-    window.addEventListener(
-      "storage",
-      handleLanguageChange
-    );
+    window.addEventListener("storage", handleLanguageChange);
 
     return () => {
       window.removeEventListener(
@@ -122,68 +101,30 @@ const PatientLogin = () => {
         handleLanguageChange
       );
 
-      window.removeEventListener(
-        "storage",
-        handleLanguageChange
-      );
+      window.removeEventListener("storage", handleLanguageChange);
     };
   }, []);
-
-  // ============================================================
-  // Normalize Egyptian Phone
-  // ============================================================
-
-  const normalizeEgyptianPhone = (
-    value: string
-  ) => {
-    const cleaned =
-      value.replace(/\s+/g, "");
-
-    if (cleaned.startsWith("+20")) {
-      return cleaned;
-    }
-
-    if (cleaned.startsWith("20")) {
-      return `+${cleaned}`;
-    }
-
-    if (cleaned.startsWith("0")) {
-      return `+20${cleaned.substring(1)}`;
-    }
-
-    return cleaned;
-  };
 
   // ============================================================
   // Login
   // ============================================================
 
-  const handleLogin = async (
-    e: React.FormEvent
-  ) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
     setError("");
 
-    const trimmedIdentifier =
-      identifier.trim();
+    const trimmedPhone = phone.trim();
 
-    if (
-      !trimmedIdentifier ||
-      !password
-    ) {
+    if (!trimmedPhone || !password) {
       setError(
         isArabic
-          ? "من فضلك أدخل رقم الهاتف أو البريد الإلكتروني وكلمة المرور."
-          : "Please enter your phone number or email, and your password."
+          ? "من فضلك أدخل رقم الهاتف وكلمة المرور."
+          : "Please enter your phone number and password."
       );
 
       return;
     }
-
-    // ==========================================================
-    // Clinic ID is required
-    // ==========================================================
 
     if (!clinicIdParam) {
       setError(
@@ -195,172 +136,88 @@ const PatientLogin = () => {
       return;
     }
 
-    const isEmailInput =
-      trimmedIdentifier.includes("@");
+    const normalizedPhone = normalizeEgyptianPhone(trimmedPhone);
+
+    if (!/^\+201[0125]\d{8}$/.test(normalizedPhone)) {
+      setError(
+        isArabic
+          ? "رقم الهاتف غير صحيح. مثال: 01012345678"
+          : "Invalid phone number. Example: 01012345678"
+      );
+
+      return;
+    }
 
     setLoading(true);
 
     try {
-      let loginEmail: string | null =
-        null;
+      // نقفل أي جلسة قديمة (مثلًا من عيادة تانية) قبل ما ندخل
+      await supabase.auth.signOut();
 
-      let lookupError: {
-        message: string;
-      } | null = null;
+      // 1) المحاولة الأساسية: إيميل داخلي متولّد من الرقم + العيادة
+      //    (لو المريض بيدخل من عيادة غير عيادته، الإيميل مش هيطابق وهيفشل)
+      let { data: authData, error: loginError } =
+        await supabase.auth.signInWithPassword({
+          email: buildPatientLoginEmail(normalizedPhone, clinicIdParam),
+          password,
+        });
 
-      // ========================================================
-      // Find Internal Login Email
-      // ========================================================
-
-      if (isEmailInput) {
-        const result =
-          await supabase.rpc(
-            "get_patient_login_email_by_email",
-            {
-              patient_email:
-                trimmedIdentifier.toLowerCase(),
-            }
-          );
-
-        loginEmail = result.data;
-        lookupError = result.error;
-      } else {
-        const normalizedPhone =
-          normalizeEgyptianPhone(
-            trimmedIdentifier
-          );
-
-        const result =
-          await supabase.rpc(
-            "get_patient_login_email",
-            {
-              patient_phone:
-                normalizedPhone,
-            }
-          );
-
-        loginEmail = result.data;
-        lookupError = result.error;
-      }
-
-      // ========================================================
-      // Lookup Error
-      // ========================================================
-
-      if (lookupError) {
-        console.error(
-          "Patient lookup error:",
-          lookupError
-        );
-
-        setError(
-          isArabic
-            ? "تعذر العثور على حساب المريض الخاص بك."
-            : "Could not find your patient account."
-        );
-
-        return;
-      }
-
-      // ========================================================
-      // Patient Not Found
-      // ========================================================
-
-      if (!loginEmail) {
-        setError(
-          isEmailInput
-            ? isArabic
-              ? "لم يتم العثور على حساب مريض مرتبط بهذا البريد الإلكتروني."
-              : "No patient account was found with this email."
-            : isArabic
-              ? "لم يتم العثور على حساب مريض مرتبط برقم الهاتف هذا."
-              : "No patient account was found with this phone number."
-        );
-
-        return;
-      }
-
-      // ========================================================
-      // Supabase Auth Login
-      // ========================================================
-
-      const {
-        data: authData,
-        error: loginError,
-      } =
-        await supabase.auth.signInWithPassword(
-          {
-            email: loginEmail,
-            password,
-          }
-        );
-
-      if (loginError) {
-        console.error(
-          "Login error:",
-          loginError
-        );
-
-        setError(
-          isArabic
-            ? `خطأ تسجيل الدخول: ${loginError.message}`
-            : `Login error: ${loginError.message}`
-        );
-
-        return;
-      }
-
-      // ========================================================
-      // Get Authenticated User
-      // ========================================================
-
-      const user =
-        authData.user;
-
-      if (!user) {
-        await supabase.auth.signOut();
-
-        setError(
-          isArabic
-            ? "تعذر الحصول على بيانات حساب المريض."
-            : "Could not retrieve your patient account information."
-        );
-
-        return;
-      }
-
-      // ========================================================
-      // Verify Patient Record + Clinic
-      // ========================================================
-      //
-      // لازم الحساب يكون:
-      // 1. مرتبط بسجل Patient
-      // 2. والسجل تابع لنفس العيادة الموجودة في الرابط
-      //
-      // مثال:
-      // /patient/login?clinic_id=ABC
-      //
-      // المريض لازم يكون موجود في:
-      // patients.user_id = user.id
-      // AND
-      // patients.clinic_id = ABC
-      //
-
-      const {
-        data: patientRecord,
-        error: patientRecordError,
-      } = await supabase
-        .from("patients")
-        .select("id, clinic_id")
-        .eq("user_id", user.id)
-        .eq("clinic_id", clinicIdParam)
-        .limit(1)
-        .maybeSingle();
-
+      // 2) للحسابات القديمة (اتعملت بإيميل عشوائي): نجرّب الدالة القديمة
+      //    ولسه هيتم التأكد من العيادة بعد الدخول
       if (
-        patientRecordError ||
-        !patientRecord
+        loginError &&
+        /invalid login credentials/i.test(loginError.message)
       ) {
+        const { data: legacyEmail } = await supabase.rpc(
+          "get_patient_login_email",
+          { patient_phone: normalizedPhone }
+        );
+
+        if (legacyEmail) {
+          const retry = await supabase.auth.signInWithPassword({
+            email: legacyEmail as string,
+            password,
+          });
+
+          authData = retry.data;
+
+          loginError = retry.error;
+        }
+      }
+
+      if (loginError || !authData?.user) {
+        console.error("Login error:", loginError);
+
+        const msg = loginError?.message || "";
+
+        if (/email not confirmed/i.test(msg)) {
+          setError(
+            isArabic
+              ? "الحساب لم يتم تفعيله. اطلب من العيادة مراجعة الإعدادات."
+              : "Account not confirmed. Please ask the clinic to check the settings."
+          );
+        } else {
+          setError(
+            isArabic
+              ? "رقم الهاتف أو كلمة المرور غير صحيحة، أو لا يوجد حساب لك في هذه العيادة."
+              : "Incorrect phone number or password, or you have no account in this clinic."
+          );
+        }
+
+        return;
+      }
+
+      // التأكد إن الحساب تابع للعيادة دي بالذات
+      const { data: patientRecord, error: patientRecordError } =
+        await supabase
+          .from("patients")
+          .select("id, clinic_id")
+          .eq("user_id", authData.user.id)
+          .eq("clinic_id", clinicIdParam)
+          .limit(1)
+          .maybeSingle();
+
+      if (patientRecordError || !patientRecord) {
         console.error(
           "Patient record verification error:",
           patientRecordError
@@ -370,25 +227,19 @@ const PatientLogin = () => {
 
         setError(
           isArabic
-            ? "هذا الحساب غير مرتبط بهذه العيادة. من فضلك تأكد أنك تستخدم تسجيل الدخول الخاص بالعيادة الصحيحة."
-            : "This patient account is not linked to this clinic. Please make sure you are using the login page for the correct clinic."
+            ? "هذا الحساب غير مرتبط بهذه العيادة. سجّل الدخول من صفحة عيادتك."
+            : "This account is not linked to this clinic. Please log in from your own clinic's page."
         );
 
         return;
       }
 
-      // ========================================================
-      // Redirect
-      // ========================================================
+      // نثبّت العيادة المختارة عشان الداشبورد تفتح على عيادة المريض
+      localStorage.setItem("dentalcare-selected-clinic", clinicIdParam);
 
-      navigate(getSafeRedirect(), {
-        replace: true,
-      });
-    } catch (error) {
-      console.error(
-        "Patient login error:",
-        error
-      );
+      navigate(getSafeRedirect(), { replace: true });
+    } catch (err) {
+      console.error("Patient login error:", err);
 
       setError(
         isArabic
@@ -410,11 +261,7 @@ const PatientLogin = () => {
       className="min-h-screen bg-slate-50 px-6 pb-16 pt-28 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100"
     >
       <div className="mx-auto max-w-md">
-
-        {/* Header */}
-
         <div className="mb-8 text-center">
-
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-100 dark:bg-teal-950/50">
             <LogIn className="h-8 w-8 text-teal-600 dark:text-teal-400" />
           </div>
@@ -425,28 +272,19 @@ const PatientLogin = () => {
 
           <p className="mt-3 text-slate-600 dark:text-slate-400">
             {isArabic
-              ? "سجل الدخول إلى حساب المريض باستخدام رقم هاتفك أو بريدك الإلكتروني."
-              : "Log in to your patient account using your phone number or email."}
+              ? "سجل الدخول برقم هاتفك وكلمة المرور التي أعطاها لك الدكتور."
+              : "Log in with your phone number and the password given by your doctor."}
           </p>
-
         </div>
 
-        {/* Login Card */}
-
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900 sm:p-8">
-
-          {/* Redirect Message */}
-
-          {reasonParam ===
-            "patient_account_required" && (
+          {reasonParam === "patient_account_required" && (
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
               {isArabic
                 ? "يجب تسجيل الدخول بحساب مريض مرتبط بالمنصة حتى تتمكن من حجز موعد."
                 : "You must sign in with a patient account linked to the platform to book an appointment."}
             </div>
           )}
-
-          {/* Error */}
 
           {error && (
             <div
@@ -457,73 +295,45 @@ const PatientLogin = () => {
             </div>
           )}
 
-          <form
-            onSubmit={handleLogin}
-            className="space-y-5"
-          >
-
-            {/* Phone or Email */}
-
+          <form onSubmit={handleLogin} className="space-y-5">
+            {/* Phone */}
             <div>
-
               <label
-                htmlFor="patient-identifier"
+                htmlFor="patient-phone"
                 className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
               >
-                {isArabic
-                  ? "رقم الهاتف أو البريد الإلكتروني"
-                  : "Phone Number or Email"}
+                {isArabic ? "رقم الهاتف" : "Phone Number"}
               </label>
 
               <div className="relative">
-
-                <User
+                <Phone
                   className={`pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500 ${
-                    isArabic
-                      ? "right-4"
-                      : "left-4"
+                    isArabic ? "right-4" : "left-4"
                   }`}
                 />
 
                 <input
-                  id="patient-identifier"
-                  type="text"
-                  value={identifier}
+                  id="patient-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={phone}
                   onChange={(e) => {
-                    setIdentifier(
-                      e.target.value
-                    );
+                    setPhone(e.target.value);
                     setError("");
                   }}
-                  placeholder={
-                    isArabic
-                      ? "01012345678 أو example@email.com"
-                      : "01012345678 or example@email.com"
-                  }
+                  placeholder="01012345678"
                   required
-                  autoComplete="username"
+                  autoComplete="tel"
                   dir="ltr"
                   className={`w-full rounded-xl border border-slate-300 bg-white py-3 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 ${
-                    isArabic
-                      ? "pl-4 pr-12"
-                      : "pl-12 pr-4"
+                    isArabic ? "pl-4 pr-12" : "pl-12 pr-4"
                   }`}
                 />
-
               </div>
-
-              <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                {isArabic
-                  ? "استخدم رقم الهاتف أو البريد الإلكتروني الذي أعطاك إياه الدكتور عند إنشاء حسابك."
-                  : "Use the phone number or email provided by your doctor when your account was created."}
-              </p>
-
             </div>
 
             {/* Password */}
-
             <div>
-
               <label
                 htmlFor="patient-password"
                 className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
@@ -532,61 +342,39 @@ const PatientLogin = () => {
               </label>
 
               <div className="relative">
-
                 <input
                   id="patient-password"
-                  type={
-                    showPassword
-                      ? "text"
-                      : "password"
-                  }
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => {
-                    setPassword(
-                      e.target.value
-                    );
+                    setPassword(e.target.value);
                     setError("");
                   }}
                   placeholder={
-                    isArabic
-                      ? "أدخل كلمة المرور"
-                      : "Enter your password"
+                    isArabic ? "أدخل كلمة المرور" : "Enter your password"
                   }
                   required
                   autoComplete="current-password"
-                  dir={
-                    isArabic
-                      ? "rtl"
-                      : "ltr"
-                  }
+                  dir="ltr"
                   className={`w-full rounded-xl border border-slate-300 bg-white py-3 text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 ${
-                    isArabic
-                      ? "pl-12 pr-4"
-                      : "pl-4 pr-12"
+                    isArabic ? "pl-12 pr-4" : "pl-4 pr-12"
                   }`}
                 />
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowPassword(
-                      (current) =>
-                        !current
-                    )
-                  }
+                  onClick={() => setShowPassword((current) => !current)}
                   aria-label={
                     showPassword
                       ? isArabic
                         ? "إخفاء كلمة المرور"
                         : "Hide password"
                       : isArabic
-                        ? "إظهار كلمة المرور"
-                        : "Show password"
+                      ? "إظهار كلمة المرور"
+                      : "Show password"
                   }
                   className={`absolute top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 ${
-                    isArabic
-                      ? "left-4"
-                      : "right-4"
+                    isArabic ? "left-4" : "right-4"
                   }`}
                 >
                   {showPassword ? (
@@ -595,12 +383,8 @@ const PatientLogin = () => {
                     <Eye className="h-5 w-5" />
                   )}
                 </button>
-
               </div>
-
             </div>
-
-            {/* Login Button */}
 
             <button
               type="submit"
@@ -615,17 +399,15 @@ const PatientLogin = () => {
                   : "Logging in..."
                 : t.auth.login}
             </button>
-
           </form>
-
         </div>
-
       </div>
     </div>
   );
 };
 
 export default PatientLogin;
+
 
 
 

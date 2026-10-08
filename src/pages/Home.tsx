@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Search,
@@ -39,6 +39,23 @@ type SupabaseClinic = {
   services_count?: number | null;
 };
 
+// توحيد النص عشان البحث يكون مرن (همزات، تاء مربوطة، تشكيل، حروف كبيرة/صغيرة)
+const normalizeText = (value: string | null | undefined) =>
+  (value ?? "")
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .trim();
+
+// كلمات كل منطقة للفلترة بالعنوان
+const regionKeywords: Record<string, string[]> = {
+  cairo: ["القاهره", "cairo", "مدينه نصر", "التجمع", "nasr city"],
+  giza: ["الجيزه", "giza", "الشيخ زايد", "6 اكتوبر", "اكتوبر", "zayed"],
+  alex: ["الاسكندريه", "alexandria", "alex"],
+};
+
 const Home = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [region, setRegion] = useState("");
@@ -48,6 +65,8 @@ const Home = () => {
 
   const [clinics, setClinics] = useState<SupabaseClinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
+
+  const clinicsSectionRef = useRef<HTMLElement | null>(null);
 
   // بيانات المودال
   const [selectedClinic, setSelectedClinic] =
@@ -87,6 +106,7 @@ const Home = () => {
     };
   }, [isModalOpen]);
 
+  // تحميل كل العيادات (عشان البحث يشتغل على الكل)
   useEffect(() => {
     const loadClinics = async () => {
       setLoadingClinics(true);
@@ -97,7 +117,7 @@ const Home = () => {
           "id, name, logo_url, phone, whatsapp, facebook, address, description, slug, latitude, longitude"
         )
         .order("name", { ascending: true })
-        .limit(4);
+        .limit(200);
 
       if (error) {
         console.error("Error loading clinics:", error);
@@ -208,7 +228,48 @@ const Home = () => {
     },
   ];
 
-  const clinicsToShow = clinics.length > 0 ? clinics : fallbackClinics;
+  const allClinics = clinics.length > 0 ? clinics : fallbackClinics;
+
+  const isSearching = searchQuery.trim() !== "" || region !== "";
+
+  // الفلترة اللحظية: كل ما تكتب حرف العيادات بتتفلتر
+  const clinicsToShow = useMemo(() => {
+    if (!isSearching) return allClinics.slice(0, 4);
+
+    const query = normalizeText(searchQuery);
+    const keywords = region ? regionKeywords[region] ?? [] : [];
+
+    return allClinics.filter((clinic) => {
+      const name = normalizeText(clinic.name);
+      const address = normalizeText(clinic.address);
+      const description = normalizeText(clinic.description);
+
+      const matchesQuery =
+        query === "" ||
+        name.includes(query) ||
+        address.includes(query) ||
+        description.includes(query);
+
+      const matchesRegion =
+        keywords.length === 0 ||
+        keywords.some((keyword) => address.includes(normalizeText(keyword)));
+
+      return matchesQuery && matchesRegion;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allClinics, searchQuery, region, isSearching]);
+
+  const scrollToClinics = () => {
+    clinicsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setRegion("");
+  };
 
   const doctorFeatures = [
     {
@@ -257,6 +318,10 @@ const Home = () => {
         : ""
     : "";
 
+  // كلاسات الكروت: على الموبايل سكرول أفقي، وعلى الشاشات الأكبر شبكة
+  const clinicsListClasses =
+    "-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-6 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4";
+
   return (
     <div
       dir={isArabic ? "rtl" : "ltr"}
@@ -283,22 +348,6 @@ const Home = () => {
             <div className="absolute inset-y-0 right-0 hidden w-24 bg-gradient-to-l from-white to-transparent dark:from-slate-950 lg:block" />
 
             <div className="absolute inset-x-0 top-0 hidden h-24 bg-gradient-to-b from-blue-50 to-transparent dark:from-slate-900 lg:block" />
-
-            <div className="absolute bottom-4 right-4 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-xl dark:bg-slate-900 lg:bottom-8 lg:right-8 lg:px-5 lg:py-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 text-green-600">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-
-              <div>
-                <p className="text-sm font-bold text-slate-800 dark:text-white">
-                  +400 {isArabic ? "عيادة" : "clinics"}
-                </p>
-
-                <p className="text-xs text-slate-400">
-                  {isArabic ? "على المنصة" : "on the platform"}
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* الكلام */}
@@ -348,13 +397,27 @@ const Home = () => {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") scrollToClinics();
+                    }}
                     placeholder={
                       isArabic
-                        ? "ابحث بالعيادة، الطبيب، أو الخدمة..."
-                        : "Search clinic, doctor, or service..."
+                        ? "ابحث باسم العيادة أو المنطقة..."
+                        : "Search by clinic name or area..."
                     }
                     className="w-full bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none dark:text-slate-200"
                   />
+
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      aria-label={isArabic ? "مسح" : "Clear"}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2.5 dark:border-slate-800 sm:border-t-0 sm:border-r sm:pr-4 dark:sm:border-slate-800">
@@ -385,13 +448,14 @@ const Home = () => {
                   <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
                 </div>
 
-                <Link
-                  to="/clinics"
+                <button
+                  type="button"
+                  onClick={scrollToClinics}
                   className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 transition-all hover:bg-blue-700"
                 >
                   <Search className="h-4 w-4" />
                   {isArabic ? "ابحث عن عيادة" : "Find a Clinic"}
-                </Link>
+                </button>
               </div>
 
               {/* Trust points */}
@@ -420,14 +484,23 @@ const Home = () => {
       </section>
 
       {/* ============================================
-          Featured Clinics
+          Featured Clinics / Search Results
           ============================================ */}
-      <section className="bg-slate-50/60 py-16 transition-colors duration-300 dark:bg-slate-950 md:py-20">
+      <section
+        ref={clinicsSectionRef}
+        className="scroll-mt-20 bg-slate-50/60 py-16 transition-colors duration-300 dark:bg-slate-950 md:py-20"
+      >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <span className="mb-2 inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                {isArabic ? "أشهر العيادات" : "Popular Clinics"}
+                {isSearching
+                  ? isArabic
+                    ? `نتائج البحث (${clinicsToShow.length})`
+                    : `Search results (${clinicsToShow.length})`
+                  : isArabic
+                    ? "أشهر العيادات"
+                    : "Popular Clinics"}
               </span>
 
               <h2 className="text-3xl font-bold text-slate-800 dark:text-white">
@@ -443,32 +516,69 @@ const Home = () => {
               </p>
             </div>
 
-            <Link
-              to="/clinics"
-              className="flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
-            >
-              {isArabic ? "عرض الكل" : "View all"}
-              <ArrowIcon className="h-4 w-4" />
-            </Link>
+            {isSearching ? (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              >
+                <X className="h-4 w-4" />
+                {isArabic ? "مسح البحث" : "Clear search"}
+              </button>
+            ) : (
+              <Link
+                to="/clinics"
+                className="flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              >
+                {isArabic ? "عرض الكل" : "View all"}
+                <ArrowIcon className="h-4 w-4" />
+              </Link>
+            )}
           </div>
 
           {loadingClinics ? (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={clinicsListClasses}>
               {[1, 2, 3, 4].map((item) => (
                 <div
                   key={item}
-                  className="h-64 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800"
+                  className="h-64 w-[75%] shrink-0 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800 sm:w-auto"
                 />
               ))}
             </div>
+          ) : clinicsToShow.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white py-14 text-center dark:border-slate-700 dark:bg-slate-900">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-500 dark:bg-slate-800">
+                <Search className="h-6 w-6" />
+              </div>
+
+              <p className="mb-1 text-base font-bold text-slate-700 dark:text-slate-200">
+                {isArabic
+                  ? "مفيش عيادات مطابقة للبحث"
+                  : "No clinics match your search"}
+              </p>
+
+              <p className="mb-4 text-sm text-slate-400">
+                {isArabic
+                  ? "جرّب كلمة تانية أو غيّر المنطقة."
+                  : "Try a different keyword or change the region."}
+              </p>
+
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                {isArabic ? "مسح البحث" : "Clear search"}
+              </button>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={clinicsListClasses}>
               {clinicsToShow.map((clinic) => (
                 <button
                   key={clinic.id}
                   type="button"
                   onClick={() => openClinicModal(clinic)}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-right shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
+                  className="w-[75%] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white text-start shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 sm:w-auto"
                 >
                   <div className="flex h-24 items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-500 dark:from-slate-800 dark:to-slate-800 dark:text-blue-400">
                     <Stethoscope className="h-8 w-8" />
@@ -765,5 +875,3 @@ const Home = () => {
 };
 
 export default Home;
-
-

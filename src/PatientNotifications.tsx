@@ -259,6 +259,8 @@ const PatientNotifications = () => {
 
       // =========================
       // Get Patient Notifications
+      // (بدون فلتر على notification_type
+      //  علشان أي إشعار للمريض يظهر)
       // =========================
 
       const {
@@ -282,17 +284,6 @@ const PatientNotifications = () => {
         .eq(
           "recipient_type",
           "patient"
-        )
-        .in(
-          "notification_type",
-          [
-            "appointment_confirmed",
-            "appointment_rejected",
-            "follow_up_created",
-            "appointment_rescheduled",
-            "appointment_cancelled",
-            "appointment_reminder",
-          ]
         )
         .order(
           "created_at",

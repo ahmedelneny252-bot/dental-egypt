@@ -38,6 +38,7 @@ type Appointment = {
   appointment_time: string;
   status: string;
   notes: string | null;
+  appointment_type: string | null;
 };
 
 type MedicalRecord = {
@@ -114,6 +115,13 @@ const normalizeEgyptianPhone = (value: string) => {
   if (cleaned.startsWith("0")) return `+20${cleaned.substring(1)}`;
   return cleaned;
 };
+
+// الإيميل الداخلي (مش بيظهر لأي حد): بيتولّد ثابت من (رقم المريض + العيادة)
+// لازم يكون نفس الدالة الموجودة في صفحة PatientLogin
+const buildPatientLoginEmail = (normalizedPhone: string, clinicId: string) =>
+  `p${normalizedPhone.replace(/\D/g, "")}.${clinicId
+    .replace(/-/g, "")
+    .toLowerCase()}@dentalcare.local`;
 
 const generateInternalId = () => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -322,6 +330,270 @@ const InfoField = ({
   </div>
 );
 
+// ============================================
+// قائمة المواعيد (قادمة / سابقة)
+// نفس الشكل على الموبايل والتاب واللاب:
+// العنوان | التاريخ (والوقت تحته) | الحالة
+// ============================================
+
+const APPOINTMENT_GRID =
+  "md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] md:items-center md:gap-4";
+
+// المواعيد القادمة: + عمود نوع الموعد + عمود الإجراءات (تعديل + إلغاء)
+const APPOINTMENT_GRID_WITH_ACTIONS =
+  "md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_minmax(0,2fr)] md:items-center md:gap-4";
+
+// نفس الشكل + عمود نوع الموعد (للمواعيد القادمة فقط)
+const APPOINTMENT_GRID_WITH_TYPE =
+  "md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] md:items-center md:gap-4";
+
+const AppointmentList = ({
+  appointments,
+  address,
+  isArabic,
+  muted = false,
+  showType = false,
+  onCancel,
+  onEdit,
+  cancellingId = null,
+}: {
+  appointments: Appointment[];
+  address: string | null;
+  isArabic: boolean;
+  muted?: boolean;
+  showType?: boolean;
+  onCancel?: (appointment: Appointment) => void;
+  onEdit?: (appointment: Appointment) => void;
+  cancellingId?: string | null;
+}) => {
+  const hasActions = Boolean(onCancel || onEdit);
+
+  const grid = hasActions
+    ? APPOINTMENT_GRID_WITH_ACTIONS
+    : showType
+    ? APPOINTMENT_GRID_WITH_TYPE
+    : APPOINTMENT_GRID;
+
+  const formatDay = (date: string) => {
+    const parsed = new Date(`${date}T00:00:00`);
+
+    if (Number.isNaN(parsed.getTime())) return date;
+
+    return parsed.toLocaleDateString(isArabic ? "ar-EG" : "en-US", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const formatTime = (time: string) => (time ? time.slice(0, 5) : "-");
+
+  const statusLabel = (status: string) => {
+    if (status === "confirmed") return isArabic ? "مؤكد" : "Confirmed";
+    if (status === "cancelled") return isArabic ? "ملغي" : "Cancelled";
+    if (status === "completed") return isArabic ? "مكتمل" : "Completed";
+    return isArabic ? "قيد الانتظار" : "Pending";
+  };
+
+  const statusClass = (status: string) => {
+    if (muted) {
+      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+    }
+
+    if (status === "confirmed") {
+      return "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400";
+    }
+
+    if (status === "cancelled") {
+      return "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400";
+    }
+
+    if (status === "completed") {
+      return "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400";
+    }
+
+    return "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400";
+  };
+
+  // عنوان الموبايل = عنوان المريض (زي اللاب)، ولو فاضي بنكتب "موعد"
+  const title = address?.trim() || (isArabic ? "موعد" : "Appointment");
+
+  const isActive = (appointment: Appointment) =>
+    appointment.status !== "cancelled" && appointment.status !== "completed";
+
+  const canCancel = (appointment: Appointment) =>
+    Boolean(onCancel) && isActive(appointment);
+
+  const canEdit = (appointment: Appointment) =>
+    Boolean(onEdit) && isActive(appointment);
+
+  const renderEditButton = (appointment: Appointment) => (
+    <button
+      type="button"
+      onClick={() => onEdit?.(appointment)}
+      className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-600 hover:bg-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50"
+    >
+      <Pencil className="h-4 w-4" />
+      {isArabic ? "تعديل الموعد" : "Edit"}
+    </button>
+  );
+
+  const renderCancelButton = (appointment: Appointment) => (
+    <button
+      type="button"
+      onClick={() => onCancel?.(appointment)}
+      disabled={cancellingId === appointment.id}
+      className="whitespace-nowrap rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+    >
+      {cancellingId === appointment.id
+        ? isArabic
+          ? "جاري الإلغاء..."
+          : "Cancelling..."
+        : isArabic
+        ? "إلغاء الموعد"
+        : "Cancel"}
+    </button>
+  );
+
+  const renderActions = (appointment: Appointment) => (
+    <>
+      {canEdit(appointment) && renderEditButton(appointment)}
+      {canCancel(appointment) && renderCancelButton(appointment)}
+    </>
+  );
+
+  const isFollowUpType = (type: string | null) =>
+    /follow|متابع|revisit|إعاد|اعاد/i.test(type || "");
+
+  const typeLabel = (type: string | null) =>
+    isFollowUpType(type)
+      ? isArabic
+        ? "متابعة"
+        : "Follow-up"
+      : isArabic
+      ? "كشف"
+      : "Checkup";
+
+  const renderTypeBadge = (type: string | null) => (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${
+        isFollowUpType(type)
+          ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
+          : "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300"
+      }`}
+    >
+      {typeLabel(type)}
+    </span>
+  );
+
+  const renderBadge = (status: string) => (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${statusClass(
+        status
+      )}`}
+    >
+      {statusLabel(status)}
+    </span>
+  );
+
+  return (
+    <div>
+      {/* رأس الأعمدة (تاب ولاب فقط): التاريخ | الوقت | النوع | الحالة | العنوان | إجراء */}
+      <div
+        className={`hidden bg-slate-50 px-6 py-4 text-sm font-semibold text-slate-600 dark:bg-slate-950/50 dark:text-slate-400 ${grid}`}
+      >
+        <span>{isArabic ? "التاريخ" : "Date"}</span>
+        <span>{isArabic ? "الوقت" : "Time"}</span>
+        {showType && <span>{isArabic ? "نوع الموعد" : "Type"}</span>}
+        <span>{isArabic ? "الحالة" : "Status"}</span>
+        <span>{isArabic ? "العنوان" : "Address"}</span>
+        {hasActions && <span>{isArabic ? "إجراء" : "Action"}</span>}
+      </div>
+
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+        {appointments.map((appointment) => (
+          <div
+            key={appointment.id}
+            className={`p-4 md:px-6 md:py-4 ${grid}`}
+          >
+            {/* عنوان + حالة (موبايل فقط) */}
+            <div className="flex items-start justify-between gap-3 md:hidden">
+              <p className="min-w-0 break-words text-base font-bold text-slate-900 dark:text-white">
+                {title}
+              </p>
+
+              <span className="shrink-0">{renderBadge(appointment.status)}</span>
+            </div>
+
+            {/* نوع الموعد (موبايل فقط) */}
+            {showType && (
+              <div className="mt-2 md:hidden">
+                {renderTypeBadge(appointment.appointment_type)}
+              </div>
+            )}
+
+            {/* التاريخ (والوقت تحته على الموبايل) */}
+            <div className="mt-3 flex items-start gap-2.5 md:mt-0">
+              <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {formatDay(appointment.appointment_date)}
+                </p>
+
+                <p className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 md:hidden">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span dir="ltr">
+                    {formatTime(appointment.appointment_time)}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* الوقت (تاب ولاب فقط) */}
+            <div className="hidden text-sm font-semibold text-slate-700 dark:text-slate-200 md:block">
+              <span dir="ltr">{formatTime(appointment.appointment_time)}</span>
+            </div>
+
+            {/* نوع الموعد (تاب ولاب فقط) */}
+            {showType && (
+              <div className="hidden md:block">
+                {renderTypeBadge(appointment.appointment_type)}
+              </div>
+            )}
+
+            {/* الحالة (تاب ولاب فقط) */}
+            <div className="hidden md:block">
+              {renderBadge(appointment.status)}
+            </div>
+
+            {/* عنوان المريض (تاب ولاب فقط) */}
+            <div className="hidden min-w-0 break-words text-sm text-slate-700 dark:text-slate-300 md:block">
+              {address?.trim() || "-"}
+            </div>
+
+            {/* أزرار تعديل + إلغاء (موبايل) */}
+            {hasActions &&
+              (canEdit(appointment) || canCancel(appointment)) && (
+                <div className="mt-3 flex flex-wrap gap-2 md:hidden">
+                  {renderActions(appointment)}
+                </div>
+              )}
+
+            {/* أزرار تعديل + إلغاء (تاب ولاب) */}
+            {hasActions && (
+              <div className="hidden flex-wrap gap-2 md:flex">
+                {renderActions(appointment)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const PatientDetails = () => {
   const { id } = useParams();
 
@@ -347,10 +619,17 @@ const PatientDetails = () => {
   const [error, setError] = useState("");
 
   const [showFollowUpForm, setShowFollowUpForm] = useState(false);
+  // لو فيه id يبقى الفورم في وضع تعديل موعد موجود
+  const [editingAppointmentId, setEditingAppointmentId] = useState<
+    string | null
+  >(null);
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpTime, setFollowUpTime] = useState("");
   const [followUpNotes, setFollowUpNotes] = useState("");
   const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [cancellingAppointmentId, setCancellingAppointmentId] = useState<
+    string | null
+  >(null);
   const [updatingCaseStatus, setUpdatingCaseStatus] = useState(false);
 
   const [showRecordForm, setShowRecordForm] = useState(false);
@@ -550,7 +829,7 @@ const PatientDetails = () => {
       } = await supabase
         .from("appointments")
         .select(
-          "id, appointment_date, appointment_time, status, notes"
+          "*"
         )
         .eq("patient_id", id)
         .eq("clinic_id", profile.clinic_id)
@@ -646,7 +925,8 @@ const PatientDetails = () => {
   };
 
   // إنشاء حساب دخول للمريض خاص بالعيادة دي فقط
-  // كل عيادة مستقلة: نفس الرقم ممكن يتسجل في أكتر من عيادة بحساب وباسورد منفصلين
+  // المريض بيدخل برقم تليفونه + كلمة السر اللي الدكتور حطها
+  // (الإيميل الداخلي بيتولّد تلقائي من الرقم + العيادة ومش بيظهر لأي حد)
   const handleCreatePatientAccount = async () => {
     if (!id || !clinicId || !patient) return;
 
@@ -723,8 +1003,8 @@ const PatientDetails = () => {
         },
       });
 
-      // إيميل داخلي فريد لكل (مريض + عيادة)، فمفيش تعارض حتى لو نفس الرقم في عيادة تانية
-      const internalEmail = `patient_${generateInternalId()}@dentalcare.local`;
+      // إيميل داخلي ثابت لكل (رقم + عيادة): المريض مش بيشوفه ومش بيكتبه
+      const internalEmail = buildPatientLoginEmail(normalizedPhone, clinicId);
 
       const { data: signUpData, error: signUpError } =
         await tempClient.auth.signUp({
@@ -732,7 +1012,17 @@ const PatientDetails = () => {
           password: passwordValue,
         });
 
-      if (signUpError) throw new Error(signUpError.message);
+      if (signUpError) {
+        if (/already registered/i.test(signUpError.message)) {
+          throw new Error(
+            isArabic
+              ? "يوجد حساب بهذا الرقم في هذه العيادة بالفعل."
+              : "An account with this phone already exists in this clinic."
+          );
+        }
+
+        throw new Error(signUpError.message);
+      }
 
       if (!signUpData.user) {
         throw new Error(
@@ -896,6 +1186,22 @@ const PatientDetails = () => {
     );
   };
 
+  // إجمالي تكلفة كل العلاجات
+  const getTotalCostAmount = () => {
+    return medicalRecords.reduce(
+      (total, record) => total + Number(record.cost || 0),
+      0
+    );
+  };
+
+  // إجمالي المدفوع على كل العلاجات
+  const getTotalPaidAmount = () => {
+    return medicalRecords.reduce(
+      (total, record) => total + getRecordPaidAmount(record.id),
+      0
+    );
+  };
+
   const openPaymentForm = (record: MedicalRecord) => {
     const remaining = getRecordRemainingAmount(record);
 
@@ -1034,11 +1340,46 @@ const PatientDetails = () => {
     }
   };
 
+  // بيعمل scroll لفورم المتابعة (فوق) - شغال على الموبايل واللاب
+  const scrollToFollowUpForm = () => {
+    setTimeout(() => {
+      document
+        .getElementById("followup-form")
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    }, 120);
+  };
+
   const resetFollowUpForm = () => {
     setFollowUpDate("");
     setFollowUpTime("");
     setFollowUpNotes("");
+    setEditingAppointmentId(null);
     setShowFollowUpForm(false);
+  };
+
+  // فتح فورم إضافة موعد متابعة جديد
+  const openNewFollowUpForm = () => {
+    setError("");
+    setEditingAppointmentId(null);
+    setFollowUpDate("");
+    setFollowUpTime("");
+    setFollowUpNotes("");
+    setShowFollowUpForm(true);
+    scrollToFollowUpForm();
+  };
+
+  // فتح الفورم لتعديل موعد موجود (بيانات الموعد بتتحط جاهزة)
+  const handleEditAppointment = (appointment: Appointment) => {
+    setError("");
+    setEditingAppointmentId(appointment.id);
+    setFollowUpDate(appointment.appointment_date || "");
+    setFollowUpTime((appointment.appointment_time || "").slice(0, 5));
+    setFollowUpNotes(appointment.notes || "");
+    setShowFollowUpForm(true);
+    scrollToFollowUpForm();
   };
 
   const handleAddFollowUp = async (e: React.FormEvent) => {
@@ -1066,19 +1407,72 @@ const PatientDetails = () => {
       setSavingFollowUp(true);
       setError("");
 
-      const { error: appointmentError } = await supabase
+      // ====== وضع التعديل ======
+      if (editingAppointmentId) {
+        const { data: updatedRows, error: updateError } = await supabase
+          .from("appointments")
+          .update({
+            appointment_date: followUpDate,
+            appointment_time: followUpTime,
+            notes: followUpNotes.trim() || null,
+          })
+          .eq("id", editingAppointmentId)
+          .eq("patient_id", id)
+          .eq("clinic_id", clinicId)
+          .select("id");
+
+        if (updateError) {
+          throw new Error(describeDbError(updateError));
+        }
+
+        // لو الـ RLS منع التعديل بيرجع من غير خطأ ومن غير صفوف
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            isArabic
+              ? "تعذر تعديل الموعد: مفيش صلاحية تعديل (RLS) على جدول المواعيد في Supabase."
+              : "Could not edit the appointment: no update permission (RLS) on the appointments table in Supabase."
+          );
+        }
+
+        await notifyPatient(
+          "تم تعديل الموعد",
+          `تم تعديل موعدك ليصبح يوم ${followUpDate} الساعة ${followUpTime}`
+        );
+
+        resetFollowUpForm();
+        await loadPatientDetails();
+        return;
+      }
+
+      // ====== وضع الإضافة ======
+      const baseRow = {
+        clinic_id: clinicId,
+        patient_id: id,
+        appointment_date: followUpDate,
+        appointment_time: followUpTime,
+        status: "confirmed",
+        notes: followUpNotes.trim() || null,
+      };
+
+      let { error: appointmentError } = await supabase
         .from("appointments")
-        .insert({
-          clinic_id: clinicId,
-          patient_id: id,
-          appointment_date: followUpDate,
-          appointment_time: followUpTime,
-          status: "confirmed",
-          notes: followUpNotes.trim() || null,
-        });
+        .insert({ ...baseRow, appointment_type: "followup" });
+
+      // لو عمود النوع مش جاهز أو فيه قيد قديم، نحفظ الموعد عادي من غيره
+      // علشان الإضافة ماتقفش أبدًا
+      if (
+        appointmentError &&
+        /appointment_type|check constraint/i.test(
+          appointmentError.message || ""
+        )
+      ) {
+        const retry = await supabase.from("appointments").insert(baseRow);
+        appointmentError = retry.error;
+      }
 
       if (appointmentError) {
-        throw new Error(appointmentError.message);
+        // رسالة واضحة لو المشكلة في صلاحيات RLS
+        throw new Error(describeDbError(appointmentError));
       }
 
       await notifyPatient(
@@ -1095,13 +1489,88 @@ const PatientDetails = () => {
         setError(err.message);
       } else {
         setError(
-          isArabic
+          editingAppointmentId
+            ? isArabic
+              ? "تعذر تعديل الموعد."
+              : "Could not edit the appointment."
+            : isArabic
             ? "تعذر إضافة موعد المتابعة."
             : "Could not add the follow-up appointment."
         );
       }
     } finally {
       setSavingFollowUp(false);
+    }
+  };
+
+  // إلغاء موعد + إشعار المريض
+  const handleCancelAppointment = async (appointment: Appointment) => {
+    if (!clinicId || !id) return;
+
+    const confirmed = window.confirm(
+      isArabic
+        ? "هل أنت متأكد من إلغاء هذا الموعد؟ سيتم إشعار المريض."
+        : "Cancel this appointment? The patient will be notified."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setCancellingAppointmentId(appointment.id);
+      setError("");
+
+      const { data: updatedRows, error: cancelError } = await supabase
+        .from("appointments")
+        .update({ status: "cancelled" })
+        .eq("id", appointment.id)
+        .eq("patient_id", id)
+        .eq("clinic_id", clinicId)
+        .select("id");
+
+      if (cancelError) {
+        throw new Error(describeDbError(cancelError));
+      }
+
+      // لو الـ RLS منع التعديل بيرجع من غير خطأ ومن غير صفوف
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error(
+          isArabic
+            ? "تعذر إلغاء الموعد: مفيش صلاحية تعديل (RLS) على جدول المواعيد في Supabase."
+            : "Could not cancel the appointment: no update permission (RLS) on the appointments table in Supabase."
+        );
+      }
+
+      await notifyPatient(
+        "تم إلغاء الموعد",
+        `تم إلغاء موعدك يوم ${appointment.appointment_date} الساعة ${(
+          appointment.appointment_time || ""
+        ).slice(0, 5)}`
+      );
+
+      // لو كان الموعد ده بيتعدل دلوقتي، نقفل الفورم
+      if (editingAppointmentId === appointment.id) {
+        resetFollowUpForm();
+      }
+
+      setAppointments((previous) =>
+        previous.map((item) =>
+          item.id === appointment.id
+            ? { ...item, status: "cancelled" }
+            : item
+        )
+      );
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : isArabic
+          ? "تعذر إلغاء الموعد."
+          : "Could not cancel the appointment."
+      );
+    } finally {
+      setCancellingAppointmentId(null);
     }
   };
 
@@ -1171,7 +1640,7 @@ const PatientDetails = () => {
         )
       );
 
-      setShowFollowUpForm(false);
+      resetFollowUpForm();
     } catch (err) {
       console.error(err);
 
@@ -1652,6 +2121,8 @@ const PatientDetails = () => {
   );
 
   const totalRemainingAmount = getTotalRemainingAmount();
+  const totalCostAmount = getTotalCostAmount();
+  const totalPaidAmount = getTotalPaidAmount();
 
   const isCaseCompleted = patient.case_status === "completed";
 
@@ -1799,7 +2270,7 @@ const PatientDetails = () => {
         </div>
 
         {/* Patient Actions */}
-        <div className="mb-5 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/20">
+        <div className="mb-5 flex flex-col overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-950/20">
 
           <div className="flex flex-col gap-3 border-b border-indigo-200 p-4 dark:border-indigo-900/50 md:flex-row md:items-center md:justify-between">
 
@@ -1838,18 +2309,19 @@ const PatientDetails = () => {
                     return;
                   }
 
-                  setError("");
-                  setShowFollowUpForm(
-                    !showFollowUpForm
-                  );
+                  if (showFollowUpForm) {
+                    resetFollowUpForm();
+                  } else {
+                    openNewFollowUpForm();
+                  }
                 }}
                 disabled={isCaseCompleted}
                 className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {showFollowUpForm
                   ? isArabic
-                    ? "إلغاء المتابعة"
-                    : "Cancel Follow-up"
+                    ? "إلغاء"
+                    : "Close Form"
                   : isArabic
                   ? "+ إضافة موعد متابعة"
                   : "+ Add Follow-up"}
@@ -1876,13 +2348,43 @@ const PatientDetails = () => {
 
           </div>
 
-          <div className="grid gap-3 p-4 md:grid-cols-3">
+          <div
+            className={`order-3 grid gap-3 p-4 md:grid-cols-3 lg:grid-cols-5 ${
+              showFollowUpForm && !isCaseCompleted
+                ? "border-t border-indigo-200 dark:border-indigo-900/50"
+                : ""
+            }`}
+          >
 
             <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-900/60">
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isArabic
-                  ? "إجمالي المستحق"
-                  : "Outstanding Balance"}
+                  ? "إجمالي المبلغ"
+                  : "Total Amount"}
+              </p>
+
+              <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">
+                {totalCostAmount.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-900/60">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي المدفوع"
+                  : "Total Paid"}
+              </p>
+
+              <p className="mt-1 text-xl font-bold text-green-600 dark:text-green-400">
+                {totalPaidAmount.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white/70 p-3 dark:bg-slate-900/60">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isArabic
+                  ? "إجمالي الباقي"
+                  : "Total Remaining"}
               </p>
 
               <p className="mt-1 text-xl font-bold text-orange-600 dark:text-orange-400">
@@ -1912,24 +2414,38 @@ const PatientDetails = () => {
               <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">
                 {isCaseCompleted
                   ? 0
-                  : upcomingAppointments.length}
+                  : upcomingAppointments.filter(
+                      (appointment) =>
+                        appointment.status !== "cancelled"
+                    ).length}
               </p>
             </div>
 
           </div>
 
           {showFollowUpForm && !isCaseCompleted && (
-            <div className="border-t border-indigo-200 bg-white/50 p-5 dark:border-indigo-900/50 dark:bg-slate-900/30">
+            <div
+              id="followup-form"
+              className="order-2 scroll-mt-4 bg-white/50 p-5 dark:bg-slate-900/30"
+            >
 
               <div className="mb-5">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {isArabic
+                  {editingAppointmentId
+                    ? isArabic
+                      ? "تعديل الموعد"
+                      : "Edit Appointment"
+                    : isArabic
                     ? "إضافة موعد متابعة"
                     : "Add Follow-up Appointment"}
                 </h3>
 
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {isArabic
+                  {editingAppointmentId
+                    ? isArabic
+                      ? "غيّر التاريخ أو الوقت أو الملاحظات وسيتم إشعار المريض."
+                      : "Change the date, time or notes and the patient will be notified."
+                    : isArabic
                     ? "حدد موعد المتابعة القادم لهذا المريض."
                     : "Set the next follow-up appointment for this patient."}
                 </p>
@@ -2005,9 +2521,17 @@ const PatientDetails = () => {
                     className="rounded-xl bg-teal-600 px-5 py-3 font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {savingFollowUp
-                      ? isArabic
+                      ? editingAppointmentId
+                        ? isArabic
+                          ? "جاري حفظ التعديل..."
+                          : "Saving Changes..."
+                        : isArabic
                         ? "جاري إضافة الموعد..."
                         : "Adding Appointment..."
+                      : editingAppointmentId
+                      ? isArabic
+                        ? "حفظ التعديلات"
+                        : "Save Changes"
                       : isArabic
                       ? "حفظ موعد المتابعة"
                       : "Save Follow-up"}
@@ -2373,9 +2897,70 @@ const PatientDetails = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* كروت السجلات على الموبايل: كل عنوان وتحته قيمته */}
+            <div className="divide-y divide-slate-100 md:hidden dark:divide-slate-800">
+              {medicalRecords.map((record) => {
+                const paidAmount = getRecordPaidAmount(record.id);
+                const remainingAmount = getRecordRemainingAmount(record);
 
-              <table className="w-full min-w-[1400px]">
+                return (
+                  <div key={record.id} className="space-y-4 p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <InfoField
+                        label={isArabic ? "التاريخ" : "Date"}
+                        value={record.treatment_date || "-"}
+                      />
+                      <InfoField
+                        label={isArabic ? "التشخيص" : "Diagnosis"}
+                        value={record.diagnosis || "-"}
+                      />
+                      <InfoField
+                        label={isArabic ? "التكلفة" : "Cost"}
+                        value={Number(record.cost || 0).toFixed(2)}
+                      />
+                      <InfoField
+                        label={isArabic ? "المدفوع" : "Paid"}
+                        value={paidAmount.toFixed(2)}
+                      />
+                      <InfoField
+                        label={isArabic ? "المتبقي" : "Remaining"}
+                        value={remainingAmount.toFixed(2)}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {remainingAmount > 0 && (
+                        <button
+                          onClick={() => openPaymentForm(record)}
+                          className="rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100 dark:bg-green-950/30 dark:text-green-400 dark:hover:bg-green-950/50"
+                        >
+                          + {isArabic ? "دفعة" : "Payment"}
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleEditRecord(record)}
+                        className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                      >
+                        {isArabic ? "تعديل" : "Edit"}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteRecord(record.id)}
+                        className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+                      >
+                        {isArabic ? "حذف" : "Delete"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+
+              <table className="w-full min-w-[900px] table-auto">
 
                 <thead className="bg-slate-50 dark:bg-slate-950/50">
 
@@ -2391,10 +2976,10 @@ const PatientDetails = () => {
                     ].map((header, index) => (
                       <th
                         key={header}
-                        className={`px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400 ${
+                        className={`whitespace-nowrap px-5 py-4 text-sm font-semibold text-slate-600 dark:text-slate-400 ${
                           index === 5
-                            ? "text-right"
-                            : "text-left"
+                            ? "text-end"
+                            : "text-start"
                         }`}
                       >
                         {header}
@@ -2420,23 +3005,23 @@ const PatientDetails = () => {
                         className="border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                       >
 
-                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        <td className="whitespace-nowrap px-5 py-4 text-start text-sm text-slate-700 dark:text-slate-300">
                           {record.treatment_date || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        <td className="px-5 py-4 text-start text-sm text-slate-700 dark:text-slate-300">
                           {record.diagnosis || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-semibold text-slate-900 dark:text-white">
+                        <td className="whitespace-nowrap px-5 py-4 text-start text-sm font-semibold text-slate-900 dark:text-white">
                           {Number(record.cost || 0).toFixed(2)}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                        <td className="whitespace-nowrap px-5 py-4 text-start text-sm font-semibold text-green-600 dark:text-green-400">
                           {paidAmount.toFixed(2)}
                         </td>
 
-                        <td className="px-5 py-4">
+                        <td className="whitespace-nowrap px-5 py-4 text-start">
 
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -2450,7 +3035,7 @@ const PatientDetails = () => {
 
                         </td>
 
-                        <td className="px-5 py-4 text-right">
+                        <td className="px-5 py-4 text-end">
 
                           <div className="flex justify-end gap-2">
 
@@ -2459,7 +3044,7 @@ const PatientDetails = () => {
                                 onClick={() =>
                                   openPaymentForm(record)
                                 }
-                                className="rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100 dark:bg-green-950/30 dark:text-green-400 dark:hover:bg-green-950/50"
+                                className="whitespace-nowrap rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100 dark:bg-green-950/30 dark:text-green-400 dark:hover:bg-green-950/50"
                               >
                                 +{" "}
                                 {isArabic
@@ -2472,7 +3057,7 @@ const PatientDetails = () => {
                               onClick={() =>
                                 handleEditRecord(record)
                               }
-                              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                              className="whitespace-nowrap rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                             >
                               {isArabic ? "تعديل" : "Edit"}
                             </button>
@@ -2481,7 +3066,7 @@ const PatientDetails = () => {
                               onClick={() =>
                                 handleDeleteRecord(record.id)
                               }
-                              className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+                              className="whitespace-nowrap rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
                             >
                               {isArabic ? "حذف" : "Delete"}
                             </button>
@@ -2499,6 +3084,7 @@ const PatientDetails = () => {
               </table>
 
             </div>
+            </>
           )}
 
           {showPaymentForm && selectedPaymentRecord && (
@@ -2700,9 +3286,42 @@ const PatientDetails = () => {
                 </p>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* كروت المدفوعات على الموبايل: كل عنوان وتحته قيمته */}
+              <div className="divide-y divide-slate-100 md:hidden dark:divide-slate-800">
+                {payments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="grid grid-cols-2 gap-4 py-4"
+                  >
+                    <InfoField
+                      label={isArabic ? "التاريخ" : "Date"}
+                      value={payment.payment_date}
+                    />
+                    <InfoField
+                      label={isArabic ? "المبلغ" : "Amount"}
+                      value={payment.amount.toFixed(2)}
+                    />
+                    <InfoField
+                      label={isArabic ? "الطريقة" : "Method"}
+                      value={payment.payment_method}
+                    />
+                    <InfoField
+                      label={isArabic ? "الوصف" : "Description"}
+                      value={payment.description || "-"}
+                    />
+                    <div className="col-span-2">
+                      <InfoField
+                        label={isArabic ? "ملاحظات" : "Notes"}
+                        value={payment.notes || "-"}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-                <table className="w-full">
+              <div className="hidden overflow-x-auto md:block">
+
+                <table className="w-full min-w-[700px] table-auto">
 
                   <thead className="bg-slate-50 dark:bg-slate-950/50">
 
@@ -2717,7 +3336,7 @@ const PatientDetails = () => {
                       ].map((header) => (
                         <th
                           key={header}
-                          className="px-5 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400"
+                          className="whitespace-nowrap px-5 py-4 text-start text-sm font-semibold text-slate-600 dark:text-slate-400"
                         >
                           {header}
                         </th>
@@ -2735,23 +3354,23 @@ const PatientDetails = () => {
                         className="border-t border-slate-100 dark:border-slate-800"
                       >
 
-                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        <td className="whitespace-nowrap px-5 py-4 text-start text-sm text-slate-700 dark:text-slate-300">
                           {payment.payment_date}
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        <td className="px-5 py-4 text-start text-sm text-slate-700 dark:text-slate-300">
                           {payment.description || "-"}
                         </td>
 
-                        <td className="px-5 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                        <td className="whitespace-nowrap px-5 py-4 text-start text-sm font-semibold text-green-600 dark:text-green-400">
                           {payment.amount.toFixed(2)}
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-700 dark:text-slate-300">
+                        <td className="whitespace-nowrap px-5 py-4 text-start text-sm text-slate-700 dark:text-slate-300">
                           {payment.payment_method}
                         </td>
 
-                        <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-400">
+                        <td className="px-5 py-4 text-start text-sm text-slate-600 dark:text-slate-400">
                           {payment.notes || "-"}
                         </td>
 
@@ -3538,94 +4157,19 @@ const PatientDetails = () => {
 
           ) : (
 
-            <div className="overflow-x-auto">
-
-              <table className="w-full">
-
-                <thead className="bg-slate-50 dark:bg-slate-950/50">
-
-                  <tr>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "التاريخ" : "Date"}
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "الوقت" : "Time"}
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "الحالة" : "Status"}
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "ملاحظات" : "Notes"}
-                    </th>
-
-                  </tr>
-
-                </thead>
-
-                <tbody>
-
-                  {upcomingAppointments.map((appointment) => (
-                    <tr
-                      key={appointment.id}
-                      className="border-t border-slate-100 dark:border-slate-800"
-                    >
-
-                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        {appointment.appointment_date}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        {appointment.appointment_time}
-                      </td>
-
-                      <td className="px-6 py-4">
-
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            appointment.status === "confirmed"
-                              ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
-                              : appointment.status === "cancelled"
-                              ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
-                              : appointment.status === "completed"
-                              ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-                              : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400"
-                          }`}
-                        >
-                          {appointment.status === "confirmed"
-                            ? isArabic
-                              ? "مؤكد"
-                              : "Confirmed"
-                            : appointment.status === "cancelled"
-                            ? isArabic
-                              ? "ملغي"
-                              : "Cancelled"
-                            : appointment.status === "completed"
-                            ? isArabic
-                              ? "مكتمل"
-                              : "Completed"
-                            : isArabic
-                            ? "قيد الانتظار"
-                            : "Pending"}
-                        </span>
-
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                        {appointment.notes || "-"}
-                      </td>
-
-                    </tr>
-                  ))}
-
-                </tbody>
-
-              </table>
-
-            </div>
+            <AppointmentList
+              isArabic={isArabic}
+              address={patient.address}
+              showType
+              onCancel={handleCancelAppointment}
+              onEdit={handleEditAppointment}
+              cancellingId={cancellingAppointmentId}
+              appointments={[...upcomingAppointments].sort((a, b) =>
+                `${a.appointment_date} ${a.appointment_time}`.localeCompare(
+                  `${b.appointment_date} ${b.appointment_time}`
+                )
+              )}
+            />
 
           )}
 
@@ -3651,84 +4195,12 @@ const PatientDetails = () => {
 
             </div>
 
-            <div className="overflow-x-auto">
-
-              <table className="w-full">
-
-                <thead className="bg-slate-50 dark:bg-slate-950/50">
-
-                  <tr>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "التاريخ" : "Date"}
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "الوقت" : "Time"}
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "الحالة" : "Status"}
-                    </th>
-
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-slate-600 dark:text-slate-400">
-                      {isArabic ? "ملاحظات" : "Notes"}
-                    </th>
-
-                  </tr>
-
-                </thead>
-
-                <tbody>
-
-                  {pastAppointments.map((appointment) => (
-                    <tr
-                      key={appointment.id}
-                      className="border-t border-slate-100 dark:border-slate-800"
-                    >
-
-                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        {appointment.appointment_date}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                        {appointment.appointment_time}
-                      </td>
-
-                      <td className="px-6 py-4">
-
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                          {appointment.status === "confirmed"
-                            ? isArabic
-                              ? "مؤكد"
-                              : "Confirmed"
-                            : appointment.status === "completed"
-                            ? isArabic
-                              ? "مكتمل"
-                              : "Completed"
-                            : appointment.status === "cancelled"
-                            ? isArabic
-                              ? "ملغي"
-                              : "Cancelled"
-                            : isArabic
-                            ? "قيد الانتظار"
-                            : "Pending"}
-                        </span>
-
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                        {appointment.notes || "-"}
-                      </td>
-
-                    </tr>
-                  ))}
-
-                </tbody>
-
-              </table>
-
-            </div>
+            <AppointmentList
+              isArabic={isArabic}
+              address={patient.address}
+              muted
+              appointments={pastAppointments}
+            />
 
           </div>
         )}
@@ -3739,7 +4211,6 @@ const PatientDetails = () => {
 };
 
 export default PatientDetails;
-
 
 
 

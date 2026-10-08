@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
+  ArrowRight,
   Bell,
   Building2,
   Calendar,
@@ -14,9 +16,9 @@ import {
   MessageCircle,
   Moon,
   PanelRightClose,
+  Send,
   Sun,
   Wallet,
-  Activity,
   ChevronLeft,
   ChevronRight,
   X,
@@ -31,6 +33,7 @@ import { translations, type Language } from "./i18n";
 type PatientRow = {
   id: string;
   name: string;
+  phone: string;
 };
 
 type AppointmentRow = {
@@ -91,6 +94,7 @@ const PatientDashboard = () => {
   });
 
   const isArabic = language === "ar";
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const t = translations[language];
 
   useEffect(() => {
@@ -200,10 +204,37 @@ const PatientDashboard = () => {
     if (window.innerWidth < 1024) setSidebarOpen(false);
   };
 
-  // يقفل السايدبار بزرار Escape
+  // ============================================
+  // نافذة التواصل مع العيادة
+  // ============================================
+
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactMessage, setContactMessage] = useState("");
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSent, setContactSent] = useState(false);
+  const [contactError, setContactError] = useState("");
+  const [contactNow, setContactNow] = useState(() => new Date());
+
+  const openContact = () => {
+    setContactMessage("");
+    setContactSent(false);
+    setContactError("");
+    setContactNow(new Date());
+    setContactOpen(true);
+    closeOnMobile();
+  };
+
+  const closeContact = () => {
+    setContactOpen(false);
+  };
+
+  // يقفل السايدبار / النافذة بزرار Escape
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false);
+      if (e.key === "Escape") {
+        setSidebarOpen(false);
+        setContactOpen(false);
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -329,6 +360,65 @@ const PatientDashboard = () => {
   };
 
   // ============================================
+  // إرسال رسالة للدكتور (تظهر في إشعارات الدكتور)
+  // ============================================
+
+  const handleSendContact = async () => {
+    const text = contactMessage.trim();
+
+    if (!text) {
+      setContactError(
+        isArabic ? "اكتب رسالتك أولاً." : "Please write your message first."
+      );
+      return;
+    }
+
+    if (!patient || !selectedClinicId) {
+      setContactError(
+        isArabic
+          ? "تعذر تحديد بيانات المريض أو العيادة."
+          : "Could not determine patient or clinic."
+      );
+      return;
+    }
+
+    setContactSending(true);
+    setContactError("");
+
+    const title = isArabic
+      ? `رسالة من المريض: ${patient.name}${
+          patient.phone ? ` - ${patient.phone}` : ""
+        }`
+      : `Message from patient: ${patient.name}${
+          patient.phone ? ` - ${patient.phone}` : ""
+        }`;
+
+    const { error } = await supabase.from("notifications").insert({
+      patient_id: patient.id,
+      clinic_id: selectedClinicId,
+      recipient_type: "doctor",
+      title,
+      message: text,
+      is_read: false,
+    });
+
+    setContactSending(false);
+
+    if (error) {
+      console.error("Contact message error:", error);
+      setContactError(
+        isArabic
+          ? "حصل خطأ أثناء إرسال الرسالة، حاول مرة أخرى."
+          : "Something went wrong while sending, please try again."
+      );
+      return;
+    }
+
+    setContactSent(true);
+    setContactMessage("");
+  };
+
+  // ============================================
   // Load dashboard data
   // ============================================
 
@@ -347,7 +437,7 @@ const PatientDashboard = () => {
 
       const { data: allPatientRows, error: allPatientsError } = await supabase
         .from("patients")
-        .select("id, name, clinic_id")
+        .select("id, name, phone, clinic_id")
         .eq("user_id", user.id)
         .order("created_at", { ascending: true });
 
@@ -360,10 +450,7 @@ const PatientDashboard = () => {
       if (!activeClinicId && allPatientRows && allPatientRows.length > 0) {
         activeClinicId = allPatientRows[0].clinic_id;
         setSelectedClinicId(activeClinicId);
-        localStorage.setItem(
-          "dentalcare-selected-clinic",
-          activeClinicId
-        );
+        localStorage.setItem("dentalcare-selected-clinic", activeClinicId);
       }
 
       if (activeClinicId) {
@@ -397,9 +484,7 @@ const PatientDashboard = () => {
       }
 
       const matchingPatient =
-        (allPatientRows || []).find(
-          (p) => p.clinic_id === activeClinicId
-        ) ||
+        (allPatientRows || []).find((p) => p.clinic_id === activeClinicId) ||
         (allPatientRows || [])[0] ||
         null;
 
@@ -420,6 +505,11 @@ const PatientDashboard = () => {
       setPatient({
         id: matchingPatient.id,
         name: matchingPatient.name,
+        phone:
+          (matchingPatient as any).phone ||
+          user.phone ||
+          (user.user_metadata as any)?.phone ||
+          "",
       });
 
       const patientIds = (allPatientRows || []).map((p) => p.id);
@@ -475,9 +565,7 @@ const PatientDashboard = () => {
 
         const completedVisits = rows
           .filter((a) => a.status === "completed")
-          .sort((a, b) =>
-            b.appointment_date.localeCompare(a.appointment_date)
-          );
+          .sort((a, b) => b.appointment_date.localeCompare(a.appointment_date));
 
         setRecentVisits(completedVisits.slice(0, 4));
       }
@@ -510,22 +598,16 @@ const PatientDashboard = () => {
         }[] = [];
 
         for (let i = 5; i >= 0; i--) {
-          const d = new Date(
-            now.getFullYear(),
-            now.getMonth() - i,
-            1
-          );
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
 
-          const key = `${d.getFullYear()}-${String(
-            d.getMonth() + 1
-          ).padStart(2, "0")}`;
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+            2,
+            "0"
+          )}`;
 
-          const label = d.toLocaleDateString(
-            isArabic ? "ar-EG" : "en-US",
-            {
-              month: "short",
-            }
-          );
+          const label = d.toLocaleDateString(isArabic ? "ar-EG" : "en-US", {
+            month: "short",
+          });
 
           months.push({
             key,
@@ -537,9 +619,7 @@ const PatientDashboard = () => {
         payments.forEach((p: any) => {
           const createdKey = (p.created_at || "").slice(0, 7);
 
-          const bucket = months.find(
-            (m) => m.key === createdKey
-          );
+          const bucket = months.find((m) => m.key === createdKey);
 
           if (bucket) {
             bucket.total += Number(p.amount || 0);
@@ -556,23 +636,16 @@ const PatientDashboard = () => {
 
       // ---------- Medical records ----------
 
-      const { data: recordsData, error: recordsError } =
-        await supabase
-          .from("medical_records")
-          .select("id, cost")
-          .in("patient_id", patientIds);
+      const { data: recordsData, error: recordsError } = await supabase
+        .from("medical_records")
+        .select("id, cost")
+        .in("patient_id", patientIds);
 
       if (recordsError) {
-        console.error(
-          "Medical records load error:",
-          recordsError
-        );
+        console.error("Medical records load error:", recordsError);
       } else {
-        const treatmentValue = (
-          recordsData || []
-        ).reduce(
-          (sum: number, r: any) =>
-            sum + Number(r.cost || 0),
+        const treatmentValue = (recordsData || []).reduce(
+          (sum: number, r: any) => sum + Number(r.cost || 0),
           0
         );
 
@@ -581,30 +654,21 @@ const PatientDashboard = () => {
 
       // ---------- Notifications ----------
 
-      const {
-        data: notificationsData,
-        error: notificationsError,
-      } = await supabase
-        .from("notifications")
-        .select(
-          "id, title, message, created_at, is_read"
-        )
-        .in("patient_id", patientIds)
-        .eq("recipient_type", "patient")
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(3);
+      const { data: notificationsData, error: notificationsError } =
+        await supabase
+          .from("notifications")
+          .select("id, title, message, created_at, is_read")
+          .in("patient_id", patientIds)
+          .eq("recipient_type", "patient")
+          .order("created_at", {
+            ascending: false,
+          })
+          .limit(3);
 
       if (notificationsError) {
-        console.error(
-          "Notifications load error:",
-          notificationsError
-        );
+        console.error("Notifications load error:", notificationsError);
       } else {
-        setNotifications(
-          notificationsData || []
-        );
+        setNotifications(notificationsData || []);
       }
 
       setLoading(false);
@@ -618,19 +682,12 @@ const PatientDashboard = () => {
   // ============================================
 
   const remainingAmount = useMemo(
-    () =>
-      Math.max(
-        totalTreatmentValue - totalPaid,
-        0
-      ),
+    () => Math.max(totalTreatmentValue - totalPaid, 0),
     [totalTreatmentValue, totalPaid]
   );
 
   const unreadNotificationsCount = useMemo(
-    () =>
-      notifications.filter(
-        (n) => !n.is_read
-      ).length,
+    () => notifications.filter((n) => !n.is_read).length,
     [notifications]
   );
 
@@ -717,53 +774,50 @@ const PatientDashboard = () => {
     },
     {
       icon: Calendar,
-      label: isArabic
-        ? "مواعيدي"
-        : "My Appointments",
+      label: isArabic ? "مواعيدي" : "My Appointments",
       to: "/patient/appointments",
     },
     {
       icon: FileText,
-      label: isArabic
-        ? "ملفي الطبي"
-        : "Medical File",
+      label: isArabic ? "ملفي الطبي" : "Medical File",
       to: "/patient/medical-file",
     },
     {
       icon: Wallet,
-      label: isArabic
-        ? "المدفوعات"
-        : "Payments",
+      label: isArabic ? "المدفوعات" : "Payments",
       to: "/patient/payments",
     },
     {
       icon: Bell,
-      label: isArabic
-        ? "الإشعارات"
-        : "Notifications",
+      label: isArabic ? "الإشعارات" : "Notifications",
       to: "/patient/notifications",
       badge: unreadNotificationsCount,
     },
   ];
 
-  const ChevronIcon = isArabic
-    ? ChevronLeft
-    : ChevronRight;
+  const ChevronIcon = isArabic ? ChevronLeft : ChevronRight;
 
-  const maxMonthlyPayment = Math.max(
-    1,
-    ...monthlyPayments.map(
-      (m) => m.total
-    )
+  // سهم الرجوع (خطوة ورا)
+  const BackIcon = isArabic ? ArrowRight : ArrowLeft;
+
+  const maxMonthlyPayment = Math.max(1, ...monthlyPayments.map((m) => m.total));
+
+  const contactDateLabel = contactNow.toLocaleString(
+    isArabic ? "ar-EG" : "en-GB",
+    {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }
   );
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <p className="text-slate-600 dark:text-slate-300">
-          {isArabic
-            ? "جاري تحميل لوحة التحكم..."
-            : "Loading dashboard..."}
+          {isArabic ? "جاري تحميل لوحة التحكم..." : "Loading dashboard..."}
         </p>
       </div>
     );
@@ -787,9 +841,7 @@ const PatientDashboard = () => {
 
       <aside
         className={`fixed inset-y-0 right-0 z-40 flex w-64 flex-col overflow-y-auto border-l border-slate-100 bg-white px-4 py-6 shadow-2xl transition-transform duration-300 ease-in-out dark:border-slate-800 dark:bg-slate-900 ${
-          sidebarOpen
-            ? "translate-x-0"
-            : "translate-x-full"
+          sidebarOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div className="mb-8 flex items-center justify-between gap-2 px-2">
@@ -808,9 +860,7 @@ const PatientDashboard = () => {
               </p>
 
               <p className="text-[11px] font-medium leading-tight text-blue-500">
-                {isArabic
-                  ? "ابتسامتك، صحتنا"
-                  : "Your Smile, Our Care"}
+                {isArabic ? "ابتسامتك، صحتنا" : "Your Smile, Our Care"}
               </p>
             </div>
           </Link>
@@ -828,8 +878,7 @@ const PatientDashboard = () => {
 
         <nav className="space-y-1">
           {navItems.map((item) => {
-            const active =
-              location.pathname === item.to;
+            const active = location.pathname === item.to;
 
             return (
               <Link
@@ -848,8 +897,7 @@ const PatientDashboard = () => {
                   {item.label}
                 </span>
 
-                {"badge" in item &&
-                item.badge ? (
+                {"badge" in item && item.badge ? (
                   <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                     {item.badge}
                   </span>
@@ -858,19 +906,17 @@ const PatientDashboard = () => {
             );
           })}
 
-          {/* التواصل مع العيادة */}
+          {/* التواصل مع العيادة (يفتح نافذة الرسالة) */}
 
-          <Link
-            to="/contact"
-            onClick={closeOnMobile}
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+          <button
+            type="button"
+            onClick={openContact}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           >
             <MessageCircle className="h-[18px] w-[18px]" />
 
-            {isArabic
-              ? "التواصل مع العيادة"
-              : "Contact clinic"}
-          </Link>
+            {isArabic ? "التواصل مع العيادة" : "Contact clinic"}
+          </button>
 
           {/* تسجيل الخروج */}
 
@@ -881,9 +927,7 @@ const PatientDashboard = () => {
           >
             <LogOut className="h-[18px] w-[18px]" />
 
-            {isArabic
-              ? "تسجيل الخروج"
-              : "Logout"}
+            {isArabic ? "تسجيل الخروج" : "Logout"}
           </button>
         </nav>
 
@@ -892,9 +936,7 @@ const PatientDashboard = () => {
             <ToothIcon className="mx-auto mb-2 h-9 w-9 text-blue-500" />
 
             <p className="text-sm font-bold leading-snug text-slate-700 dark:text-slate-200">
-              {isArabic
-                ? "ابتسامتك.. هي هدفنا"
-                : "Your smile is our goal"}
+              {isArabic ? "ابتسامتك.. هي هدفنا" : "Your smile is our goal"}
             </p>
           </div>
         </div>
@@ -904,9 +946,7 @@ const PatientDashboard = () => {
 
       <div
         className={`transition-all duration-300 ${
-          sidebarOpen
-            ? "lg:pr-64"
-            : "lg:pr-0"
+          sidebarOpen ? "lg:pr-64" : "lg:pr-0"
         }`}
       >
         {/* ---------- Top bar ---------- */}
@@ -916,11 +956,7 @@ const PatientDashboard = () => {
 
           <button
             type="button"
-            onClick={() =>
-              setSidebarOpen(
-                (open) => !open
-              )
-            }
+            onClick={() => setSidebarOpen((open) => !open)}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             aria-label={
               sidebarOpen
@@ -956,8 +992,7 @@ const PatientDashboard = () => {
             <Building2 className="h-5 w-5 shrink-0 text-blue-500" />
 
             <p className="truncate text-base font-bold text-slate-900 dark:text-white">
-              {clinicName ||
-                (isArabic ? "عيادة الأسنان" : "Dental Clinic")}
+              {clinicName || (isArabic ? "عيادة الأسنان" : "Dental Clinic")}
             </p>
           </div>
 
@@ -970,18 +1005,12 @@ const PatientDashboard = () => {
               type="button"
               onClick={toggleLanguage}
               className="flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              title={
-                isArabic
-                  ? "English"
-                  : "العربية"
-              }
+              title={isArabic ? "English" : "العربية"}
             >
               <Languages className="h-4 w-4" />
 
               <span className="hidden sm:inline">
-                {isArabic
-                  ? "EN"
-                  : "عربي"}
+                {isArabic ? "EN" : "عربي"}
               </span>
             </button>
 
@@ -1013,21 +1042,13 @@ const PatientDashboard = () => {
             <Link
               to="/patient/notifications"
               className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300"
-              aria-label={
-                isArabic
-                  ? "الإشعارات"
-                  : "Notifications"
-              }
+              aria-label={isArabic ? "الإشعارات" : "Notifications"}
             >
               <Bell className="h-4 w-4" />
 
-              {unreadNotificationsCount >
-                0 && (
+              {unreadNotificationsCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-red-500 px-1 text-[9px] font-bold text-white dark:border-slate-900">
-                  {unreadNotificationsCount >
-                  9
-                    ? "9+"
-                    : unreadNotificationsCount}
+                  {unreadNotificationsCount > 9 ? "9+" : unreadNotificationsCount}
                 </span>
               )}
             </Link>
@@ -1051,9 +1072,7 @@ const PatientDashboard = () => {
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic
-                    ? "مواعيدي القادمة"
-                    : "Upcoming appointments"}
+                  {isArabic ? "مواعيدي القادمة" : "Upcoming appointments"}
                 </p>
               </div>
 
@@ -1067,9 +1086,7 @@ const PatientDashboard = () => {
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic
-                    ? "خطة العلاج الحالية"
-                    : "Current treatment plan"}
+                  {isArabic ? "خطة العلاج الحالية" : "Current treatment plan"}
                 </p>
 
                 <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -1088,24 +1105,18 @@ const PatientDashboard = () => {
                 </span>
 
                 <p className="text-xl font-bold text-slate-900 dark:text-white">
-                  {formatMoney(
-                    remainingAmount
-                  )}
+                  {formatMoney(remainingAmount)}
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic
-                    ? "المبلغ المتبقي"
-                    : "Remaining balance"}
+                  {isArabic ? "المبلغ المتبقي" : "Remaining balance"}
                 </p>
 
                 <Link
                   to="/patient/payments"
                   className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                 >
-                  {isArabic
-                    ? "عرض الفواتير"
-                    : "View invoices"}
+                  {isArabic ? "عرض الفواتير" : "View invoices"}
 
                   <ChevronIcon className="h-3.5 w-3.5" />
                 </Link>
@@ -1121,18 +1132,14 @@ const PatientDashboard = () => {
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {isArabic
-                    ? "إجمالي المدفوعات"
-                    : "Total payments"}
+                  {isArabic ? "إجمالي المدفوعات" : "Total payments"}
                 </p>
 
                 <Link
                   to="/patient/payments"
                   className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                 >
-                  {isArabic
-                    ? "عرض المدفوعات"
-                    : "View payments"}
+                  {isArabic ? "عرض المدفوعات" : "View payments"}
 
                   <ChevronIcon className="h-3.5 w-3.5" />
                 </Link>
@@ -1147,9 +1154,7 @@ const PatientDashboard = () => {
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic
-                      ? "المواعيد القادمة"
-                      : "Upcoming appointments"}
+                    {isArabic ? "المواعيد القادمة" : "Upcoming appointments"}
                   </h2>
 
                   <Link
@@ -1158,14 +1163,11 @@ const PatientDashboard = () => {
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
 
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
-                {upcomingAppointments.length ===
-                0 ? (
+                {upcomingAppointments.length === 0 ? (
                   <p className="py-10 text-center text-sm text-slate-400">
                     {isArabic
                       ? "لا توجد مواعيد قادمة."
@@ -1173,53 +1175,43 @@ const PatientDashboard = () => {
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {upcomingAppointments.map(
-                      (a) => (
-                        <div
-                          key={a.id}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                              <Calendar className="h-4 w-4" />
+                    {upcomingAppointments.map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-800"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                            <Calendar className="h-4 w-4" />
+                          </span>
+
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                              {a.clinics?.name ||
+                                (isArabic ? "عيادة الأسنان" : "Dental Clinic")}
+                            </p>
+
+                            <span
+                              className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${getStatusStyle(
+                                a.status
+                              )}`}
+                            >
+                              {formatAppointmentType(a.appointment_type)}
                             </span>
-
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                                {a.clinics?.name ||
-                                  (isArabic
-                                    ? "عيادة الأسنان"
-                                    : "Dental Clinic")}
-                              </p>
-
-                              <span
-                                className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${getStatusStyle(
-                                  a.status
-                                )}`}
-                              >
-                                {formatAppointmentType(
-                                  a.appointment_type
-                                )}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="text-end">
-                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                              {formatShortDate(
-                                a.appointment_date
-                              )}
-                            </p>
-
-                            <p className="text-xs text-slate-400 dark:text-slate-500">
-                              {formatTime(
-                                a.appointment_time
-                              )}
-                            </p>
                           </div>
                         </div>
-                      )
-                    )}
+
+                        <div className="text-end">
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            {formatShortDate(a.appointment_date)}
+                          </p>
+
+                          <p className="text-xs text-slate-400 dark:text-slate-500">
+                            {formatTime(a.appointment_time)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1228,9 +1220,7 @@ const PatientDashboard = () => {
 
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900">
                 <h2 className="mb-1 font-bold text-slate-900 dark:text-white">
-                  {isArabic
-                    ? "تقدم خطة العلاج"
-                    : "Treatment plan progress"}
+                  {isArabic ? "تقدم خطة العلاج" : "Treatment plan progress"}
                 </h2>
 
                 <p className="mb-4 text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -1259,48 +1249,39 @@ const PatientDashboard = () => {
                     treatmentSteps.length === 0 ? "hidden " : ""
                   }relative space-y-6 border-e-2 border-slate-100 pe-5 dark:border-slate-800`}
                 >
-                  {treatmentSteps.map(
-                    (step) => (
-                      <li
-                        key={step.id}
-                        className="relative"
+                  {treatmentSteps.map((step) => (
+                    <li key={step.id} className="relative">
+                      <span
+                        className={`absolute top-0.5 -end-[27px] flex h-5 w-5 items-center justify-center rounded-full ${
+                          step.status === "done"
+                            ? "bg-blue-500 text-white"
+                            : step.status === "current"
+                            ? "border-2 border-blue-500 bg-white text-blue-500 dark:bg-slate-900"
+                            : "border-2 border-slate-200 bg-white text-slate-300 dark:border-slate-700 dark:bg-slate-900"
+                        }`}
                       >
-                        <span
-                          className={`absolute top-0.5 -end-[27px] flex h-5 w-5 items-center justify-center rounded-full ${
-                            step.status ===
-                            "done"
-                              ? "bg-blue-500 text-white"
-                              : step.status ===
-                                "current"
-                              ? "border-2 border-blue-500 bg-white text-blue-500 dark:bg-slate-900"
-                              : "border-2 border-slate-200 bg-white text-slate-300 dark:border-slate-700 dark:bg-slate-900"
-                          }`}
-                        >
-                          {step.status ===
-                          "done" ? (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          ) : (
-                            <Circle className="h-2 w-2 fill-current" />
-                          )}
-                        </span>
+                        {step.status === "done" ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Circle className="h-2 w-2 fill-current" />
+                        )}
+                      </span>
 
-                        <p
-                          className={`text-sm font-semibold ${
-                            step.status ===
-                            "upcoming"
-                              ? "text-slate-400 dark:text-slate-500"
-                              : "text-slate-800 dark:text-white"
-                          }`}
-                        >
-                          {step.label}
-                        </p>
+                      <p
+                        className={`text-sm font-semibold ${
+                          step.status === "upcoming"
+                            ? "text-slate-400 dark:text-slate-500"
+                            : "text-slate-800 dark:text-white"
+                        }`}
+                      >
+                        {step.label}
+                      </p>
 
-                        <p className="text-xs text-slate-400 dark:text-slate-500">
-                          {step.helper}
-                        </p>
-                      </li>
-                    )
-                  )}
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        {step.helper}
+                      </p>
+                    </li>
+                  ))}
                 </ol>
               </div>
             </div>
@@ -1313,9 +1294,7 @@ const PatientDashboard = () => {
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900 lg:col-span-3">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic
-                      ? "آخر الزيارات"
-                      : "Recent visits"}
+                    {isArabic ? "آخر الزيارات" : "Recent visits"}
                   </h2>
 
                   <Link
@@ -1324,14 +1303,11 @@ const PatientDashboard = () => {
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
 
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
-                {recentVisits.length ===
-                0 ? (
+                {recentVisits.length === 0 ? (
                   <p className="py-10 text-center text-sm text-slate-400">
                     {isArabic
                       ? "لا توجد زيارات سابقة بعد."
@@ -1343,71 +1319,53 @@ const PatientDashboard = () => {
                       <thead>
                         <tr className="text-slate-400">
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "الحالة"
-                              : "Status"}
+                            {isArabic ? "الحالة" : "Status"}
                           </th>
 
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "العيادة"
-                              : "Clinic"}
+                            {isArabic ? "العيادة" : "Clinic"}
                           </th>
 
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "نوع الزيارة"
-                              : "Visit type"}
+                            {isArabic ? "نوع الزيارة" : "Visit type"}
                           </th>
 
                           <th className="pb-2 text-start font-medium">
-                            {isArabic
-                              ? "التاريخ"
-                              : "Date"}
+                            {isArabic ? "التاريخ" : "Date"}
                           </th>
                         </tr>
                       </thead>
 
                       <tbody>
-                        {recentVisits.map(
-                          (visit) => (
-                            <tr
-                              key={visit.id}
-                              className="border-t border-slate-100 dark:border-slate-800"
-                            >
-                              <td className="py-2.5">
-                                <span
-                                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusStyle(
-                                    visit.status
-                                  )}`}
-                                >
-                                  {formatStatusLabel(
-                                    visit.status
-                                  )}
-                                </span>
-                              </td>
+                        {recentVisits.map((visit) => (
+                          <tr
+                            key={visit.id}
+                            className="border-t border-slate-100 dark:border-slate-800"
+                          >
+                            <td className="py-2.5">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusStyle(
+                                  visit.status
+                                )}`}
+                              >
+                                {formatStatusLabel(visit.status)}
+                              </span>
+                            </td>
 
-                              <td className="py-2.5 font-semibold text-slate-800 dark:text-white">
-                                {visit.clinics?.name ||
-                                  (isArabic
-                                    ? "عيادة الأسنان"
-                                    : "Dental Clinic")}
-                              </td>
+                            <td className="py-2.5 font-semibold text-slate-800 dark:text-white">
+                              {visit.clinics?.name ||
+                                (isArabic ? "عيادة الأسنان" : "Dental Clinic")}
+                            </td>
 
-                              <td className="py-2.5 text-slate-600 dark:text-slate-300">
-                                {formatAppointmentType(
-                                  visit.appointment_type
-                                )}
-                              </td>
+                            <td className="py-2.5 text-slate-600 dark:text-slate-300">
+                              {formatAppointmentType(visit.appointment_type)}
+                            </td>
 
-                              <td className="py-2.5 text-slate-500 dark:text-slate-400">
-                                {formatDate(
-                                  visit.appointment_date
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        )}
+                            <td className="py-2.5 text-slate-500 dark:text-slate-400">
+                              {formatDate(visit.appointment_date)}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1419,9 +1377,7 @@ const PatientDashboard = () => {
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900 lg:col-span-2">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic
-                      ? "ملخص المدفوعات"
-                      : "Payments summary"}
+                    {isArabic ? "ملخص المدفوعات" : "Payments summary"}
                   </h2>
 
                   <Link
@@ -1430,9 +1386,7 @@ const PatientDashboard = () => {
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
 
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
@@ -1443,46 +1397,38 @@ const PatientDashboard = () => {
 
                   <div>
                     <p className="text-lg font-bold text-slate-900 dark:text-white">
-                      {formatMoney(
-                        totalPaid
-                      )}
+                      {formatMoney(totalPaid)}
                     </p>
 
                     <p className="text-xs text-slate-400">
-                      {isArabic
-                        ? "إجمالي المدفوعات"
-                        : "Total payments"}
+                      {isArabic ? "إجمالي المدفوعات" : "Total payments"}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex h-32 items-end justify-between gap-2">
-                  {monthlyPayments.map(
-                    (m, idx) => (
-                      <div
-                        key={idx}
-                        className="flex flex-1 flex-col items-center gap-2"
-                      >
-                        <div className="flex h-24 w-full items-end justify-center">
-                          <div
-                            className="w-3/5 rounded-t-md bg-gradient-to-t from-blue-300 to-blue-500"
-                            style={{
-                              height: `${Math.max(
-                                6,
-                                (m.total /
-                                  maxMonthlyPayment) *
-                                  100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-
-                        <span className="text-[10px] text-slate-400">
-                          {m.label}
-                        </span>
+                  {monthlyPayments.map((m, idx) => (
+                    <div
+                      key={idx}
+                      className="flex flex-1 flex-col items-center gap-2"
+                    >
+                      <div className="flex h-24 w-full items-end justify-center">
+                        <div
+                          className="w-3/5 rounded-t-md bg-gradient-to-t from-blue-300 to-blue-500"
+                          style={{
+                            height: `${Math.max(
+                              6,
+                              (m.total / maxMonthlyPayment) * 100
+                            )}%`,
+                          }}
+                        />
                       </div>
-                    )
-                  )}
+
+                      <span className="text-[10px] text-slate-400">
+                        {m.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1491,9 +1437,7 @@ const PatientDashboard = () => {
               <div className="rounded-2xl bg-white p-5 shadow-sm dark:bg-slate-900 lg:col-span-1">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 dark:text-white">
-                    {isArabic
-                      ? "أحدث الإشعارات"
-                      : "Latest notifications"}
+                    {isArabic ? "أحدث الإشعارات" : "Latest notifications"}
                   </h2>
 
                   <Link
@@ -1502,14 +1446,11 @@ const PatientDashboard = () => {
                   >
                     <ChevronIcon className="h-3.5 w-3.5" />
 
-                    {isArabic
-                      ? "عرض الكل"
-                      : "View all"}
+                    {isArabic ? "عرض الكل" : "View all"}
                   </Link>
                 </div>
 
-                {notifications.length ===
-                0 ? (
+                {notifications.length === 0 ? (
                   <p className="py-6 text-center text-sm text-slate-400">
                     {isArabic
                       ? "لا توجد إشعارات جديدة."
@@ -1517,43 +1458,33 @@ const PatientDashboard = () => {
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {notifications.map(
-                      (n) => (
-                        <div
-                          key={n.id}
-                          className="flex items-start gap-2"
-                        >
-                          <span
-                            className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                              n.is_read
-                                ? "bg-slate-300 dark:bg-slate-600"
-                                : "bg-blue-500"
-                            }`}
-                          />
+                    {notifications.map((n) => (
+                      <div key={n.id} className="flex items-start gap-2">
+                        <span
+                          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                            n.is_read
+                              ? "bg-slate-300 dark:bg-slate-600"
+                              : "bg-blue-500"
+                          }`}
+                        />
 
-                          <div>
-                            <p className="text-sm leading-snug text-slate-600 dark:text-slate-300">
-                              {n.message}
-                            </p>
+                        <div>
+                          <p className="text-sm leading-snug text-slate-600 dark:text-slate-300">
+                            {n.message}
+                          </p>
 
-                            <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
-                              {new Date(
-                                n.created_at
-                              ).toLocaleString(
-                                isArabic
-                                  ? "ar-EG"
-                                  : "en-US",
-                                {
-                                  hour: "numeric",
-                                  minute:
-                                    "2-digit",
-                                }
-                              )}
-                            </p>
-                          </div>
+                          <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
+                            {new Date(n.created_at).toLocaleString(
+                              isArabic ? "ar-EG" : "en-US",
+                              {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              }
+                            )}
+                          </p>
                         </div>
-                      )
-                    )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1561,9 +1492,195 @@ const PatientDashboard = () => {
           </div>
         </main>
       </div>
+
+      {/* ==================== Contact clinic modal ==================== */}
+
+      {contactOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 backdrop-blur-[1px] sm:items-center sm:p-4"
+          onClick={closeContact}
+        >
+          <div
+            dir={isArabic ? "rtl" : "ltr"}
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-full w-full flex-col overflow-hidden bg-slate-50 shadow-2xl dark:bg-slate-950 sm:h-auto sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl"
+          >
+            {/* Header: سهم رجوع + لغة + وضع */}
+
+            <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <button
+                type="button"
+                onClick={closeContact}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label={isArabic ? "رجوع" : "Back"}
+                title={isArabic ? "رجوع" : "Back"}
+              >
+                <BackIcon className="h-4 w-4" />
+              </button>
+
+              <h2 className="flex-1 truncate text-base font-bold text-slate-900 dark:text-white">
+                {isArabic ? "رسالة إلى الدكتور" : "Message the doctor"}
+              </h2>
+
+              <button
+                type="button"
+                onClick={toggleLanguage}
+                className="flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                title={isArabic ? "English" : "العربية"}
+              >
+                <Languages className="h-4 w-4" />
+
+                <span className="hidden sm:inline">
+                  {isArabic ? "EN" : "عربي"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-yellow-400 dark:hover:bg-slate-800"
+                title={
+                  theme === "dark"
+                    ? isArabic
+                      ? "الوضع النهاري"
+                      : "Light mode"
+                    : isArabic
+                    ? "الوضع الليلي"
+                    : "Dark mode"
+                }
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+
+            {/* Body */}
+
+            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              {contactSent ? (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-green-600 dark:bg-green-950/40 dark:text-green-400">
+                    <CheckCircle2 className="h-8 w-8" />
+                  </span>
+
+                  <p className="text-base font-bold text-slate-900 dark:text-white">
+                    {isArabic
+                      ? "تم إرسال رسالتك للدكتور"
+                      : "Your message was sent to the doctor"}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={closeContact}
+                    className="mt-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    {isArabic ? "رجوع" : "Back"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* الاسم */}
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {isArabic ? "الاسم" : "Name"}
+                    </label>
+
+                    <input
+                      type="text"
+                      readOnly
+                      value={patient?.name || ""}
+                      className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-700 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  {/* رقم الهاتف */}
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {isArabic ? "رقم الهاتف" : "Phone number"}
+                    </label>
+
+                    <input
+                      type="text"
+                      readOnly
+                      dir="ltr"
+                      value={patient?.phone || ""}
+                      className={`w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-700 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 ${
+                        isArabic ? "text-right" : "text-left"
+                      }`}
+                    />
+                  </div>
+
+                  {/* تاريخ الإرسال */}
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {isArabic ? "تاريخ الإرسال" : "Sent on"}
+                    </label>
+
+                    <input
+                      type="text"
+                      readOnly
+                      value={contactDateLabel}
+                      className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-700 outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+
+                  {/* الرسالة */}
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {isArabic ? "الرسالة" : "Message"}
+                    </label>
+
+                    <textarea
+                      rows={5}
+                      value={contactMessage}
+                      onChange={(e) => {
+                        setContactMessage(e.target.value);
+                        if (contactError) setContactError("");
+                      }}
+                      placeholder={
+                        isArabic ? "اكتب رسالتك هنا..." : "Write your message here..."
+                      }
+                      className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                  </div>
+
+                  {contactError && (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                      {contactError}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleSendContact}
+                    disabled={contactSending}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Send className={`h-4 w-4 ${isArabic ? "-scale-x-100" : ""}`} />
+
+                    {contactSending
+                      ? isArabic
+                        ? "جاري الإرسال..."
+                        : "Sending..."
+                      : isArabic
+                      ? "إرسال"
+                      : "Send"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default PatientDashboard;
-

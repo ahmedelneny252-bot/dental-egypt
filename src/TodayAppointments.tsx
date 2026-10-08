@@ -11,7 +11,6 @@ import {
   Clock,
   Languages,
   Moon,
-  MoreVertical,
   Phone,
   RefreshCcw,
   Sun,
@@ -112,7 +111,6 @@ const formatTime = (time: string) => {
 
 const cleanName = (name: string) => name.trim().replace(/\s+/g, " ");
 
-// يوحّد الحروف العربية عشان المقارنة تبقى دقيقة
 const normalizeName = (name: string) =>
   cleanName(name)
     .toLowerCase()
@@ -120,19 +118,16 @@ const normalizeName = (name: string) =>
     .replace(/ة/g, "ه")
     .replace(/ى/g, "ي");
 
-// ثلاثي على الأقل = 3 كلمات أو أكتر، وكل كلمة حرفين على الأقل
 const isFullName = (name: string) => {
   const parts = cleanName(name).split(" ");
   return parts.length >= 3 && parts.every((part) => part.length >= 2);
 };
 
-// يحوّل الأرقام العربية (٠١٢...) لإنجليزي
 const toEnglishDigits = (value: string) =>
   value.replace(/[٠-٩]/g, (d) =>
     String("٠١٢٣٤٥٦٧٨٩".indexOf(d))
   );
 
-// يوحّد الصيغة: +2010... أو 002010... أو 2010... => 010...
 const normalizePhone = (phone: string) => {
   let p = toEnglishDigits(phone).replace(/[\s\-()]/g, "");
 
@@ -143,7 +138,6 @@ const normalizePhone = (phone: string) => {
   return p;
 };
 
-// موبايل مصري صحيح: 11 رقم ويبدأ بـ 010 / 011 / 012 / 015
 const isValidEgyptianPhone = (phone: string) =>
   /^01[0125][0-9]{8}$/.test(normalizePhone(phone));
 
@@ -171,12 +165,6 @@ function TodayAppointments() {
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<
     string | null
   >(null);
-
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-
-  // ============================================================
-  // Checkup / X-Ray Modal
-  // ============================================================
 
   const [showCheckupModal, setShowCheckupModal] = useState(false);
 
@@ -211,15 +199,10 @@ function TodayAppointments() {
   const [checkupPayment, setCheckupPayment] =
     useState<PaymentAnswer>("");
 
-  // سعر الكشف الثابت للدكتور
   const [doctorPrice, setDoctorPrice] = useState<number | null>(null);
   const [editingPrice, setEditingPrice] = useState(false);
   const [priceInput, setPriceInput] = useState("");
   const [priceSaving, setPriceSaving] = useState(false);
-
-  // ============================================================
-  // Follow-up Modal
-  // ============================================================
 
   const [showFollowUpModal, setShowFollowUpModal] = useState(false);
 
@@ -232,10 +215,6 @@ function TodayAppointments() {
   const [followUpNotes, setFollowUpNotes] = useState("");
 
   const [followUpLoading, setFollowUpLoading] = useState(false);
-
-  // ============================================================
-  // Language / Theme
-  // ============================================================
 
   const [language, setLanguage] = useState<Language>(() => {
     const stored = localStorage.getItem("dentalcare-language");
@@ -275,10 +254,6 @@ function TodayAppointments() {
       };
     }
   }, [showCheckupModal, showFollowUpModal]);
-
-  // ============================================================
-  // Load Data
-  // ============================================================
 
   const loadData = async (showRefresh = false) => {
     if (showRefresh) {
@@ -458,10 +433,6 @@ function TodayAppointments() {
     loadData();
   }, []);
 
-  // ============================================================
-  // Today's Appointments
-  // ============================================================
-
   const todayAppointments = useMemo(() => {
     return appointments
       .filter(
@@ -485,17 +456,13 @@ function TodayAppointments() {
       appointment.status === "confirmed"
   ).length;
 
-  const confirmedCount = todayAppointments.filter(
-    (appointment) => appointment.status === "confirmed"
+  const cancelledCount = todayAppointments.filter(
+    (appointment) => appointment.status === "cancelled"
   ).length;
 
   const completedCount = todayAppointments.filter(
     (appointment) => appointment.status === "completed"
   ).length;
-
-  // ============================================================
-  // Labels
-  // ============================================================
 
   const getStatusLabel = (status: AppointmentStatus) => {
     if (isArabic) {
@@ -545,10 +512,6 @@ function TodayAppointments() {
     return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900";
   };
 
-  // ============================================================
-  // Open Checkup / X-Ray Modal
-  // ============================================================
-
   const openCheckupModal = () => {
     setError("");
     setSuccess("");
@@ -574,10 +537,6 @@ function TodayAppointments() {
     setShowCheckupModal(true);
   };
 
-  // ============================================================
-  // Open Follow-up Modal
-  // ============================================================
-
   const openFollowUpModal = () => {
     setError("");
     setSuccess("");
@@ -589,10 +548,6 @@ function TodayAppointments() {
 
     setShowFollowUpModal(true);
   };
-
-  // ============================================================
-  // Appointment Conflict
-  // ============================================================
 
   const checkAppointmentConflict = async (
     date: string,
@@ -631,10 +586,6 @@ function TodayAppointments() {
       conflict: (data?.length ?? 0) > 0,
     };
   };
-
-  // ============================================================
-  // Save Doctor Checkup Price
-  // ============================================================
 
   const handleSavePrice = async () => {
     const value = Number(priceInput);
@@ -691,10 +642,6 @@ function TodayAppointments() {
       setPriceSaving(false);
     }
   };
-
-  // ============================================================
-  // Create Checkup / X-Ray
-  // ============================================================
 
   const handleCreateCheckup = async () => {
     if (!clinicId) return;
@@ -800,10 +747,6 @@ function TodayAppointments() {
     setSuccess("");
 
     try {
-      // ============================================================
-      // Check Conflict
-      // ============================================================
-
       const { conflict, error: conflictError } =
         await checkAppointmentConflict(
           checkupDate,
@@ -828,10 +771,6 @@ function TodayAppointments() {
         return;
       }
 
-      // ============================================================
-      // Medical Condition Text
-      // ============================================================
-
       const medicalConditionText =
         checkupMedicalConditions === "yes"
           ? isArabic
@@ -847,10 +786,6 @@ function TodayAppointments() {
       ]
         .filter(Boolean)
         .join("\n");
-
-      // ============================================================
-      // Create Patient For The First Time
-      // ============================================================
 
       const patientPhone = normalizePhone(checkupPhone);
 
@@ -882,10 +817,6 @@ function TodayAppointments() {
 
       const patientId = newPatient.id;
 
-      // ============================================================
-      // Create Appointment
-      // ============================================================
-
       const { data: newAppointment, error: insertError } =
         await supabase
           .from("appointments")
@@ -916,10 +847,6 @@ function TodayAppointments() {
           )
         );
       }
-
-      // ============================================================
-      // Add Payment
-      // ============================================================
 
       let paymentFailed = false;
       let paymentErrorMessage = "";
@@ -957,10 +884,6 @@ function TodayAppointments() {
             paymentError.message || "";
         }
       }
-
-      // ============================================================
-      // Notification
-      // ============================================================
 
       const formattedDate = formatDate(
         checkupDate,
@@ -1034,10 +957,6 @@ function TodayAppointments() {
       setCheckupLoading(false);
     }
   };
-
-  // ============================================================
-  // Create Follow-up
-  // ============================================================
 
   const handleCreateFollowUp = async () => {
     if (!clinicId) {
@@ -1189,10 +1108,6 @@ function TodayAppointments() {
     }
   };
 
-  // ============================================================
-  // Confirm
-  // ============================================================
-
   const handleConfirm = async (
     appointment: Appointment
   ) => {
@@ -1276,10 +1191,6 @@ function TodayAppointments() {
       setActionLoading(null);
     }
   };
-
-  // ============================================================
-  // Reject
-  // ============================================================
 
   const handleReject = async (
     appointment: Appointment
@@ -1365,10 +1276,6 @@ function TodayAppointments() {
     }
   };
 
-  // ============================================================
-  // Complete
-  // ============================================================
-
   const handleComplete = async (
     appointment: Appointment
   ) => {
@@ -1413,10 +1320,6 @@ function TodayAppointments() {
       setActionLoading(null);
     }
   };
-
-  // ============================================================
-  // Cancel Follow-up
-  // ============================================================
 
   const handleCancelFollowUp = async (
     appointment: Appointment
@@ -1473,8 +1376,6 @@ function TodayAppointments() {
           : "Follow-up appointment cancelled."
       );
 
-      setOpenMenuId(null);
-
       await loadData(true);
     } catch (err: any) {
       console.error(err);
@@ -1482,8 +1383,8 @@ function TodayAppointments() {
       setError(
         err?.message ||
           (isArabic
-            ? "حدث خطأ أثناء إلغاء الموعد."
-            : "Failed to cancel appointment.")
+            ? "حدث خطأ أثناء إلغاء موعد المتابعة."
+            : "Failed to cancel follow-up appointment.")
       );
     } finally {
       setActionLoading(null);
@@ -1499,7 +1400,6 @@ function TodayAppointments() {
       }`}
       dir={isArabic ? "rtl" : "ltr"}
     >
-      {/* Header */}
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
@@ -1600,7 +1500,6 @@ function TodayAppointments() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Page Header */}
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-teal-600 dark:text-teal-400">
@@ -1681,7 +1580,6 @@ function TodayAppointments() {
           </div>
         </div>
 
-        {/* Messages */}
         {error && (
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
             <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -1698,45 +1596,8 @@ function TodayAppointments() {
           </div>
         )}
 
-        {/* Doctor + Stats */}
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center gap-4">
-              {doctorProfile?.avatar_url ? (
-                <img
-                  src={doctorProfile.avatar_url}
-                  alt={doctorProfile.name}
-                  className="h-14 w-14 rounded-2xl object-cover"
-                />
-              ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
-                  <User className="h-7 w-7" />
-                </div>
-              )}
-
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {isArabic
-                    ? "الطبيب"
-                    : "Doctor"}
-                </p>
-
-                <h3 className="truncate font-bold text-slate-900 dark:text-white">
-                  {doctorProfile?.name ||
-                    (isArabic
-                      ? "الطبيب"
-                      : "Doctor")}
-                </h3>
-
-                {doctorProfile?.specialty && (
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                    {doctorProfile.specialty}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
+        {/* Appointment Statistics */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {isArabic
@@ -1750,18 +1611,6 @@ function TodayAppointments() {
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {isArabic
-                ? "مواعيد مؤكدة"
-                : "Confirmed"}
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">
-              {confirmedCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-900 dark:bg-slate-900">
             <p className="text-sm text-slate-500 dark:text-slate-400">
               {isArabic
                 ? "في الانتظار"
@@ -1784,9 +1633,20 @@ function TodayAppointments() {
               {completedCount}
             </p>
           </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isArabic
+                ? "مواعيد ملغاة"
+                : "Cancelled"}
+            </p>
+
+            <p className="mt-2 text-3xl font-bold text-red-600 dark:text-red-400">
+              {cancelledCount}
+            </p>
+          </div>
         </div>
 
-        {/* Appointments */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
             <div>
@@ -2111,7 +1971,9 @@ function TodayAppointments() {
                               )}
 
                               {appointment.status ===
-                                "confirmed" && (
+                                "confirmed" &&
+                                appointment.appointment_type !==
+                                  "follow_up" && (
                                 <button
                                   type="button"
                                   disabled={
@@ -2133,47 +1995,48 @@ function TodayAppointments() {
                               )}
 
                               {appointment.appointment_type ===
-                                "follow_up" && (
-                                <div className="relative">
+                                "follow_up" &&
+                                appointment.status ===
+                                  "confirmed" && (
+                                <>
                                   <button
                                     type="button"
+                                    disabled={
+                                      isActionLoading
+                                    }
                                     onClick={() =>
-                                      setOpenMenuId(
-                                        openMenuId ===
-                                          appointment.id
-                                          ? null
-                                          : appointment.id
+                                      handleComplete(
+                                        appointment
                                       )
                                     }
-                                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                                   >
-                                    <MoreVertical className="h-4 w-4" />
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+
+                                    {isArabic
+                                      ? "مكتمل"
+                                      : "Complete"}
                                   </button>
 
-                                  {openMenuId ===
-                                    appointment.id && (
-                                    <div className="absolute end-0 top-11 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 text-start shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleCancelFollowUp(
-                                            appointment
-                                          )
-                                        }
-                                        disabled={
-                                          isActionLoading
-                                        }
-                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                                      >
-                                        <XCircle className="h-4 w-4" />
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isActionLoading
+                                    }
+                                    onClick={() =>
+                                      handleCancelFollowUp(
+                                        appointment
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                                  >
+                                    <XCircle className="h-3.5 w-3.5" />
 
-                                        {isArabic
-                                          ? "إلغاء الموعد"
-                                          : "Cancel Appointment"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
+                                    {isArabic
+                                      ? "إلغاء"
+                                      : "Cancel"}
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -2187,7 +2050,6 @@ function TodayAppointments() {
           )}
         </div>
 
-        {/* Selected Patient */}
         {selectedAppointment && (
           <div className="mt-6 rounded-2xl border border-teal-100 bg-teal-50/50 p-5 dark:border-teal-900 dark:bg-teal-950/20">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2310,10 +2172,6 @@ function TodayAppointments() {
         )}
       </main>
 
-      {/* ========================================================
-          Add New Checkup Modal
-         ======================================================== */}
-
       {showCheckupModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
           <div className="flex min-h-full items-center justify-center px-4 py-6">
@@ -2339,7 +2197,6 @@ function TodayAppointments() {
               </div>
 
               <div className="space-y-5 p-6">
-                {/* New Patient */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2375,7 +2232,6 @@ function TodayAppointments() {
                     )}
                 </div>
 
-                {/* Phone */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2417,7 +2273,6 @@ function TodayAppointments() {
                     )}
                 </div>
 
-                {/* Age */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2445,7 +2300,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Patient Address */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2470,7 +2324,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Appointment Type */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2544,7 +2397,6 @@ function TodayAppointments() {
                   </div>
                 </div>
 
-                {/* Medical Conditions */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2618,7 +2470,6 @@ function TodayAppointments() {
                   )}
                 </div>
 
-                {/* Date */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2639,7 +2490,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Time */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2659,7 +2509,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Notes */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2684,7 +2533,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Price + Payment */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -2836,7 +2684,6 @@ function TodayAppointments() {
                   </div>
                 </div>
 
-                {/* Buttons */}
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
@@ -2874,10 +2721,6 @@ function TodayAppointments() {
         </div>
       )}
 
-      {/* ========================================================
-          Add Follow-up Modal
-         ======================================================== */}
-
       {showFollowUpModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
           <div className="flex min-h-full items-center justify-center px-4 py-6">
@@ -2905,7 +2748,6 @@ function TodayAppointments() {
               </div>
 
               <div className="space-y-5 p-6">
-                {/* Existing Patient */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2945,7 +2787,6 @@ function TodayAppointments() {
                   </select>
                 </div>
 
-                {/* Date */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2966,7 +2807,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Time */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -2986,7 +2826,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Notes */}
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     {isArabic
@@ -3011,7 +2850,6 @@ function TodayAppointments() {
                   />
                 </div>
 
-                {/* Buttons */}
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"

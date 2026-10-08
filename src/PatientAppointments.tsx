@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -727,7 +728,6 @@ const PatientAppointments = () => {
             {(
               [
                 "all",
-                "pending",
                 "confirmed",
                 "completed",
                 "cancelled",
@@ -1065,6 +1065,7 @@ const PatientAppointments = () => {
 };
 
 export default PatientAppointments;
+
 
 
 
