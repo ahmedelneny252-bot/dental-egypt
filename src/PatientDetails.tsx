@@ -708,8 +708,13 @@ const PatientDetails = () => {
   };
 
   // إشعار للمريض لما الدكتور يضيف حاجة (لو فشل مبيوقفش العملية)
-  const notifyPatient = async (title: string, message: string) => {
-    if (!clinicId || !id || !patient?.user_id) return;
+  // notification_type لازم يتبعت علشان صفحة إشعارات المريض تعرضه
+  const notifyPatient = async (
+    title: string,
+    message: string,
+    notificationType: string = "general"
+  ) => {
+    if (!clinicId || !id) return;
 
     const { error: notifyError } = await supabase
       .from("notifications")
@@ -717,6 +722,7 @@ const PatientDetails = () => {
         clinic_id: clinicId,
         patient_id: id,
         recipient_type: "patient",
+        notification_type: notificationType,
         title,
         message,
         is_read: false,
@@ -1318,7 +1324,8 @@ const PatientDetails = () => {
 
       await notifyPatient(
         "دفعة جديدة",
-        `تم تسجيل دفعة بمبلغ ${amountValue.toFixed(2)} ج.م`
+        `تم تسجيل دفعة بمبلغ ${amountValue.toFixed(2)} ج.م`,
+        "payment_added"
       );
 
       closePaymentForm();
@@ -1436,7 +1443,8 @@ const PatientDetails = () => {
 
         await notifyPatient(
           "تم تعديل الموعد",
-          `تم تعديل موعدك ليصبح يوم ${followUpDate} الساعة ${followUpTime}`
+          `تم تعديل موعدك ليصبح يوم ${followUpDate} الساعة ${followUpTime}`,
+          "appointment_rescheduled"
         );
 
         resetFollowUpForm();
@@ -1477,7 +1485,8 @@ const PatientDetails = () => {
 
       await notifyPatient(
         "موعد متابعة جديد",
-        `تم تحديد موعد متابعة يوم ${followUpDate} الساعة ${followUpTime}`
+        `تم تحديد موعد متابعة يوم ${followUpDate} الساعة ${followUpTime}`,
+        "follow_up_created"
       );
 
       resetFollowUpForm();
@@ -1544,7 +1553,8 @@ const PatientDetails = () => {
         "تم إلغاء الموعد",
         `تم إلغاء موعدك يوم ${appointment.appointment_date} الساعة ${(
           appointment.appointment_time || ""
-        ).slice(0, 5)}`
+        ).slice(0, 5)}`,
+        "appointment_cancelled"
       );
 
       // لو كان الموعد ده بيتعدل دلوقتي، نقفل الفورم
@@ -1740,7 +1750,8 @@ const PatientDetails = () => {
 
       await notifyPatient(
         "سجل طبي جديد",
-        "تمت إضافة سجل طبي جديد إلى ملفك."
+        "تمت إضافة سجل طبي جديد إلى ملفك.",
+        "medical_record_added"
       );
     }
 
@@ -1998,7 +2009,8 @@ const PatientDetails = () => {
           "روشتة جديدة",
           filled.length === 1
             ? `تمت إضافة روشتة جديدة: ${filled[0].medicine_name.trim()}`
-            : `تمت إضافة روشتة جديدة تحتوي على ${filled.length} أدوية`
+            : `تمت إضافة روشتة جديدة تحتوي على ${filled.length} أدوية`,
+          "prescription_added"
         );
       }
 
@@ -4086,7 +4098,8 @@ const PatientDetails = () => {
             onUploaded={() => {
               notifyPatient(
                 "أشعة جديدة",
-                "تمت إضافة أشعة جديدة إلى ملفك الطبي."
+                "تمت إضافة أشعة جديدة إلى ملفك الطبي.",
+                "xray_added"
               );
             }}
           />
