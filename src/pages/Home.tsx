@@ -12,7 +12,6 @@ import {
   UserRound,
   Users2,
   CalendarCheck,
-  ShieldPlus,
   ArrowLeft,
   ArrowRight,
   X,
@@ -34,9 +33,6 @@ type SupabaseClinic = {
   slug: string | null;
   latitude?: number | null;
   longitude?: number | null;
-  rating?: number | null;
-  doctors_count?: number | null;
-  services_count?: number | null;
 };
 
 // توحيد النص عشان البحث يكون مرن (همزات، تاء مربوطة، تشكيل، حروف كبيرة/صغيرة)
@@ -172,9 +168,6 @@ const Home = () => {
       slug: null,
       latitude: null,
       longitude: null,
-      rating: 4.8,
-      doctors_count: 5,
-      services_count: 12,
     },
     {
       id: "demo-2",
@@ -188,9 +181,6 @@ const Home = () => {
       slug: null,
       latitude: null,
       longitude: null,
-      rating: 4.6,
-      doctors_count: 3,
-      services_count: 8,
     },
     {
       id: "demo-3",
@@ -206,9 +196,6 @@ const Home = () => {
       slug: null,
       latitude: null,
       longitude: null,
-      rating: 4.7,
-      doctors_count: 4,
-      services_count: 10,
     },
     {
       id: "demo-4",
@@ -222,9 +209,6 @@ const Home = () => {
       slug: null,
       latitude: null,
       longitude: null,
-      rating: 4.5,
-      doctors_count: 3,
-      services_count: 7,
     },
   ];
 
@@ -580,38 +564,28 @@ const Home = () => {
                   onClick={() => openClinicModal(clinic)}
                   className="w-[75%] shrink-0 snap-start overflow-hidden rounded-2xl border border-slate-200 bg-white text-start shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 sm:w-auto"
                 >
-                  <div className="flex h-24 items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-500 dark:from-slate-800 dark:to-slate-800 dark:text-blue-400">
-                    <Stethoscope className="h-8 w-8" />
+                  <div className="flex h-40 items-center justify-center overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 text-blue-500 dark:from-slate-800 dark:to-slate-800 dark:text-blue-400">
+                    {clinic.logo_url ? (
+                      <img
+                        src={clinic.logo_url}
+                        alt={clinic.name}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Stethoscope className="h-8 w-8" />
+                    )}
                   </div>
 
                   <div className="p-4">
-                    <div className="mb-2 flex items-center gap-1 text-sm font-bold text-amber-500">
-                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                      {clinic.rating ?? 4.7}
-                    </div>
-
                     <h3 className="mb-1 truncate text-base font-bold text-slate-800 dark:text-white">
                       {clinic.name}
                     </h3>
 
-                    <p className="mb-3 flex items-center gap-1 truncate text-xs text-slate-400">
+                    <p className="flex items-center gap-1 truncate text-xs text-slate-400">
                       <MapPin className="h-3.5 w-3.5 shrink-0" />
                       {clinic.address}
                     </p>
-
-                    <div className="mb-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <Users2 className="h-3.5 w-3.5" />
-                        {clinic.doctors_count ?? 3}{" "}
-                        {isArabic ? "أطباء" : "doctors"}
-                      </span>
-
-                      <span className="flex items-center gap-1">
-                        <ShieldPlus className="h-3.5 w-3.5" />
-                        {clinic.services_count ?? 8}{" "}
-                        {isArabic ? "خدمة" : "services"}
-                      </span>
-                    </div>
                   </div>
                 </button>
               ))}
@@ -744,11 +718,6 @@ const Home = () => {
                 </div>
 
                 <div>
-                  <div className="mb-1 flex items-center gap-1 text-sm font-bold text-amber-500">
-                    <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    {selectedClinic.rating ?? 4.7}
-                  </div>
-
                   <h4 className="text-xl font-bold text-slate-800 dark:text-white">
                     {selectedClinic.name}
                   </h4>
@@ -761,20 +730,6 @@ const Home = () => {
                   {selectedClinic.address}
                 </p>
               )}
-
-              <div className="mb-5 flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Users2 className="h-4 w-4" />
-                  {selectedClinic.doctors_count ?? 3}{" "}
-                  {isArabic ? "أطباء" : "doctors"}
-                </span>
-
-                <span className="flex items-center gap-1">
-                  <ShieldPlus className="h-4 w-4" />
-                  {selectedClinic.services_count ?? 8}{" "}
-                  {isArabic ? "خدمة" : "services"}
-                </span>
-              </div>
 
               <div className="mb-6">
                 <h5 className="mb-2 text-sm font-bold text-slate-700 dark:text-slate-200">
