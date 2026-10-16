@@ -1,0 +1,26 @@
+name: dental_clinics
+description: A new Flutter project for dental clinics platform.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=2.19.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  # Add more dependencies as needed
+  http: ^1.1.0
+  get_it: ^7.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  # To add assets, uncomment and add paths
+  # assets:
+  #   - images/
